@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "matplotlib",
+    "pytest"
 ]
 
 [project.optional-dependencies]
