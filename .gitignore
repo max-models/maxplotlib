@@ -174,3 +174,7 @@ cython_debug/
 
 # Pytest
 *.pymon
+
+# Other
+.DS_Store
+*/.DS_Store
