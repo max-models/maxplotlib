@@ -24,8 +24,8 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          pip install .
 
-      # - name: Run tests
-      #   run: |
-      #     pytest  # or replace with your testing command
+      - name: Run tests
+        run: |
+          pytest  # or replace with your testing command
