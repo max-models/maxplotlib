@@ -1,21 +1,25 @@
 class LinePlot:
-    def __init__(self, figsize=(10, 6), caption=None, description=None, label=None):
+    def __init__(self, **kwargs):
         """
         Initialize the LinePlot class for a subplot.
 
         Parameters:
-        figsize (tuple): Figure size.
-        caption (str): Caption for the plot.
-        description (str): Description of the plot.
-        label (str): Label for the plot.
+        **kwargs: Arbitrary keyword arguments.
+            - figsize (tuple): Figure size (default is (10, 6)).
+            - caption (str): Caption for the plot.
+            - description (str): Description of the plot.
+            - label (str): Label for the plot.
+            - grid (bool): Whether to display grid lines (default is False).
+            TODO: Add all options
         """
-        self.figsize = figsize
-        # List to store line data, with each entry containing x and y data, label, and plot kwargs
+        # Set default values
+        self.figsize = kwargs.get('figsize', (10, 6))
+        self.caption = kwargs.get('caption', None)
+        self.description = kwargs.get('description', None)
+        self.label = kwargs.get('label', None)
+        self.grid = kwargs.get('grid', False)
+        # List to store line data, each entry contains x and y data, label, and plot kwargs
         self.line_data = []
-
-        self.caption = caption
-        self.description = description
-        self.label = label
 
     def add_caption(self, caption):
         self.caption = caption    
@@ -55,6 +59,8 @@ class LinePlot:
             ax.set_ylabel(self.label)
         ax.set_xlabel("X-axis")
         ax.legend()
+        if self.grid:
+            ax.grid()
 
 
 

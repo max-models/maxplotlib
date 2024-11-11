@@ -1,6 +1,6 @@
 import matplotlib.pyplot as plt
 import maxplotlib.subfigure.line_plot as lp
-
+import maxplotlib.backends.matplotlib.utils as plt_utils
 class Canvas:
     def __init__(self, nrows=1, ncols=1, caption=None, description=None, label=None, figsize=(10, 6)):
         """
@@ -100,7 +100,20 @@ class Canvas:
             raise IndexError("Subplot index out of range")
         self._subplot_matrix[row][col] = value
 
-    def add_subplot(self, col=None, row=None, label=None):
+    def add_subplot(self, **kwargs):
+        """
+        Adds a subplot to the figure.
+
+        Parameters:
+        **kwargs: Arbitrary keyword arguments.
+            - col (int): Column index for the subplot.
+            - row (int): Row index for the subplot.
+            - label (str): Label to identify the subplot.
+        """
+        col = kwargs.get('col', None)
+        row = kwargs.get('row', None)
+        label = kwargs.get('label', None)
+
         if row is None:
             for irow in range(self.nrows):
                 has_none = any(item is None for item in self._subplot_matrix[irow])
@@ -117,7 +130,7 @@ class Canvas:
         assert col is not None, "Not enough columns!"
         
         # Initialize the LinePlot for the given subplot position
-        line_plot = lp.LinePlot()
+        line_plot = lp.LinePlot(**kwargs)
         self._subplot_matrix[row][col] = line_plot
 
         # Store the LinePlot instance by its position for easy access
@@ -144,12 +157,21 @@ class Canvas:
         filename (str, optional): Filename to save the figure.
         show (bool): Whether to display the plot.
         """
+        fontsize = 14
+        tex_fonts = plt_utils.setup_tex_fonts(fontsize=fontsize)
+        plt_utils.setup_plotstyle(
+            tex_fonts=tex_fonts,
+            axes_grid=False,
+            axes_grid_which="major",
+            grid_alpha=1.0,
+            grid_linestyle="dotted",
+        )
         fig, axes = plt.subplots(self.nrows, self.ncols, figsize=self.figsize, squeeze=False)
-
+        
         for (row, col), line_plot in self.subplots.items():
             ax = axes[row][col]
             line_plot.plot(ax)  # Assuming LinePlot's `plot` method accepts an axis object
-            ax.set_title(f"Subplot ({row}, {col})")
+            # ax.set_title(f"Subplot ({row}, {col})")
 
         # Set caption, labels, etc., if needed
         plt.tight_layout()
