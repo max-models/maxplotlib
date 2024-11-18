@@ -1,8 +1,10 @@
 import matplotlib.pyplot as plt
 import maxplotlib.subfigure.line_plot as lp
 import maxplotlib.backends.matplotlib.utils as plt_utils
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 class Canvas:
-    def __init__(self, nrows=1, ncols=1, caption=None, description=None, label=None, figsize=(10, 6)):
+    def __init__(self, **kwargs):
         """
         Initialize the Canvas class for multiple subplots.
 
@@ -11,19 +13,160 @@ class Canvas:
         ncols (int): Number of subplot columns. Default is 1.
         figsize (tuple): Figure size.
         """
-        self._nrows = nrows
-        self._ncols = ncols
-        self._figsize = figsize
-        self._caption = caption
-        self._description = description
-        self._label = label
+
+        #nrows=1, ncols=1, caption=None, description=None, label=None, figsize=None
+        self._nrows = kwargs.get('nrows', 1)
+        self._ncols = kwargs.get('ncols', 1)
+        self._figsize = kwargs.get('figsize', None)
+        self._caption = kwargs.get('caption', None)
+        self._description = kwargs.get('description', None)
+        self._label = kwargs.get('label', None)
+
+        self._width=kwargs.get('width', 426.79135)
+        self._ratio=kwargs.get('ratio', "golden")
+        self._gridspec_kw = kwargs.get('gridspec_kw', {"wspace": 0.08, "hspace": 0.1})
         
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
         self.subplots = {}
         self._num_subplots = 0
 
-        self._subplot_matrix = [[None] * ncols for _ in range(nrows)]
+        self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
+
+    def add_subplot(self, **kwargs):
+        """
+        Adds a subplot to the figure.
+
+        Parameters:
+        **kwargs: Arbitrary keyword arguments.
+            - col (int): Column index for the subplot.
+            - row (int): Row index for the subplot.
+            - label (str): Label to identify the subplot.
+        """
+        col = kwargs.get('col', None)
+        row = kwargs.get('row', None)
+        label = kwargs.get('label', None)
+
+        if row is None:
+            for irow in range(self.nrows):
+                has_none = any(item is None for item in self._subplot_matrix[irow])
+                if has_none:
+                    row = irow
+                    break
+        assert row is not None, "Not enough rows!"
+
+        if col is None:
+            for icol in range(self.ncols):
+                if self._subplot_matrix[row][icol] is None:
+                    col = icol
+                    break
+        assert col is not None, "Not enough columns!"
+        
+        # Initialize the LinePlot for the given subplot position
+        line_plot = lp.LinePlot(**kwargs)
+        self._subplot_matrix[row][col] = line_plot
+
+        # Store the LinePlot instance by its position for easy access
+        if label is None:
+            self.subplots[(row, col)] = line_plot
+        else:
+            self.subplots[label] = line_plot
+        return line_plot
+    def savefig(self, filename, backend = 'matplotlib'):
+        if backend == 'matplotlib':
+            fig, axs = self.plot(show=False, backend='matplotlib', savefig=True)
+            fig.savefig(filename)
+    # def add_line(self, label, x_data, y_data, **kwargs):
+
+    def plot(self, backend='matplotlib', show=True, savefig=False):
+        if backend == 'matplotlib':
+            return self.plot_matplotlib(show=show, savefig=savefig)
+        elif backend == 'plotly':
+            self.plot_plotly(show=show, savefig=savefig)
+    def plot_matplotlib(self, show=True, savefig=False):
+        """
+        Generate and optionally display the subplots.
+
+        Parameters:
+        filename (str, optional): Filename to save the figure.
+        show (bool): Whether to display the plot.
+        """
+        fontsize = 14
+        tex_fonts = plt_utils.setup_tex_fonts(fontsize=fontsize)
+        plt_utils.setup_plotstyle(
+            tex_fonts=tex_fonts,
+            axes_grid=False,
+            axes_grid_which="major",
+            grid_alpha=1.0,
+            grid_linestyle="dotted",
+        )
+
+        if self._figsize is not None:
+            fig_width, fig_height = self._figsize
+        else:
+            fig_width, fig_height = plt_utils.set_size(width=self._width, ratio=self._ratio)
+        
+        fig, axes = plt.subplots(self.nrows, self.ncols, figsize=(fig_width, fig_height), squeeze=False)
+        
+        for (row, col), line_plot in self.subplots.items():
+            ax = axes[row][col]
+            line_plot.plot(ax)  # Assuming LinePlot's `plot` method accepts an axis object
+            # ax.set_title(f"Subplot ({row}, {col})")
+
+        # Set caption, labels, etc., if needed
+        plt.tight_layout()
+        
+        if show:
+            plt.show()
+        else:
+            plt.close()
+        return fig, axes
+
+    def plot_plotly(self, show=True, savefig=None):
+        """
+        Generate and optionally display the subplots using Plotly.
+
+        Parameters:
+        show (bool): Whether to display the plot.
+        savefig (str, optional): Filename to save the figure if provided.
+        """
+        fontsize = 14
+        tex_fonts = plt_utils.setup_tex_fonts(fontsize=fontsize)  # adjust or redefine for Plotly if needed
+
+        # Set default width and height if not specified
+        if self._figsize is not None:
+            fig_width, fig_height = self._figsize
+        else:
+            fig_width, fig_height = plt_utils.set_size(width=self._width, ratio=self._ratio)
+
+        # Create subplots
+        fig = make_subplots(rows=self.nrows, cols=self.ncols, subplot_titles=[
+            f"Subplot ({row}, {col})" for (row, col) in self.subplots.keys()
+        ])
+
+        # Plot each subplot
+        for (row, col), line_plot in self.subplots.items():
+            traces = line_plot.plot_plotly()  # Generate Plotly traces for the line_plot
+            for trace in traces:
+                fig.add_trace(trace, row=row + 1, col=col + 1)
+
+        # Update layout settings
+        fig.update_layout(
+            width=fig_width,
+            height=fig_height,
+            font=dict(size=fontsize),
+            margin=dict(l=10, r=10, t=40, b=10),  # Adjust margins if needed
+        )
+
+        # Optionally save the figure
+        if savefig:
+            fig.write_image(savefig)
+
+        # Show or return the figure
+        if show:
+            fig.show()
+        return fig
+
 
     # Property getters
     @property
@@ -99,88 +242,6 @@ class Canvas:
         if row >= self.nrows or col >= self.ncols:
             raise IndexError("Subplot index out of range")
         self._subplot_matrix[row][col] = value
-
-    def add_subplot(self, **kwargs):
-        """
-        Adds a subplot to the figure.
-
-        Parameters:
-        **kwargs: Arbitrary keyword arguments.
-            - col (int): Column index for the subplot.
-            - row (int): Row index for the subplot.
-            - label (str): Label to identify the subplot.
-        """
-        col = kwargs.get('col', None)
-        row = kwargs.get('row', None)
-        label = kwargs.get('label', None)
-
-        if row is None:
-            for irow in range(self.nrows):
-                has_none = any(item is None for item in self._subplot_matrix[irow])
-                if has_none:
-                    row = irow
-                    break
-        assert row is not None, "Not enough rows!"
-
-        if col is None:
-            for icol in range(self.ncols):
-                if self._subplot_matrix[row][icol] is None:
-                    col = icol
-                    break
-        assert col is not None, "Not enough columns!"
-        
-        # Initialize the LinePlot for the given subplot position
-        line_plot = lp.LinePlot(**kwargs)
-        self._subplot_matrix[row][col] = line_plot
-
-        # Store the LinePlot instance by its position for easy access
-        if label is None:
-            self.subplots[(row, col)] = line_plot
-        else:
-            self.subplots[label] = line_plot
-        return line_plot
-    def savefig(self, filename, backend = 'matplotlib'):
-        if backend == 'matplotlib':
-            fig = self.plot(show=False, savefig=True)
-            fig.savefig(filename)
-            #plt.savefig(filename)
-    # def add_line(self, label, x_data, y_data, **kwargs):
-
-    def plot(self, backend='matplotlib', show=True, savefig=False):
-        if backend == 'matplotlib':
-            return self.plot_matplotlib(show=show, savefig=savefig)
-    def plot_matplotlib(self, show=True, savefig=False):
-        """
-        Generate and optionally display the subplots.
-
-        Parameters:
-        filename (str, optional): Filename to save the figure.
-        show (bool): Whether to display the plot.
-        """
-        fontsize = 14
-        tex_fonts = plt_utils.setup_tex_fonts(fontsize=fontsize)
-        plt_utils.setup_plotstyle(
-            tex_fonts=tex_fonts,
-            axes_grid=False,
-            axes_grid_which="major",
-            grid_alpha=1.0,
-            grid_linestyle="dotted",
-        )
-        fig, axes = plt.subplots(self.nrows, self.ncols, figsize=self.figsize, squeeze=False)
-        
-        for (row, col), line_plot in self.subplots.items():
-            ax = axes[row][col]
-            line_plot.plot(ax)  # Assuming LinePlot's `plot` method accepts an axis object
-            # ax.set_title(f"Subplot ({row}, {col})")
-
-        # Set caption, labels, etc., if needed
-        plt.tight_layout()
-        
-        if show:
-            plt.show()
-        else:
-            plt.close()
-        return fig
 
     # def generate_matplotlib_code(self):
     #     """Generate code for plotting the data using matplotlib."""

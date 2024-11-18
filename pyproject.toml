@@ -16,9 +16,11 @@ classifiers = [
 ]
 dependencies = [
     "matplotlib",
+    "plotly",
     "pytest",
     "black",
     "isort",
+    "jupyterlab",
 ]
 
 [project.optional-dependencies]
