@@ -63,21 +63,19 @@ def set_size(width, fraction=1, ratio="golden"):
         width_pt = width
 
     fig_width_pt = width_pt * fraction
-    inches_per_pt = 1 / 72.27
+    #inches_per_pt = 1 / 72.27
 
     # Calculate the figure height based on the desired ratio
     if ratio == "golden":
         golden_ratio = (5**0.5 - 1) / 2
-        fig_height_in = fig_width_pt * inches_per_pt * golden_ratio
+        fig_height_pt = fig_width_pt * golden_ratio
     elif ratio == "square":
-        fig_height_in = fig_width_pt * inches_per_pt
+        fig_height_pt = fig_width_pt
     elif isinstance(ratio, (int, float)):
-        fig_height_in = fig_width_pt * inches_per_pt * ratio
+        fig_height_pt = fig_width_pt * ratio
     else:
         raise ValueError("Invalid ratio specified.")
-
-    fig_width_in = fig_width_pt * inches_per_pt
-    fig_dim = (fig_width_in, fig_height_in)
+    fig_dim = (fig_width_pt, fig_height_pt)
     return fig_dim
 
 def create_lineplot(

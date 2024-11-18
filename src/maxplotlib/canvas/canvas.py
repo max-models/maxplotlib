@@ -22,6 +22,7 @@ class Canvas:
         self._description = kwargs.get('description', None)
         self._label = kwargs.get('label', None)
 
+        self._dpi=kwargs.get('dpi', 300)
         self._width=kwargs.get('width', 426.79135)
         self._ratio=kwargs.get('ratio', "golden")
         self._gridspec_kw = kwargs.get('gridspec_kw', {"wspace": 0.08, "hspace": 0.1})
@@ -106,7 +107,8 @@ class Canvas:
         else:
             fig_width, fig_height = plt_utils.set_size(width=self._width, ratio=self._ratio)
         
-        fig, axes = plt.subplots(self.nrows, self.ncols, figsize=(fig_width, fig_height), squeeze=False)
+        print(fig_width, fig_height, fig_width / self._dpi, fig_height / self._dpi)
+        fig, axes = plt.subplots(self.nrows, self.ncols, figsize=(fig_width / self._dpi, fig_height / self._dpi), squeeze=False, dpi = self._dpi)
         
         for (row, col), line_plot in self.subplots.items():
             ax = axes[row][col]
@@ -138,7 +140,7 @@ class Canvas:
             fig_width, fig_height = self._figsize
         else:
             fig_width, fig_height = plt_utils.set_size(width=self._width, ratio=self._ratio)
-
+        print(self._width, fig_width, fig_height)
         # Create subplots
         fig = make_subplots(rows=self.nrows, cols=self.ncols, subplot_titles=[
             f"Subplot ({row}, {col})" for (row, col) in self.subplots.keys()
@@ -152,8 +154,8 @@ class Canvas:
 
         # Update layout settings
         fig.update_layout(
-            width=fig_width,
-            height=fig_height,
+            # width=fig_width,
+            # height=fig_height,
             font=dict(size=fontsize),
             margin=dict(l=10, r=10, t=40, b=10),  # Adjust margins if needed
         )
@@ -169,6 +171,11 @@ class Canvas:
 
 
     # Property getters
+
+    @property
+    def dpi(self):
+        return self._dpi
+
     @property
     def nrows(self):
         return self._nrows
@@ -198,6 +205,10 @@ class Canvas:
         return self._subplot_matrix
 
     # Property setters
+    @nrows.setter
+    def dpi(self, value):
+        self._dpi = value
+    
     @nrows.setter
     def nrows(self, value):
         self._nrows = value
