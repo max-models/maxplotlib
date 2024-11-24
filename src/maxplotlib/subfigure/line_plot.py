@@ -54,7 +54,7 @@ class LinePlot:
             'kwargs': kwargs
         })
 
-    def plot(self, ax):
+    def plot_matplotlib(self, ax):
         """
         Plot all lines on the provided axis.
 

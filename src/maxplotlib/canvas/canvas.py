@@ -142,9 +142,9 @@ class Canvas:
         print(fig_width, fig_height, fig_width / self._dpi, fig_height / self._dpi)
         fig, axes = plt.subplots(self.nrows, self.ncols, figsize=(fig_width / self._dpi, fig_height / self._dpi), squeeze=False, dpi = self._dpi)
         
-        for (row, col), line_plot in self.subplots.items():
+        for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
-            line_plot.plot(ax)  # Assuming LinePlot's `plot` method accepts an axis object
+            subplot.plot_matplotlib(ax)
             # ax.set_title(f"Subplot ({row}, {col})")
 
         # Set caption, labels, etc., if needed

@@ -1,6 +1,61 @@
 import subprocess
 import os
 import tempfile
+from matplotlib.image import imread
+
+class Node:
+    def __init__(self, x, y, label="", content="",**kwargs):
+        """
+        Represents a TikZ node.
+
+        Parameters:
+        - x (float): X-coordinate of the node.
+        - y (float): Y-coordinate of the node.
+        - name (str, optional): Name of the node. If None, a default name will be assigned.
+        - **kwargs: Additional TikZ node options (e.g., shape, color).
+        """
+        self.x = x
+        self.y = y
+        self.label = label
+        self.content = content
+        self.options = kwargs
+
+    def to_tikz(self):
+        """
+        Generate the TikZ code for this node.
+
+        Returns:
+        - tikz_str (str): TikZ code string for the node.
+        """
+        options = ', '.join(f"{k.replace('_', ' ')}={{{v}}}" for k, v in self.options.items())
+        if options:
+            options = f"[{options}]"
+        return f"    \\node{options} ({self.label}) at ({self.x}, {self.y}) {{{self.content}}};\n"
+
+class Path:
+    def __init__(self, nodes, **kwargs):
+        """
+        Represents a path (line) connecting multiple nodes.
+
+        Parameters:
+        - nodes (list of str): List of node names to connect.
+        - **kwargs: Additional TikZ path options (e.g., style, color).
+        """
+        self.nodes = nodes
+        self.options = kwargs
+
+    def to_tikz(self):
+        """
+        Generate the TikZ code for this path.
+
+        Returns:
+        - tikz_str (str): TikZ code string for the path.
+        """
+        options = ', '.join(f"{k.replace('_', ' ')}={{{v}}}" for k, v in self.options.items())
+        if options:
+            options = f"[{options}]"
+        path_str = ' -- '.join(f"({node_label})" for node_label in self.nodes)
+        return f"    \\draw{options} {path_str};\n"
 
 class TikzFigure:
     def __init__(self, **kwargs):
@@ -23,48 +78,58 @@ class TikzFigure:
         self._label = kwargs.get('label', None)
         self._grid = kwargs.get('grid', False)
 
-        # Initialize nodes and lines
+        # Initialize lists to hold Node and Path objects
         self.nodes = []
-        self.lines = []
+        self.paths = []
 
-    def add_node(self, name, x, y, **kwargs):
+        # Counter for unnamed nodes
+        self._node_counter = 0
+
+    def add_node(self, x, y, label=None, content="", **kwargs):
         """
         Add a node to the TikZ figure.
 
         Parameters:
-        - name (str): Name of the node.
         - x (float): X-coordinate of the node.
         - y (float): Y-coordinate of the node.
+        - label (str, optional): Label of the node. If None, a default label will be assigned.
         - **kwargs: Additional TikZ node options (e.g., shape, color).
-        """
-        node = {
-            'name': name,
-            'x': x,
-            'y': y,
-            'options': kwargs
-        }
-        self.nodes.append(node)
 
-    def add_line(self, nodes, **kwargs):
+        Returns:
+        - node (Node): The Node object that was added.
+        """
+        if label is None:
+            label = f"node{self._node_counter}"
+        node = Node(x=x, y=y, label=label, content=content, **kwargs)
+        self.nodes.append(node)
+        self._node_counter += 1
+        return node
+
+    def add_path(self, nodes, **kwargs):
         """
         Add a line or path connecting multiple nodes.
 
         Parameters:
         - nodes (list of str): List of node names to connect.
-        - **kwargs: Additional TikZ line options (e.g., style, color).
+        - **kwargs: Additional TikZ path options (e.g., style, color).
 
         Examples:
-        - add_line(['A', 'B', 'C'], color='blue')
+        - add_path(['A', 'B', 'C'], color='blue')
           Connects nodes A -> B -> C with a blue line.
         """
         if not isinstance(nodes, list):
             raise ValueError("nodes parameter must be a list of node names.")
+        
+        nodes = [
+            node.label if isinstance(node, Node)
+            else node if isinstance(node, str)
+            else ValueError(f"Invalid node type: {type(node)}")
+            for node in nodes
+        ]
 
-        line = {
-            'nodes': nodes,
-            'options': kwargs
-        }
-        self.lines.append(line)
+        path = Path(nodes, **kwargs)
+        self.paths.append(path)
+        return path
 
     def generate_tikz(self):
         """
@@ -81,19 +146,11 @@ class TikzFigure:
 
         # Add nodes
         for node in self.nodes:
-            options = ', '.join(f"{k.replace('_',' ')}={{{v}}}" for k, v in node['options'].items())
-            if options:
-                options = f"[{options}]"
-            tikz_script += f"    \\node{options} ({node['name']}) at ({node['x']}, {node['y']}) {{{node['name']}}};\n"
+            tikz_script += node.to_tikz()
 
-        # Add lines
-        for line in self.lines:
-            options = ', '.join(f"{k.replace('_',' ')}={{{v}}}" for k, v in line['options'].items())
-            if options:
-                options = f"[{options}]"
-            # Create the path by connecting all nodes in the list
-            path = ' -- '.join(f"({node_name})" for node_name in line['nodes'])
-            tikz_script += f"    \\draw{options} {path};\n"
+        # Add paths
+        for path in self.paths:
+            tikz_script += path.to_tikz()
 
         tikz_script += "\\end{tikzpicture}"
 
@@ -157,3 +214,11 @@ class TikzFigure:
                 print(f"PDF successfully compiled and saved as '{filename}'.")
             else:
                 print("PDF compilation failed. Please check the LaTeX log for details.")
+    def plot_matplotlib(self, ax):
+        """
+        Plot all lines on the provided axis.
+
+        Parameters:
+        ax (matplotlib.axes.Axes): Axis on which to plot the lines.
+        """
+        
