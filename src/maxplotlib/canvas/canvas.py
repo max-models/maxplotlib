@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import maxplotlib.subfigure.line_plot as lp
+import maxplotlib.subfigure.tikz_figure as tf
 import maxplotlib.backends.matplotlib.utils as plt_utils
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -33,6 +34,50 @@ class Canvas:
         self._num_subplots = 0
 
         self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
+    
+    def generate_new_rowcol(self,row,col):
+        if row is None:
+            for irow in range(self.nrows):
+                has_none = any(item is None for item in self._subplot_matrix[irow])
+                if has_none:
+                    row = irow
+                    break
+        assert row is not None, "Not enough rows!"
+
+        if col is None:
+            for icol in range(self.ncols):
+                if self._subplot_matrix[row][icol] is None:
+                    col = icol
+                    break
+        assert col is not None, "Not enough columns!"
+        return row, col
+
+    def add_tikzfigure(self, **kwargs):
+        """
+        Adds a subplot to the figure.
+
+        Parameters:
+        **kwargs: Arbitrary keyword arguments.
+            - col (int): Column index for the subplot.
+            - row (int): Row index for the subplot.
+            - label (str): Label to identify the subplot.
+        """
+        col = kwargs.get('col', None)
+        row = kwargs.get('row', None)
+        label = kwargs.get('label', None)
+
+        row, col = self.generate_new_rowcol(row, col)
+
+        # Initialize the LinePlot for the given subplot position
+        tikz_figure = tf.TikzFigure(**kwargs)
+        self._subplot_matrix[row][col] = tikz_figure
+
+        # Store the LinePlot instance by its position for easy access
+        if label is None:
+            self.subplots[(row, col)] = tikz_figure
+        else:
+            self.subplots[label] = tikz_figure
+        return tikz_figure
 
     def add_subplot(self, **kwargs):
         """
@@ -48,20 +93,7 @@ class Canvas:
         row = kwargs.get('row', None)
         label = kwargs.get('label', None)
 
-        if row is None:
-            for irow in range(self.nrows):
-                has_none = any(item is None for item in self._subplot_matrix[irow])
-                if has_none:
-                    row = irow
-                    break
-        assert row is not None, "Not enough rows!"
-
-        if col is None:
-            for icol in range(self.ncols):
-                if self._subplot_matrix[row][icol] is None:
-                    col = icol
-                    break
-        assert col is not None, "Not enough columns!"
+        row, col = self.generate_new_rowcol(row, col)
         
         # Initialize the LinePlot for the given subplot position
         line_plot = lp.LinePlot(**kwargs)

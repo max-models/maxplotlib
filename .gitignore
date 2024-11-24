@@ -172,6 +172,10 @@ cython_debug/
 *.pkl
 *.json
 
+# tex
+*.aux
+*.tex
+
 # Pytest
 *.pymon
 
