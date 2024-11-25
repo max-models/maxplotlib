@@ -139,7 +139,6 @@ class Canvas:
         else:
             fig_width, fig_height = plt_utils.set_size(width=self._width, ratio=self._ratio)
         
-        print(fig_width, fig_height, fig_width / self._dpi, fig_height / self._dpi)
         fig, axes = plt.subplots(self.nrows, self.ncols, figsize=(fig_width / self._dpi, fig_height / self._dpi), squeeze=False, dpi = self._dpi)
         
         for (row, col), subplot in self.subplots.items():
