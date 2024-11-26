@@ -11,7 +11,7 @@ from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
 
 class Node:
-    def __init__(self, x, y, label="", content="",**kwargs):
+    def __init__(self, x, y, label="", content="", layer=0, **kwargs):
         """
         Represents a TikZ node.
 
@@ -25,6 +25,7 @@ class Node:
         self.y = y
         self.label = label
         self.content = content
+        self.layer = layer
         self.options = kwargs
 
     def to_tikz(self):
@@ -34,13 +35,13 @@ class Node:
         Returns:
         - tikz_str (str): TikZ code string for the node.
         """
-        options = ', '.join(f"{k.replace('_', ' ')}={{{v}}}" for k, v in self.options.items())
+        options = ', '.join(f"{k.replace('_', ' ')}={v}" for k, v in self.options.items())
         if options:
             options = f"[{options}]"
         return f"    \\node{options} ({self.label}) at ({self.x}, {self.y}) {{{self.content}}};\n"
 
 class Path:
-    def __init__(self, nodes, **kwargs):
+    def __init__(self, nodes, path_actions=[], cycle=False, layer=0, **kwargs):
         """
         Represents a path (line) connecting multiple nodes.
 
@@ -49,6 +50,9 @@ class Path:
         - **kwargs: Additional TikZ path options (e.g., style, color).
         """
         self.nodes = nodes
+        self.path_actions = path_actions
+        self.cycle = cycle
+        self.layer = layer
         self.options = kwargs
 
     def to_tikz(self):
@@ -58,10 +62,14 @@ class Path:
         Returns:
         - tikz_str (str): TikZ code string for the path.
         """
-        options = ', '.join(f"{k.replace('_', ' ')}={{{v}}}" for k, v in self.options.items())
+        options = ', '.join(f"{k.replace('_', ' ')}={v}" for k, v in self.options.items())
+        if len(self.path_actions) > 0:
+            options = ', '.join(self.path_actions) + ', ' + options
         if options:
             options = f"[{options}]"
-        path_str = ' -- '.join(f"({node_label})" for node_label in self.nodes)
+        path_str = ' -- '.join(f"({node_label}.center)" for node_label in self.nodes)
+        if self.cycle:
+            path_str += ' -- cycle'
         return f"    \\draw{options} {path_str};\n"
 
 class TikzFigure:
@@ -88,11 +96,12 @@ class TikzFigure:
         # Initialize lists to hold Node and Path objects
         self.nodes = []
         self.paths = []
+        self.layers = {}
 
         # Counter for unnamed nodes
         self._node_counter = 0
 
-    def add_node(self, x, y, label=None, content="", **kwargs):
+    def add_node(self, x, y, label=None, content="", layer = 0, **kwargs):
         """
         Add a node to the TikZ figure.
 
@@ -109,10 +118,14 @@ class TikzFigure:
             label = f"node{self._node_counter}"
         node = Node(x=x, y=y, label=label, content=content, **kwargs)
         self.nodes.append(node)
+        if layer in self.layers:
+            self.layers[layer].append(node)
+        else:
+            self.layers[layer] = [node]
         self._node_counter += 1
         return node
 
-    def add_path(self, nodes, **kwargs):
+    def add_path(self, nodes, layer=0, **kwargs):
         """
         Add a line or path connecting multiple nodes.
 
@@ -136,6 +149,10 @@ class TikzFigure:
 
         path = Path(nodes, **kwargs)
         self.paths.append(path)
+        if layer in self.layers:
+            self.layers[layer].append(path)
+        else:
+            self.layers[layer] = [path]
         return path
 
     def generate_tikz(self):
@@ -147,17 +164,22 @@ class TikzFigure:
         """
         tikz_script = "\\begin{tikzpicture}\n"
 
+        
         # Add grid if enabled
         if self._grid:
             tikz_script += "    \\draw[step=1cm, gray, very thin] (-10,-10) grid (10,10);\n"
 
-        # Add nodes
-        for node in self.nodes:
-            tikz_script += node.to_tikz()
+        for key, layer_items in self.layers.items():
+            tikz_script += f"\n    % Layer {key}\n"
+            for item in layer_items:
+                tikz_script += item.to_tikz()
+        # # Add nodes
+        # for node in self.nodes:
+        #     tikz_script += node.to_tikz()
 
-        # Add paths
-        for path in self.paths:
-            tikz_script += path.to_tikz()
+        # # Add paths
+        # for path in self.paths:
+        #     tikz_script += path.to_tikz()
 
         tikz_script += "\\end{tikzpicture}"
 
