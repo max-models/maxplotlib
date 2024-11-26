@@ -10,6 +10,29 @@ import matplotlib.patches as patches
 from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
 
+
+class Layer:
+    def __init__(self, label):
+        self.label = label
+        self.items = []
+    def add(self, item):
+        self.items.append(item)
+    
+    def get_reqs(self):
+        reqs = set()
+        for item in self.items:
+            if isinstance(item, Path):
+                for node in item.nodes:
+                    reqs.add(node.layer)
+        return reqs
+    def generate_tikz(self):
+        tikz_script = f"\n% Layer {self.label}\n"
+        tikz_script += f"\\begin{{pgfonlayer}}{{{self.label}}}\n"
+        for item in self.items:
+            tikz_script += item.to_tikz()
+        tikz_script += f"\\end{{pgfonlayer}}{{{self.label}}}\n"
+        return tikz_script
+
 class Node:
     def __init__(self, x, y, label="", content="", layer=0, **kwargs):
         """
@@ -38,10 +61,10 @@ class Node:
         options = ', '.join(f"{k.replace('_', ' ')}={v}" for k, v in self.options.items())
         if options:
             options = f"[{options}]"
-        return f"    \\node{options} ({self.label}) at ({self.x}, {self.y}) {{{self.content}}};\n"
+        return f"\\node{options} ({self.label}) at ({self.x}, {self.y}) {{{self.content}}};\n"
 
 class Path:
-    def __init__(self, nodes, path_actions=[], cycle=False, layer=0, **kwargs):
+    def __init__(self, nodes, path_actions=[], cycle=False, label="", layer=0, **kwargs):
         """
         Represents a path (line) connecting multiple nodes.
 
@@ -53,6 +76,7 @@ class Path:
         self.path_actions = path_actions
         self.cycle = cycle
         self.layer = layer
+        self.label = label
         self.options = kwargs
 
     def to_tikz(self):
@@ -67,10 +91,10 @@ class Path:
             options = ', '.join(self.path_actions) + ', ' + options
         if options:
             options = f"[{options}]"
-        path_str = ' -- '.join(f"({node_label}.center)" for node_label in self.nodes)
+        path_str = ' -- '.join(f"({node.label}.center)" for node in self.nodes)
         if self.cycle:
             path_str += ' -- cycle'
-        return f"    \\draw{options} {path_str};\n"
+        return f"\\draw{options} {path_str};\n"
 
 class TikzFigure:
     def __init__(self, **kwargs):
@@ -119,9 +143,10 @@ class TikzFigure:
         node = Node(x=x, y=y, label=label, content=content, **kwargs)
         self.nodes.append(node)
         if layer in self.layers:
-            self.layers[layer].append(node)
+            self.layers[layer].add(node)
         else:
-            self.layers[layer] = [node]
+            self.layers[layer] = Layer(layer)
+            self.layers[layer].add(node)
         self._node_counter += 1
         return node
 
@@ -141,8 +166,8 @@ class TikzFigure:
             raise ValueError("nodes parameter must be a list of node names.")
         
         nodes = [
-            node.label if isinstance(node, Node)
-            else node if isinstance(node, str)
+            node if isinstance(node, Node)
+            else self.get_node(node) if isinstance(node, str)
             else ValueError(f"Invalid node type: {type(node)}")
             for node in nodes
         ]
@@ -150,11 +175,32 @@ class TikzFigure:
         path = Path(nodes, **kwargs)
         self.paths.append(path)
         if layer in self.layers:
-            self.layers[layer].append(path)
+            self.layers[layer].add(path)
         else:
-            self.layers[layer] = [path]
+            self.layers[layer] = Layer(layer)
+            self.layers[layer].add(path)
         return path
+    def get_node(self, node_label):
+        for node in self.nodes:
+            if node.label == node_label:
+                return node
+    def get_layer(self, item):
+        for layer, layer_items in self.layers.items():
+            if item in [layer_item.label for layer_item in layer_items]:
+                return layer
+        print(f'Item {item} not found in any layer!')
 
+    def add_tabs(self, tikz_script):
+        tikz_script_new = ""
+        tab_str = "    "
+        num_tabs = 0
+        for line in tikz_script.split('\n'):
+            if "\\end" in line:
+                num_tabs = max(num_tabs - 1, 0)
+            tikz_script_new += f"{tab_str*num_tabs}{line}\n"
+            if "\\begin" in line:
+                num_tabs += 1
+        return tikz_script_new
     def generate_tikz(self):
         """
         Generate the TikZ script for the figure.
@@ -163,23 +209,52 @@ class TikzFigure:
         - tikz_script (str): The TikZ script as a string.
         """
         tikz_script = "\\begin{tikzpicture}\n"
+        tikz_script += "% Define the layers library\n"
+        layers = sorted([str(layer) for layer in self.layers.keys()])
+        for layer in layers:
+            tikz_script += f"\\pgfdeclarelayer{{{layer}}}\n"
+        tikz_script += f"\\pgfsetlayers{{{','.join(layers)}}}\n"
 
         
         # Add grid if enabled
         if self._grid:
             tikz_script += "    \\draw[step=1cm, gray, very thin] (-10,-10) grid (10,10);\n"
+        # def update_layer_order(layer, layer_order, buffered_layers):
+        #     reqs = layer.get_reqs()
+        #     if len(reqs) == 0:
+        #         layer_order.append(key)
+        #         buffered_layers.pop(key)
+        #     elif all([r in layer_order for r in reqs]):
+        #         layer_order.append(key)
+        #         buffered_layers.pop(key)
+        #     else:
+        #         buffered_layers.append(key)
+        #     return layer, layer_order, buffered_layers
+        # Determine the order to print the layers
+        ordered_layers = []
+        buffered_layers = set()
+        
+        for key, layer in self.layers.items():
+            #layer_order, buffered_layers = update_layer_order(layer, layer_order, buffered_layers)
+            reqs = layer.get_reqs()
+            if all([r == layer.label for r in reqs]):
+                ordered_layers.append(layer)
+            elif all([r in [l.label for l in ordered_layers] for r in reqs]):
+                ordered_layers.append(layer)
+            else:
+                buffered_layers.add(layer)
 
-        for key, layer_items in self.layers.items():
-            tikz_script += f"\n    % Layer {key}\n"
-            for item in layer_items:
-                tikz_script += item.to_tikz()
-        # # Add nodes
-        # for node in self.nodes:
-        #     tikz_script += node.to_tikz()
-
-        # # Add paths
-        # for path in self.paths:
-        #     tikz_script += path.to_tikz()
+            for buffered_layer in buffered_layers:
+                buff_reqs = buffered_layer.get_reqs()
+                print(buff_reqs)
+                print([r in [l.label for l in ordered_layers] for r in buff_reqs], [l.label for l in ordered_layers])
+                if all([r in [l.label for l in ordered_layers] for r in buff_reqs]):
+                    print('Move layer from buffer')
+                    ordered_layers.append(key)
+                    buffered_layers.remove(key)
+        assert len(buffered_layers) == 0, f"Layer order is impossible for layer {[layer.label for layer in buffered_layers]}"
+        for layer in ordered_layers:
+            tikz_script += layer.generate_tikz()
 
         tikz_script += "\\end{tikzpicture}"
 
@@ -192,8 +267,21 @@ class TikzFigure:
                 figure_env += f"    \\label{{{self._label}}}\n"
             figure_env += "\\end{figure}"
             tikz_script = figure_env
-
+        tikz_script = self.add_tabs(tikz_script)
         return tikz_script
+
+    def generate_standalone(self):
+        tikz_code = self.generate_tikz()
+
+        # Create a minimal LaTeX document
+        latex_document = (
+            "\\documentclass[border=10pt]{standalone}\n"
+            "\\usepackage{tikz}\n"
+            "\\begin{document}\n"
+            f"{tikz_code}\n"
+            "\\end{document}"
+        )
+        return latex_document
 
     def compile_pdf(self, filename='output.pdf'):
         """
@@ -205,16 +293,7 @@ class TikzFigure:
         Notes:
         - Requires 'pdflatex' to be installed and accessible from the command line.
         """
-        tikz_code = self.generate_tikz()
-
-        # Create a minimal LaTeX document
-        latex_document = (
-            "\\documentclass[border=10pt]{standalone}\n"
-            "\\usepackage{tikz}\n"
-            "\\begin{document}\n"
-            f"{tikz_code}\n"
-            "\\end{document}"
-        )
+        latex_document = self.generate_standalone()
 
         # Use a temporary directory to store the LaTeX files
         with tempfile.TemporaryDirectory() as tempdir:
@@ -254,9 +333,9 @@ class TikzFigure:
 
         # Plot paths first so they appear behind nodes
         for path in self.paths:
-            x_coords = [next(node.x for node in self.nodes if node.label == label) for label in path.nodes]
-            y_coords = [next(node.y for node in self.nodes if node.label == label) for label in path.nodes]
-
+            x_coords = [node.x for node in path.nodes]
+            y_coords = [node.y for node in path.nodes]
+            
             # Parse path color
             path_color_spec = path.options.get('color', 'black')
             try:
