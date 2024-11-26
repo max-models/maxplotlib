@@ -23,7 +23,8 @@ class Layer:
         for item in self.items:
             if isinstance(item, Path):
                 for node in item.nodes:
-                    reqs.add(node.layer)
+                    if not node.layer == self.label:
+                        reqs.add(node.layer)
         return reqs
     def generate_tikz(self):
         tikz_script = f"\n% Layer {self.label}\n"
@@ -140,7 +141,7 @@ class TikzFigure:
         """
         if label is None:
             label = f"node{self._node_counter}"
-        node = Node(x=x, y=y, label=label, content=content, **kwargs)
+        node = Node(x=x, y=y, label=label, layer=layer, content=content, **kwargs)
         self.nodes.append(node)
         if layer in self.layers:
             self.layers[layer].add(node)
@@ -171,7 +172,6 @@ class TikzFigure:
             else ValueError(f"Invalid node type: {type(node)}")
             for node in nodes
         ]
-
         path = Path(nodes, **kwargs)
         self.paths.append(path)
         if layer in self.layers:
@@ -219,18 +219,6 @@ class TikzFigure:
         # Add grid if enabled
         if self._grid:
             tikz_script += "    \\draw[step=1cm, gray, very thin] (-10,-10) grid (10,10);\n"
-        # def update_layer_order(layer, layer_order, buffered_layers):
-        #     reqs = layer.get_reqs()
-        #     if len(reqs) == 0:
-        #         layer_order.append(key)
-        #         buffered_layers.pop(key)
-        #     elif all([r in layer_order for r in reqs]):
-        #         layer_order.append(key)
-        #         buffered_layers.pop(key)
-        #     else:
-        #         buffered_layers.append(key)
-        #     return layer, layer_order, buffered_layers
-        # Determine the order to print the layers
         ordered_layers = []
         buffered_layers = set()
         
@@ -246,8 +234,6 @@ class TikzFigure:
 
             for buffered_layer in buffered_layers:
                 buff_reqs = buffered_layer.get_reqs()
-                print(buff_reqs)
-                print([r in [l.label for l in ordered_layers] for r in buff_reqs], [l.label for l in ordered_layers])
                 if all([r in [l.label for l in ordered_layers] for r in buff_reqs]):
                     print('Move layer from buffer')
                     ordered_layers.append(key)
