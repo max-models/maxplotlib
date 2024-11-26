@@ -1,9 +1,12 @@
 import matplotlib.pyplot as plt
-import maxplotlib.subfigure.line_plot as lp
-import maxplotlib.subfigure.tikz_figure as tf
-import maxplotlib.backends.matplotlib.utils as plt_utils
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+
+import maxplotlib.backends.matplotlib.utils as plt_utils
+import maxplotlib.subfigure.line_plot as lp
+import maxplotlib.subfigure.tikz_figure as tf
+
+
 class Canvas:
     def __init__(self, **kwargs):
         """
@@ -15,27 +18,27 @@ class Canvas:
         figsize (tuple): Figure size.
         """
 
-        #nrows=1, ncols=1, caption=None, description=None, label=None, figsize=None
-        self._nrows = kwargs.get('nrows', 1)
-        self._ncols = kwargs.get('ncols', 1)
-        self._figsize = kwargs.get('figsize', None)
-        self._caption = kwargs.get('caption', None)
-        self._description = kwargs.get('description', None)
-        self._label = kwargs.get('label', None)
+        # nrows=1, ncols=1, caption=None, description=None, label=None, figsize=None
+        self._nrows = kwargs.get("nrows", 1)
+        self._ncols = kwargs.get("ncols", 1)
+        self._figsize = kwargs.get("figsize", None)
+        self._caption = kwargs.get("caption", None)
+        self._description = kwargs.get("description", None)
+        self._label = kwargs.get("label", None)
 
-        self._dpi=kwargs.get('dpi', 300)
-        self._width=kwargs.get('width', 426.79135)
-        self._ratio=kwargs.get('ratio', "golden")
-        self._gridspec_kw = kwargs.get('gridspec_kw', {"wspace": 0.08, "hspace": 0.1})
-        
+        self._dpi = kwargs.get("dpi", 300)
+        self._width = kwargs.get("width", 426.79135)
+        self._ratio = kwargs.get("ratio", "golden")
+        self._gridspec_kw = kwargs.get("gridspec_kw", {"wspace": 0.08, "hspace": 0.1})
+
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
         self.subplots = {}
         self._num_subplots = 0
 
         self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
-    
-    def generate_new_rowcol(self,row,col):
+
+    def generate_new_rowcol(self, row, col):
         if row is None:
             for irow in range(self.nrows):
                 has_none = any(item is None for item in self._subplot_matrix[irow])
@@ -62,9 +65,9 @@ class Canvas:
             - row (int): Row index for the subplot.
             - label (str): Label to identify the subplot.
         """
-        col = kwargs.get('col', None)
-        row = kwargs.get('row', None)
-        label = kwargs.get('label', None)
+        col = kwargs.get("col", None)
+        row = kwargs.get("row", None)
+        label = kwargs.get("label", None)
 
         row, col = self.generate_new_rowcol(row, col)
 
@@ -89,12 +92,12 @@ class Canvas:
             - row (int): Row index for the subplot.
             - label (str): Label to identify the subplot.
         """
-        col = kwargs.get('col', None)
-        row = kwargs.get('row', None)
-        label = kwargs.get('label', None)
+        col = kwargs.get("col", None)
+        row = kwargs.get("row", None)
+        label = kwargs.get("label", None)
 
         row, col = self.generate_new_rowcol(row, col)
-        
+
         # Initialize the LinePlot for the given subplot position
         line_plot = lp.LinePlot(**kwargs)
         self._subplot_matrix[row][col] = line_plot
@@ -105,17 +108,20 @@ class Canvas:
         else:
             self.subplots[label] = line_plot
         return line_plot
-    def savefig(self, filename, backend = 'matplotlib'):
-        if backend == 'matplotlib':
-            fig, axs = self.plot(show=False, backend='matplotlib', savefig=True)
+
+    def savefig(self, filename, backend="matplotlib"):
+        if backend == "matplotlib":
+            fig, axs = self.plot(show=False, backend="matplotlib", savefig=True)
             fig.savefig(filename)
+
     # def add_line(self, label, x_data, y_data, **kwargs):
 
-    def plot(self, backend='matplotlib', show=True, savefig=False):
-        if backend == 'matplotlib':
+    def plot(self, backend="matplotlib", show=True, savefig=False):
+        if backend == "matplotlib":
             return self.plot_matplotlib(show=show, savefig=savefig)
-        elif backend == 'plotly':
+        elif backend == "plotly":
             self.plot_plotly(show=show, savefig=savefig)
+
     def plot_matplotlib(self, show=True, savefig=False):
         """
         Generate and optionally display the subplots.
@@ -137,10 +143,18 @@ class Canvas:
         if self._figsize is not None:
             fig_width, fig_height = self._figsize
         else:
-            fig_width, fig_height = plt_utils.set_size(width=self._width, ratio=self._ratio)
-        
-        fig, axes = plt.subplots(self.nrows, self.ncols, figsize=(fig_width / self._dpi, fig_height / self._dpi), squeeze=False, dpi = self._dpi)
-        
+            fig_width, fig_height = plt_utils.set_size(
+                width=self._width, ratio=self._ratio
+            )
+
+        fig, axes = plt.subplots(
+            self.nrows,
+            self.ncols,
+            figsize=(fig_width / self._dpi, fig_height / self._dpi),
+            squeeze=False,
+            dpi=self._dpi,
+        )
+
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
             subplot.plot_matplotlib(ax)
@@ -148,7 +162,7 @@ class Canvas:
 
         # Set caption, labels, etc., if needed
         plt.tight_layout()
-        
+
         if show:
             plt.show()
         else:
@@ -164,18 +178,26 @@ class Canvas:
         savefig (str, optional): Filename to save the figure if provided.
         """
         fontsize = 14
-        tex_fonts = plt_utils.setup_tex_fonts(fontsize=fontsize)  # adjust or redefine for Plotly if needed
+        tex_fonts = plt_utils.setup_tex_fonts(
+            fontsize=fontsize
+        )  # adjust or redefine for Plotly if needed
 
         # Set default width and height if not specified
         if self._figsize is not None:
             fig_width, fig_height = self._figsize
         else:
-            fig_width, fig_height = plt_utils.set_size(width=self._width, ratio=self._ratio)
+            fig_width, fig_height = plt_utils.set_size(
+                width=self._width, ratio=self._ratio
+            )
         print(self._width, fig_width, fig_height)
         # Create subplots
-        fig = make_subplots(rows=self.nrows, cols=self.ncols, subplot_titles=[
-            f"Subplot ({row}, {col})" for (row, col) in self.subplots.keys()
-        ])
+        fig = make_subplots(
+            rows=self.nrows,
+            cols=self.ncols,
+            subplot_titles=[
+                f"Subplot ({row}, {col})" for (row, col) in self.subplots.keys()
+            ],
+        )
 
         # Plot each subplot
         for (row, col), line_plot in self.subplots.items():
@@ -199,7 +221,6 @@ class Canvas:
         if show:
             fig.show()
         return fig
-
 
     # Property getters
 
@@ -239,7 +260,7 @@ class Canvas:
     @nrows.setter
     def dpi(self, value):
         self._dpi = value
-    
+
     @nrows.setter
     def nrows(self, value):
         self._nrows = value
@@ -354,11 +375,11 @@ class Canvas:
     #     latex_code += "\\caption{Multiple Subplots}\n"
     #     latex_code += "\\end{figure}\n"
     #     return latex_code
-    
 
-if __name__ == '__main__':
-    c = Canvas(ncols=2,nrows=2)
+
+if __name__ == "__main__":
+    c = Canvas(ncols=2, nrows=2)
     sp = c.add_subplot()
     sp.add_line("Line 1", [0, 1, 2, 3], [0, 1, 4, 9])
     c.plot()
-    print('done')
+    print("done")

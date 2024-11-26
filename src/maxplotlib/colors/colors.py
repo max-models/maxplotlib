@@ -1,7 +1,9 @@
-import numpy as np
+import re
+
 import matplotlib.colors as mcolors
 import matplotlib.patches as patches
-import re
+import numpy as np
+
 
 class Color:
     def __init__(self, color_spec):
@@ -32,11 +34,11 @@ class Color:
             return rgb
 
         # If it's a hex code
-        if isinstance(color_spec, str) and color_spec.startswith('#'):
+        if isinstance(color_spec, str) and color_spec.startswith("#"):
             return mcolors.hex2color(color_spec)
 
         # If it's a TikZ color string
-        match = re.match(r'(\w+)!([\d.]+)', color_spec)
+        match = re.match(r"(\w+)!([\d.]+)", color_spec)
         if match:
             base_color_name, percentage = match.groups()
             percentage = float(percentage)

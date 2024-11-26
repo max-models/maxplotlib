@@ -1,5 +1,6 @@
 import re
 
+
 class Linestyle:
     def __init__(self, style_spec):
         """
@@ -24,10 +25,10 @@ class Linestyle:
         """
         # Predefined mappings from TikZ to Matplotlib
         linestyle_mapping = {
-            'solid': 'solid',
-            'dashed': 'dashed',
-            'dotted': 'dotted',
-            'dashdot': 'dashdot',
+            "solid": "solid",
+            "dashed": "dashed",
+            "dotted": "dotted",
+            "dashdot": "dashdot",
             # You can add more styles or custom dash patterns
         }
 
@@ -36,7 +37,7 @@ class Linestyle:
             return linestyle_mapping[style_spec]
         else:
             # Check if it's a custom dash pattern, e.g., 'dash pattern=on 5pt off 2pt'
-            match = re.match(r'dash pattern=on ([\d.]+)pt off ([\d.]+)pt', style_spec)
+            match = re.match(r"dash pattern=on ([\d.]+)pt off ([\d.]+)pt", style_spec)
             if match:
                 on_length = float(match.group(1))
                 off_length = float(match.group(2))
@@ -45,7 +46,7 @@ class Linestyle:
             else:
                 # Default to solid if style is unknown
                 print(f"Unknown line style: '{style_spec}', defaulting to 'solid'")
-                return 'solid'
+                return "solid"
 
     def to_matplotlib(self):
         """

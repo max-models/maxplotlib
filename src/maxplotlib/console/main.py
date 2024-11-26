@@ -1,2 +1,2 @@
 def maxplotlib():
-    print('Hello, world!')
+    print("Hello, world!")

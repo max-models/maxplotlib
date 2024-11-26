@@ -1,5 +1,7 @@
 import numpy as np
 import plotly.graph_objects as go
+
+
 class LinePlot:
     def __init__(self, **kwargs):
         """
@@ -15,28 +17,26 @@ class LinePlot:
             TODO: Add all options
         """
         # Set default values
-        self._figsize = kwargs.get('figsize', (10, 6))
-        self._caption = kwargs.get('caption', None)
-        self._description = kwargs.get('description', None)
-        self._label = kwargs.get('label', None)
-        self._grid = kwargs.get('grid', False)
-        self._legend = kwargs.get('legend', True)
+        self._figsize = kwargs.get("figsize", (10, 6))
+        self._caption = kwargs.get("caption", None)
+        self._description = kwargs.get("description", None)
+        self._label = kwargs.get("label", None)
+        self._grid = kwargs.get("grid", False)
+        self._legend = kwargs.get("legend", True)
 
-        self._xlabel = kwargs.get('xlabel', None)
-        self._ylabel = kwargs.get('ylabel', None)
+        self._xlabel = kwargs.get("xlabel", None)
+        self._ylabel = kwargs.get("ylabel", None)
         # List to store line data, each entry contains x and y data, label, and plot kwargs
         self.line_data = []
 
-
         # Scaling
-        self._xscale = kwargs.get('xscale', 1.0)
-        self._yscale = kwargs.get('yscale', 1.0)
-        self._xshift = kwargs.get('xshift', 0.0)
-        self._yshift = kwargs.get('yshift', 0.0)
-
+        self._xscale = kwargs.get("xscale", 1.0)
+        self._yscale = kwargs.get("yscale", 1.0)
+        self._xshift = kwargs.get("xshift", 0.0)
+        self._yshift = kwargs.get("yshift", 0.0)
 
     def add_caption(self, caption):
-        self._caption = caption    
+        self._caption = caption
 
     def add_line(self, x_data, y_data, **kwargs):
         """
@@ -48,11 +48,9 @@ class LinePlot:
         y_data (list): Y-axis data.
         **kwargs: Additional keyword arguments for the plot (e.g., color, linestyle).
         """
-        self.line_data.append({
-            'x': np.array(x_data),
-            'y': np.array(y_data),
-            'kwargs': kwargs
-        })
+        self.line_data.append(
+            {"x": np.array(x_data), "y": np.array(y_data), "kwargs": kwargs}
+        )
 
     def plot_matplotlib(self, ax):
         """
@@ -63,9 +61,9 @@ class LinePlot:
         """
         for line in self.line_data:
             ax.plot(
-                (line['x'] + self._xshift) * self._xscale,
-                (line['y'] + self._yshift) * self._yscale,
-                **line['kwargs']
+                (line["x"] + self._xshift) * self._xscale,
+                (line["y"] + self._yshift) * self._yscale,
+                **line["kwargs"],
             )
         if self._caption:
             ax.set_title(self._caption)
@@ -79,30 +77,32 @@ class LinePlot:
             ax.legend()
         if self._grid:
             ax.grid()
-    
+
     def plot_plotly(self):
         """
         Plot all lines using Plotly and return a list of traces for each line.
         """
         # Mapping Matplotlib linestyles to Plotly dash styles
         linestyle_map = {
-            'solid': 'solid',
-            'dashed': 'dash',
-            'dotted': 'dot',
-            'dashdot': 'dashdot'
+            "solid": "solid",
+            "dashed": "dash",
+            "dotted": "dot",
+            "dashdot": "dashdot",
         }
 
         traces = []
         for line in self.line_data:
             trace = go.Scatter(
-                x=(line['x'] + self._xshift) * self._xscale,
-                y=(line['y'] + self._yshift) * self._yscale,
-                mode='lines+markers' if 'marker' in line['kwargs'] else 'lines',
-                name=line['kwargs'].get('label', ''),
+                x=(line["x"] + self._xshift) * self._xscale,
+                y=(line["y"] + self._yshift) * self._yscale,
+                mode="lines+markers" if "marker" in line["kwargs"] else "lines",
+                name=line["kwargs"].get("label", ""),
                 line=dict(
-                    color=line['kwargs'].get('color', None),
-                    dash=linestyle_map.get(line['kwargs'].get('linestyle', 'solid'), 'solid')
-                )
+                    color=line["kwargs"].get("color", None),
+                    dash=linestyle_map.get(
+                        line["kwargs"].get("linestyle", "solid"), "solid"
+                    ),
+                ),
             )
             traces.append(trace)
 
@@ -161,7 +161,6 @@ class LinePlot:
     @legend.setter
     def legend(self, value):
         self._legend = value
-
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
+
 def setup_tex_fonts(fontsize=14):
     """
     Sets up LaTeX fonts for plotting.
@@ -29,6 +30,7 @@ def setup_tex_fonts(fontsize=14):
     }
     plt.rcParams.update(tex_fonts)
     return tex_fonts
+
 
 def setup_plotstyle(
     tex_fonts=None,
@@ -51,6 +53,7 @@ def setup_plotstyle(
     plt.rcParams["xtick.major.pad"] = 8
     plt.rcParams["ytick.major.pad"] = 8
 
+
 def set_size(width, fraction=1, ratio="golden"):
     """
     Sets figure dimensions to avoid scaling in LaTeX.
@@ -63,7 +66,7 @@ def set_size(width, fraction=1, ratio="golden"):
         width_pt = width
 
     fig_width_pt = width_pt * fraction
-    #inches_per_pt = 1 / 72.27
+    # inches_per_pt = 1 / 72.27
 
     # Calculate the figure height based on the desired ratio
     if ratio == "golden":
@@ -77,6 +80,7 @@ def set_size(width, fraction=1, ratio="golden"):
         raise ValueError("Invalid ratio specified.")
     fig_dim = (fig_width_pt, fig_height_pt)
     return fig_dim
+
 
 def create_lineplot(
     nx_subplots=1,

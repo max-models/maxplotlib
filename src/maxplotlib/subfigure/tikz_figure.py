@@ -1,12 +1,12 @@
-import subprocess
 import os
-import tempfile
-from matplotlib.image import imread
-import numpy as np
 import re
-
+import subprocess
+import tempfile
 
 import matplotlib.patches as patches
+import numpy as np
+from matplotlib.image import imread
+
 from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
 
@@ -15,9 +15,10 @@ class Layer:
     def __init__(self, label):
         self.label = label
         self.items = []
+
     def add(self, item):
         self.items.append(item)
-    
+
     def get_reqs(self):
         reqs = set()
         for item in self.items:
@@ -26,6 +27,7 @@ class Layer:
                     if not node.layer == self.label:
                         reqs.add(node.layer)
         return reqs
+
     def generate_tikz(self):
         tikz_script = f"\n% Layer {self.label}\n"
         tikz_script += f"\\begin{{pgfonlayer}}{{{self.label}}}\n"
@@ -33,6 +35,7 @@ class Layer:
             tikz_script += item.to_tikz()
         tikz_script += f"\\end{{pgfonlayer}}{{{self.label}}}\n"
         return tikz_script
+
 
 class Node:
     def __init__(self, x, y, label="", content="", layer=0, **kwargs):
@@ -59,13 +62,18 @@ class Node:
         Returns:
         - tikz_str (str): TikZ code string for the node.
         """
-        options = ', '.join(f"{k.replace('_', ' ')}={v}" for k, v in self.options.items())
+        options = ", ".join(
+            f"{k.replace('_', ' ')}={v}" for k, v in self.options.items()
+        )
         if options:
             options = f"[{options}]"
         return f"\\node{options} ({self.label}) at ({self.x}, {self.y}) {{{self.content}}};\n"
 
+
 class Path:
-    def __init__(self, nodes, path_actions=[], cycle=False, label="", layer=0, **kwargs):
+    def __init__(
+        self, nodes, path_actions=[], cycle=False, label="", layer=0, **kwargs
+    ):
         """
         Represents a path (line) connecting multiple nodes.
 
@@ -87,15 +95,18 @@ class Path:
         Returns:
         - tikz_str (str): TikZ code string for the path.
         """
-        options = ', '.join(f"{k.replace('_', ' ')}={v}" for k, v in self.options.items())
+        options = ", ".join(
+            f"{k.replace('_', ' ')}={v}" for k, v in self.options.items()
+        )
         if len(self.path_actions) > 0:
-            options = ', '.join(self.path_actions) + ', ' + options
+            options = ", ".join(self.path_actions) + ", " + options
         if options:
             options = f"[{options}]"
-        path_str = ' -- '.join(f"({node.label}.center)" for node in self.nodes)
+        path_str = " -- ".join(f"({node.label}.center)" for node in self.nodes)
         if self.cycle:
-            path_str += ' -- cycle'
+            path_str += " -- cycle"
         return f"\\draw{options} {path_str};\n"
+
 
 class TikzFigure:
     def __init__(self, **kwargs):
@@ -112,11 +123,11 @@ class TikzFigure:
             TODO: Add all options
         """
         # Set default values
-        self._figsize = kwargs.get('figsize', (10, 6))
-        self._caption = kwargs.get('caption', None)
-        self._description = kwargs.get('description', None)
-        self._label = kwargs.get('label', None)
-        self._grid = kwargs.get('grid', False)
+        self._figsize = kwargs.get("figsize", (10, 6))
+        self._caption = kwargs.get("caption", None)
+        self._description = kwargs.get("description", None)
+        self._label = kwargs.get("label", None)
+        self._grid = kwargs.get("grid", False)
 
         # Initialize lists to hold Node and Path objects
         self.nodes = []
@@ -126,7 +137,7 @@ class TikzFigure:
         # Counter for unnamed nodes
         self._node_counter = 0
 
-    def add_node(self, x, y, label=None, content="", layer = 0, **kwargs):
+    def add_node(self, x, y, label=None, content="", layer=0, **kwargs):
         """
         Add a node to the TikZ figure.
 
@@ -165,11 +176,17 @@ class TikzFigure:
         """
         if not isinstance(nodes, list):
             raise ValueError("nodes parameter must be a list of node names.")
-        
+
         nodes = [
-            node if isinstance(node, Node)
-            else self.get_node(node) if isinstance(node, str)
-            else ValueError(f"Invalid node type: {type(node)}")
+            (
+                node
+                if isinstance(node, Node)
+                else (
+                    self.get_node(node)
+                    if isinstance(node, str)
+                    else ValueError(f"Invalid node type: {type(node)}")
+                )
+            )
             for node in nodes
         ]
         path = Path(nodes, **kwargs)
@@ -180,27 +197,30 @@ class TikzFigure:
             self.layers[layer] = Layer(layer)
             self.layers[layer].add(path)
         return path
+
     def get_node(self, node_label):
         for node in self.nodes:
             if node.label == node_label:
                 return node
+
     def get_layer(self, item):
         for layer, layer_items in self.layers.items():
             if item in [layer_item.label for layer_item in layer_items]:
                 return layer
-        print(f'Item {item} not found in any layer!')
+        print(f"Item {item} not found in any layer!")
 
     def add_tabs(self, tikz_script):
         tikz_script_new = ""
         tab_str = "    "
         num_tabs = 0
-        for line in tikz_script.split('\n'):
+        for line in tikz_script.split("\n"):
             if "\\end" in line:
                 num_tabs = max(num_tabs - 1, 0)
             tikz_script_new += f"{tab_str*num_tabs}{line}\n"
             if "\\begin" in line:
                 num_tabs += 1
         return tikz_script_new
+
     def generate_tikz(self):
         """
         Generate the TikZ script for the figure.
@@ -215,15 +235,16 @@ class TikzFigure:
             tikz_script += f"\\pgfdeclarelayer{{{layer}}}\n"
         tikz_script += f"\\pgfsetlayers{{{','.join(layers)}}}\n"
 
-        
         # Add grid if enabled
         if self._grid:
-            tikz_script += "    \\draw[step=1cm, gray, very thin] (-10,-10) grid (10,10);\n"
+            tikz_script += (
+                "    \\draw[step=1cm, gray, very thin] (-10,-10) grid (10,10);\n"
+            )
         ordered_layers = []
         buffered_layers = set()
-        
+
         for key, layer in self.layers.items():
-            #layer_order, buffered_layers = update_layer_order(layer, layer_order, buffered_layers)
+            # layer_order, buffered_layers = update_layer_order(layer, layer_order, buffered_layers)
             reqs = layer.get_reqs()
             if all([r == layer.label for r in reqs]):
                 ordered_layers.append(layer)
@@ -235,10 +256,12 @@ class TikzFigure:
             for buffered_layer in buffered_layers:
                 buff_reqs = buffered_layer.get_reqs()
                 if all([r in [l.label for l in ordered_layers] for r in buff_reqs]):
-                    print('Move layer from buffer')
+                    print("Move layer from buffer")
                     ordered_layers.append(key)
                     buffered_layers.remove(key)
-        assert len(buffered_layers) == 0, f"Layer order is impossible for layer {[layer.label for layer in buffered_layers]}"
+        assert (
+            len(buffered_layers) == 0
+        ), f"Layer order is impossible for layer {[layer.label for layer in buffered_layers]}"
         for layer in ordered_layers:
             tikz_script += layer.generate_tikz()
 
@@ -269,7 +292,7 @@ class TikzFigure:
         )
         return latex_document
 
-    def compile_pdf(self, filename='output.pdf'):
+    def compile_pdf(self, filename="output.pdf"):
         """
         Compile the TikZ script into a PDF using pdflatex.
 
@@ -283,18 +306,18 @@ class TikzFigure:
 
         # Use a temporary directory to store the LaTeX files
         with tempfile.TemporaryDirectory() as tempdir:
-            tex_file = os.path.join(tempdir, 'figure.tex')
-            with open(tex_file, 'w') as f:
+            tex_file = os.path.join(tempdir, "figure.tex")
+            with open(tex_file, "w") as f:
                 f.write(latex_document)
 
             # Run pdflatex
             try:
                 subprocess.run(
-                    ['pdflatex', '-interaction=nonstopmode', tex_file],
+                    ["pdflatex", "-interaction=nonstopmode", tex_file],
                     cwd=tempdir,
                     check=True,
                     stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE
+                    stderr=subprocess.PIPE,
                 )
             except subprocess.CalledProcessError as e:
                 print("An error occurred while compiling the LaTeX document:")
@@ -302,7 +325,7 @@ class TikzFigure:
                 return
 
             # Move the output PDF to the desired location
-            pdf_output = os.path.join(tempdir, 'figure.pdf')
+            pdf_output = os.path.join(tempdir, "figure.pdf")
             if os.path.exists(pdf_output):
                 os.rename(pdf_output, filename)
                 print(f"PDF successfully compiled and saved as '{filename}'.")
@@ -321,29 +344,31 @@ class TikzFigure:
         for path in self.paths:
             x_coords = [node.x for node in path.nodes]
             y_coords = [node.y for node in path.nodes]
-            
+
             # Parse path color
-            path_color_spec = path.options.get('color', 'black')
+            path_color_spec = path.options.get("color", "black")
             try:
                 color = Color(path_color_spec).to_rgb()
             except ValueError as e:
                 print(e)
-                color = 'black'
+                color = "black"
 
             # Parse line width
-            line_width_spec = path.options.get('line_width', 1)
+            line_width_spec = path.options.get("line_width", 1)
             if isinstance(line_width_spec, str):
-                match = re.match(r'([\d.]+)(pt)?', line_width_spec)
+                match = re.match(r"([\d.]+)(pt)?", line_width_spec)
                 if match:
                     line_width = float(match.group(1))
                 else:
-                    print(f"Invalid line width specification: '{line_width_spec}', defaulting to 1")
+                    print(
+                        f"Invalid line width specification: '{line_width_spec}', defaulting to 1"
+                    )
                     line_width = 1
             else:
                 line_width = float(line_width_spec)
 
             # Parse line style using Linestyle class
-            style_spec = path.options.get('style', 'solid')
+            style_spec = path.options.get("style", "solid")
             linestyle = Linestyle(style_spec).to_matplotlib()
 
             ax.plot(
@@ -352,33 +377,33 @@ class TikzFigure:
                 color=color,
                 linewidth=line_width,
                 linestyle=linestyle,
-                zorder=1  # Lower z-order to place behind nodes
+                zorder=1,  # Lower z-order to place behind nodes
             )
 
         # Plot nodes after paths so they appear on top
         for node in self.nodes:
             # Determine shape and size
-            shape = node.options.get('shape', 'circle')
-            fill_color_spec = node.options.get('fill', 'white')
-            edge_color_spec = node.options.get('draw', 'black')
-            linewidth = float(node.options.get('line_width', 1))
-            size = float(node.options.get('size', 1))
+            shape = node.options.get("shape", "circle")
+            fill_color_spec = node.options.get("fill", "white")
+            edge_color_spec = node.options.get("draw", "black")
+            linewidth = float(node.options.get("line_width", 1))
+            size = float(node.options.get("size", 1))
 
             # Parse colors using the Color class
             try:
                 facecolor = Color(fill_color_spec).to_rgb()
             except ValueError as e:
                 print(e)
-                facecolor = 'white'
+                facecolor = "white"
 
             try:
                 edgecolor = Color(edge_color_spec).to_rgb()
             except ValueError as e:
                 print(e)
-                edgecolor = 'black'
+                edgecolor = "black"
 
             # Plot shapes
-            if shape == 'circle':
+            if shape == "circle":
                 radius = size / 2
                 circle = patches.Circle(
                     (node.x, node.y),
@@ -386,10 +411,10 @@ class TikzFigure:
                     facecolor=facecolor,
                     edgecolor=edgecolor,
                     linewidth=linewidth,
-                    zorder=2  # Higher z-order to place on top of paths
+                    zorder=2,  # Higher z-order to place on top of paths
                 )
                 ax.add_patch(circle)
-            elif shape == 'rectangle':
+            elif shape == "rectangle":
                 width = height = size
                 rect = patches.Rectangle(
                     (node.x - width / 2, node.y - height / 2),
@@ -398,7 +423,7 @@ class TikzFigure:
                     facecolor=facecolor,
                     edgecolor=edgecolor,
                     linewidth=linewidth,
-                    zorder=2  # Higher z-order
+                    zorder=2,  # Higher z-order
                 )
                 ax.add_patch(rect)
             else:
@@ -410,7 +435,7 @@ class TikzFigure:
                     facecolor=facecolor,
                     edgecolor=edgecolor,
                     linewidth=linewidth,
-                    zorder=2
+                    zorder=2,
                 )
                 ax.add_patch(circle)
 
@@ -421,14 +446,14 @@ class TikzFigure:
                     node.y,
                     node.content,
                     fontsize=10,
-                    ha='center',
-                    va='center',
+                    ha="center",
+                    va="center",
                     wrap=True,
-                    zorder=3  # Even higher z-order for text
+                    zorder=3,  # Even higher z-order for text
                 )
 
         # Remove axes, ticks, and legend
-        ax.axis('off')
+        ax.axis("off")
 
         # Adjust plot limits
         all_x = [node.x for node in self.nodes]
@@ -436,4 +461,4 @@ class TikzFigure:
         padding = 1  # Adjust padding as needed
         ax.set_xlim(min(all_x) - padding, max(all_x) + padding)
         ax.set_ylim(min(all_y) - padding, max(all_y) + padding)
-        ax.set_aspect('equal', adjustable='datalim')
+        ax.set_aspect("equal", adjustable="datalim")
