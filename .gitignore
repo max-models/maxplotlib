@@ -163,6 +163,7 @@ cython_debug/
 
 
 # Figures and videos
+figures/
 *.png
 *.pdf
 *.jpg
