@@ -11,7 +11,7 @@ from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
 
 
-class Layer:
+class Tikzlayer:
     def __init__(self, label):
         self.label = label
         self.items = []
@@ -102,7 +102,7 @@ class Path:
             options = ", ".join(self.path_actions) + ", " + options
         if options:
             options = f"[{options}]"
-        path_str = " -- ".join(f"({node.label}.center)" for node in self.nodes)
+        path_str = " to ".join(f"({node.label}.center)" for node in self.nodes)
         if self.cycle:
             path_str += " -- cycle"
         return f"\\draw{options} {path_str};\n"
@@ -157,7 +157,7 @@ class TikzFigure:
         if layer in self.layers:
             self.layers[layer].add(node)
         else:
-            self.layers[layer] = Layer(layer)
+            self.layers[layer] = Tikzlayer(layer)
             self.layers[layer].add(node)
         self._node_counter += 1
         return node
@@ -194,7 +194,7 @@ class TikzFigure:
         if layer in self.layers:
             self.layers[layer].add(path)
         else:
-            self.layers[layer] = Layer(layer)
+            self.layers[layer] = Tikzlayer(layer)
             self.layers[layer].add(path)
         return path
 

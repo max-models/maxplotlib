@@ -38,6 +38,12 @@ class Canvas:
 
         self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
 
+    @property
+    def layers(self):
+        layers = []
+        for (row, col), subplot in self.subplots.items():
+            layers.extend(subplot.layers)
+        return list(set(layers))
     def generate_new_rowcol(self, row, col):
         if row is None:
             for irow in range(self.nrows):
@@ -109,20 +115,32 @@ class Canvas:
             self.subplots[label] = line_plot
         return line_plot
 
-    def savefig(self, filename, backend="matplotlib"):
+    def savefig(self, filename, extension='pdf', backend="matplotlib", layers = None, layer_by_layer=False):
         if backend == "matplotlib":
-            fig, axs = self.plot(show=False, backend="matplotlib", savefig=True)
-            fig.savefig(filename)
+            if layer_by_layer:
+                layers = []
+                for layer in self.layers:
+                    layers.append(layer)
+                    fig, axs = self.plot(show=False, backend="matplotlib", savefig=True, layers=layers)
+                    fig.savefig(f"{filename}_{layers}.{extension}")
+            else:
+                if layers is None:
+                    layers = self.layers
+                    full_filepath = f"{filename}.{extension}"
+                else:
+                    full_filepath = f"{filename}_{layers}.{extension}"
+                fig, axs = self.plot(show=False, backend="matplotlib", savefig=True, layers=layers)
+                fig.savefig(full_filepath)
 
     # def add_line(self, label, x_data, y_data, **kwargs):
 
-    def plot(self, backend="matplotlib", show=True, savefig=False):
+    def plot(self, backend="matplotlib", show=True, savefig=False, layers=None):
         if backend == "matplotlib":
-            return self.plot_matplotlib(show=show, savefig=savefig)
+            return self.plot_matplotlib(show=show, savefig=savefig, layers=layers)
         elif backend == "plotly":
             self.plot_plotly(show=show, savefig=savefig)
 
-    def plot_matplotlib(self, show=True, savefig=False):
+    def plot_matplotlib(self, show=True, savefig=False, layers=None):
         """
         Generate and optionally display the subplots.
 
@@ -134,7 +152,7 @@ class Canvas:
         tex_fonts = plt_utils.setup_tex_fonts(fontsize=fontsize)
         plt_utils.setup_plotstyle(
             tex_fonts=tex_fonts,
-            axes_grid=False,
+            axes_grid=True,
             axes_grid_which="major",
             grid_alpha=1.0,
             grid_linestyle="dotted",
@@ -157,16 +175,16 @@ class Canvas:
 
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
-            subplot.plot_matplotlib(ax)
+            subplot.plot_matplotlib(ax, layers=layers)
             # ax.set_title(f"Subplot ({row}, {col})")
-
+            ax.grid()
         # Set caption, labels, etc., if needed
         plt.tight_layout()
 
         if show:
             plt.show()
-        else:
-            plt.close()
+        # else:
+        #     plt.close()
         return fig, axes
 
     def plot_plotly(self, show=True, savefig=None):

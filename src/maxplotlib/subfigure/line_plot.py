@@ -28,6 +28,7 @@ class LinePlot:
         self._ylabel = kwargs.get("ylabel", None)
         # List to store line data, each entry contains x and y data, label, and plot kwargs
         self.line_data = []
+        self.layered_line_data = {}
 
         # Scaling
         self._xscale = kwargs.get("xscale", 1.0)
@@ -38,7 +39,7 @@ class LinePlot:
     def add_caption(self, caption):
         self._caption = caption
 
-    def add_line(self, x_data, y_data, **kwargs):
+    def add_line(self, x_data, y_data, layer = 0, **kwargs):
         """
         Add a line to the plot.
 
@@ -48,35 +49,47 @@ class LinePlot:
         y_data (list): Y-axis data.
         **kwargs: Additional keyword arguments for the plot (e.g., color, linestyle).
         """
-        self.line_data.append(
-            {"x": np.array(x_data), "y": np.array(y_data), "kwargs": kwargs}
-        )
+        ld = {"x": np.array(x_data), "y": np.array(y_data), "layer": layer, "kwargs": kwargs}
+        self.line_data.append(ld)
+        if layer in self.layered_line_data:
+            self.layered_line_data[layer].append(ld)
+        else:
+            self.layered_line_data[layer] = [ld]
 
-    def plot_matplotlib(self, ax):
+    @property
+    def layers(self):
+        layers = []
+        for layer_name, layer_lines in self.layered_line_data.items():
+            layers.append(layer_name)
+        return layers
+    def plot_matplotlib(self, ax, layers=None):
         """
         Plot all lines on the provided axis.
 
         Parameters:
         ax (matplotlib.axes.Axes): Axis on which to plot the lines.
         """
-        for line in self.line_data:
-            ax.plot(
-                (line["x"] + self._xshift) * self._xscale,
-                (line["y"] + self._yshift) * self._yscale,
-                **line["kwargs"],
-            )
-        if self._caption:
-            ax.set_title(self._caption)
-        if self._label:
-            ax.set_ylabel(self._label)
-        if self._xlabel:
-            ax.set_xlabel(self._xlabel)
-        if self._ylabel:
-            ax.set_ylabel(self._ylabel)
-        if self._legend and len(self.line_data) > 0:
-            ax.legend()
-        if self._grid:
-            ax.grid()
+        for layer_name, layer_lines in self.layered_line_data.items():
+            if layers and layer_name not in layers:
+                continue
+            for line in layer_lines:
+                ax.plot(
+                    (line["x"] + self._xshift) * self._xscale,
+                    (line["y"] + self._yshift) * self._yscale,
+                    **line["kwargs"],
+                )
+            if self._caption:
+                ax.set_title(self._caption)
+            if self._label:
+                ax.set_ylabel(self._label)
+            if self._xlabel:
+                ax.set_xlabel(self._xlabel)
+            if self._ylabel:
+                ax.set_ylabel(self._ylabel)
+            if self._legend and len(self.line_data) > 0:
+                ax.legend()
+            if self._grid:
+                ax.grid()
 
     def plot_plotly(self):
         """
