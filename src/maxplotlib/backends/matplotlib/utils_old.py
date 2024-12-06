@@ -31,7 +31,6 @@ class Color:
         self.pgf_col_str += self.rgb_dec_str[2] + "}%"
 
     def invert(self):
-
         inverted_color = Color(self.hx)
 
     def define_color_str(self, name):
@@ -261,7 +260,8 @@ class figure:
             self.ny_subplots,
             self.nx_subplots,
             figsize=self.set_size(
-                self.width, ratio=self.ratio  #
+                self.width,
+                ratio=self.ratio,  #
             ),  # sharex=True,#sharex='all', sharey='all',
             dpi=self.dpi,
             constrained_layout=False,
@@ -280,7 +280,6 @@ class figure:
         grid_alpha=0.0,
         grid_linestyle="dotted",
     ):
-
         if tex_fonts:
             plt.rcParams.update(self.tex_fonts)
 
@@ -405,7 +404,6 @@ class figure:
         nticks=5,
         locs_labels=None,
     ):
-
         # https://matplotlib.org/3.1.1/api/_as_gen/matplotlib.pyplot.xticks.html
         # if subfigure_x == -1 and subfigure_y == -1 and nx_subplots > 1 and ny_subplots > 1:
         #    print('enter subfigure_x and subfigure_y!')
@@ -596,7 +594,6 @@ class figure:
 
         if format_folder:
             for format in formats:
-
                 # print('self.directory',self.directory)
                 Path(self.directory + "/" + format).mkdir(parents=True, exist_ok=True)
 
@@ -764,7 +761,6 @@ class figure:
         self,
         filename="",
     ):
-
         if filename == "":
             filename = self.filename + "_dump.txt"
         Path(self.directory + "/dump").mkdir(parents=True, exist_ok=True)

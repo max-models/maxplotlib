@@ -44,6 +44,7 @@ class Canvas:
         for (row, col), subplot in self.subplots.items():
             layers.extend(subplot.layers)
         return list(set(layers))
+
     def generate_new_rowcol(self, row, col):
         if row is None:
             for irow in range(self.nrows):
@@ -115,13 +116,22 @@ class Canvas:
             self.subplots[label] = line_plot
         return line_plot
 
-    def savefig(self, filename, extension='pdf', backend="matplotlib", layers = None, layer_by_layer=False):
+    def savefig(
+        self,
+        filename,
+        extension="pdf",
+        backend="matplotlib",
+        layers=None,
+        layer_by_layer=False,
+    ):
         if backend == "matplotlib":
             if layer_by_layer:
                 layers = []
                 for layer in self.layers:
                     layers.append(layer)
-                    fig, axs = self.plot(show=False, backend="matplotlib", savefig=True, layers=layers)
+                    fig, axs = self.plot(
+                        show=False, backend="matplotlib", savefig=True, layers=layers
+                    )
                     fig.savefig(f"{filename}_{layers}.{extension}")
             else:
                 if layers is None:
@@ -129,7 +139,9 @@ class Canvas:
                     full_filepath = f"{filename}.{extension}"
                 else:
                     full_filepath = f"{filename}_{layers}.{extension}"
-                fig, axs = self.plot(show=False, backend="matplotlib", savefig=True, layers=layers)
+                fig, axs = self.plot(
+                    show=False, backend="matplotlib", savefig=True, layers=layers
+                )
                 fig.savefig(full_filepath)
 
     # def add_line(self, label, x_data, y_data, **kwargs):

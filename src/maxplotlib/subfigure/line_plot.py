@@ -39,7 +39,7 @@ class LinePlot:
     def add_caption(self, caption):
         self._caption = caption
 
-    def add_line(self, x_data, y_data, layer = 0, **kwargs):
+    def add_line(self, x_data, y_data, layer=0, **kwargs):
         """
         Add a line to the plot.
 
@@ -49,7 +49,12 @@ class LinePlot:
         y_data (list): Y-axis data.
         **kwargs: Additional keyword arguments for the plot (e.g., color, linestyle).
         """
-        ld = {"x": np.array(x_data), "y": np.array(y_data), "layer": layer, "kwargs": kwargs}
+        ld = {
+            "x": np.array(x_data),
+            "y": np.array(y_data),
+            "layer": layer,
+            "kwargs": kwargs,
+        }
         self.line_data.append(ld)
         if layer in self.layered_line_data:
             self.layered_line_data[layer].append(ld)
@@ -62,6 +67,7 @@ class LinePlot:
         for layer_name, layer_lines in self.layered_line_data.items():
             layers.append(layer_name)
         return layers
+
     def plot_matplotlib(self, ax, layers=None):
         """
         Plot all lines on the provided axis.
