@@ -18,6 +18,7 @@ dependencies = [
     "matplotlib",
     "plotly",
     "pytest",
+    "ruff",
     "black",
     "isort",
     "jupyterlab",

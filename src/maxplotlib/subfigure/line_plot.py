@@ -1,6 +1,7 @@
 import numpy as np
 import plotly.graph_objects as go
 
+import maxplotlib.subfigure.tikz_figure as tf
 
 class LinePlot:
     def __init__(self, **kwargs):
