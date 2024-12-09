@@ -36,6 +36,16 @@ class Tikzlayer:
         tikz_script += f"\\end{{pgfonlayer}}{{{self.label}}}\n"
         return tikz_script
 
+class TikzWrapper:
+    def __init__(self, raw_tikz, label="", content="", layer=0, **kwargs):
+        self.raw_tikz = raw_tikz
+        self.label = label
+        self.content = content
+        self.layer = layer
+        self.options = kwargs
+
+    def to_tikz(self):
+        return self.raw_tikz
 
 class Node:
     def __init__(self, x, y, label="", content="", layer=0, **kwargs):
@@ -197,6 +207,15 @@ class TikzFigure:
             self.layers[layer] = Tikzlayer(layer)
             self.layers[layer].add(path)
         return path
+
+    def add_raw(self, raw_tikz, layer=0, **kwargs):
+        tikz = TikzWrapper(raw_tikz)
+        if layer in self.layers:
+            self.layers[layer].add(tikz)
+        else:
+            self.layers[layer] = Tikzlayer(layer)
+            self.layers[layer].add(tikz)
+        return tikz
 
     def get_node(self, node_label):
         for node in self.nodes:
