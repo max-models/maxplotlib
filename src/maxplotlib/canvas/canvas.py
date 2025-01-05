@@ -144,8 +144,6 @@ class Canvas:
                 )
                 fig.savefig(full_filepath)
 
-    # def add_line(self, label, x_data, y_data, **kwargs):
-
     def plot(self, backend="matplotlib", show=True, savefig=False, layers=None):
         if backend == "matplotlib":
             return self.plot_matplotlib(show=show, savefig=savefig, layers=layers)

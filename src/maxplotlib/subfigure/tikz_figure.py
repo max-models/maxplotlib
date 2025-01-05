@@ -255,6 +255,7 @@ class TikzFigure:
         tikz_script += f"\\pgfsetlayers{{{','.join(layers)}}}\n"
 
         # Add grid if enabled
+        # TODO: Create a Grid class
         if self._grid:
             tikz_script += (
                 "    \\draw[step=1cm, gray, very thin] (-10,-10) grid (10,10);\n"
