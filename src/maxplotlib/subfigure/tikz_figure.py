@@ -298,7 +298,10 @@ class TikzFigure:
             tikz_script = figure_env
         tikz_script = self.add_tabs(tikz_script)
         return tikz_script
-
+    def savefig(self, filepath):
+        tikz_code = self.generate_tikz()
+        with open(filepath, 'w') as f:
+            f.write(tikz_code)
     def generate_standalone(self):
         tikz_code = self.generate_tikz()
 
