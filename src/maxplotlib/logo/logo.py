@@ -1,10 +1,11 @@
 # import maxplotlib.canvas.canvas as canvas
-from maxplotlib.subfigure.tikz_figure import TikzFigure
+# from maxplotlib.subfigure.tikz_figure import TikzFigure
+from maxtikzlib.figure import TikzFigure
 def tikz_logo():
     tikz = TikzFigure()
 
     path_actions = ['draw', 'rounded corners', 'line width=3']
-    
+
     # M
     nodes = [[0,0],[0,3],[1,2],[2,3],[2,0]]
     for i, node_data in enumerate(nodes):
