@@ -91,6 +91,19 @@ class LinePlot:
             self.layered_line_data[layer].append(ld)
         else:
             self.layered_line_data[layer] = [ld]
+    
+    def add_imshow(self, data, layer=0, plot_type='imshow', **kwargs):
+        ld = {
+            "data": np.array(data),
+            "layer": layer,
+            "plot_type": plot_type,
+            "kwargs": kwargs,
+        }
+        self.line_data.append(ld)
+        if layer in self.layered_line_data:
+            self.layered_line_data[layer].append(ld)
+        else:
+            self.layered_line_data[layer] = [ld]
 
     @property
     def layers(self):
@@ -120,6 +133,11 @@ class LinePlot:
                     ax.scatter(
                         (line["x"] + self._xshift) * self._xscale,
                         (line["y"] + self._yshift) * self._yscale,
+                        **line["kwargs"],
+                    )
+                elif line["plot_type"] == "imshow":
+                    ax.imshow(
+                        line["data"],
                         **line["kwargs"],
                     )
             # if self._caption:
