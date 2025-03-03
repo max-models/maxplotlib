@@ -1,6 +1,7 @@
 import numpy as np
 import plotly.graph_objects as go
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+import matplotlib.pyplot as plt
 import maxplotlib.subfigure.tikz_figure as tf
 
 class Node:
@@ -44,7 +45,7 @@ class LinePlot:
         self._description = kwargs.get("description", None)
         self._label = kwargs.get("label", None)
         self._grid = kwargs.get("grid", False)
-        self._legend = kwargs.get("legend", True)
+        self._legend = kwargs.get("legend", False)
 
         self._xlabel = kwargs.get("xlabel", None)
         self._ylabel = kwargs.get("ylabel", None)
@@ -69,6 +70,13 @@ class LinePlot:
     def add_caption(self, caption):
         self._caption = caption
 
+    def _add(self, obj, layer):
+        self.line_data.append(obj)
+        if layer in self.layered_line_data:
+            self.layered_line_data[layer].append(obj)
+        else:
+            self.layered_line_data[layer] = [obj]
+
     def add_line(self, x_data, y_data, layer=0, plot_type='plot', **kwargs):
         """
         Add a line to the plot.
@@ -86,11 +94,7 @@ class LinePlot:
             "plot_type": plot_type,
             "kwargs": kwargs,
         }
-        self.line_data.append(ld)
-        if layer in self.layered_line_data:
-            self.layered_line_data[layer].append(ld)
-        else:
-            self.layered_line_data[layer] = [ld]
+        self._add(ld, layer)
     
     def add_imshow(self, data, layer=0, plot_type='imshow', **kwargs):
         ld = {
@@ -99,11 +103,25 @@ class LinePlot:
             "plot_type": plot_type,
             "kwargs": kwargs,
         }
-        self.line_data.append(ld)
-        if layer in self.layered_line_data:
-            self.layered_line_data[layer].append(ld)
-        else:
-            self.layered_line_data[layer] = [ld]
+        self._add(ld, layer)
+    
+    def add_patch(self, patch, layer=0, plot_type='patch', **kwargs):
+        ld = {
+            "patch": patch,
+            "layer": layer,
+            "plot_type": plot_type,
+            "kwargs": kwargs,
+        }
+        self._add(ld, layer)
+
+    def add_colorbar(self, label="", layer=0, plot_type='colorbar', **kwargs):
+        cb = {
+            "label": label,
+            "layer": layer,
+            "plot_type": plot_type,
+            "kwargs": kwargs,
+        }
+        self._add(cb, layer)
 
     @property
     def layers(self):
@@ -136,12 +154,18 @@ class LinePlot:
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "imshow":
-                    ax.imshow(
+                    im = ax.imshow(
                         line["data"],
                         **line["kwargs"],
                     )
-            # if self._caption:
-            #     ax.set_title(self._caption)
+                elif line["plot_type"] == "patch":
+                    ax.add_patch(line["patch"],
+                                 **line["kwargs"],
+                                )
+                elif line["plot_type"] == "colorbar":
+                    divider = make_axes_locatable(ax)
+                    cax = divider.append_axes("right", size="5%", pad=0.05)
+                    plt.colorbar(im, cax=cax, label="Potential (V)")
             if self._title:
                 ax.set_title(self._title)
             if self._label:
