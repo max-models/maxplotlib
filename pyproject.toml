@@ -16,6 +16,7 @@ classifiers = [
 ]
 dependencies = [
     "matplotlib",
+    "pint",
     "plotly",
     "pytest",
     "ruff",

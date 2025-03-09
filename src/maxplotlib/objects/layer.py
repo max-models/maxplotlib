@@ -1,9 +1,11 @@
 from abc import ABCMeta, abstractmethod
 
+
 class Layer(metaclass=ABCMeta):
     def __init__(self, label):
         self.label = label
         self.items = []
+
 
 class Tikzlayer(Layer):
     def __init__(self, label):

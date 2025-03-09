@@ -9,6 +9,7 @@ import _pickle as cPickle
 import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 import numpy as np
+import pint
 from matplotlib.collections import PatchCollection
 from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
@@ -54,7 +55,29 @@ def setup_plotstyle(
     plt.rcParams["ytick.major.pad"] = 8
 
 
-def set_size(width, fraction=1, ratio="golden"):
+# TODO: Use the other unit package
+# Create a UnitRegistry
+ureg = pint.UnitRegistry()
+
+
+def convert_to_inches(length_str):
+    quantity = ureg(length_str)  # Parse the input string
+    return quantity.to("inch").magnitude  # Convert to inches
+
+
+def _2pt(width, dpi=300):
+    if isinstance(width, (int, float)):
+        return width
+    elif isinstance(width, str):
+        length_in = convert_to_inches(width)
+        length_pt = length_in * dpi
+        # print(f"{length_in = } {length_pt = }")
+        return length_pt
+    else:
+        raise NotImplementedError
+
+
+def set_size(width, fraction=1, ratio="golden", dpi=300):
     """
     Sets figure dimensions to avoid scaling in LaTeX.
     """
@@ -63,7 +86,7 @@ def set_size(width, fraction=1, ratio="golden"):
     elif width == "beamer":
         width_pt = 307.28987
     else:
-        width_pt = width
+        width_pt = _2pt(width=width, dpi=dpi)
 
     fig_width_pt = width_pt * fraction
     # inches_per_pt = 1 / 72.27

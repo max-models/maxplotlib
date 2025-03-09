@@ -25,9 +25,10 @@ class Canvas:
         self._caption = kwargs.get("caption", None)
         self._description = kwargs.get("description", None)
         self._label = kwargs.get("label", None)
-
+        self._fontsize = kwargs.get("fontsize", 14)
         self._dpi = kwargs.get("dpi", 300)
-        self._width = kwargs.get("width", 426.79135)
+        # self._width = kwargs.get("width", 426.79135)
+        self._width = kwargs.get("width", "17cm")
         self._ratio = kwargs.get("ratio", "golden")
         self._gridspec_kw = kwargs.get("gridspec_kw", {"wspace": 0.08, "hspace": 0.1})
 
@@ -158,8 +159,9 @@ class Canvas:
         filename (str, optional): Filename to save the figure.
         show (bool): Whether to display the plot.
         """
-        fontsize = 14
-        tex_fonts = plt_utils.setup_tex_fonts(fontsize=fontsize)
+
+        tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize)
+
         plt_utils.setup_plotstyle(
             tex_fonts=tex_fonts,
             axes_grid=True,
@@ -172,13 +174,17 @@ class Canvas:
             fig_width, fig_height = self._figsize
         else:
             fig_width, fig_height = plt_utils.set_size(
-                width=self._width, ratio=self._ratio
+                width=self._width,
+                ratio=self._ratio,
+                dpi=self.dpi,
             )
+
+        # print(f"{(fig_width / self._dpi, fig_height / self._dpi) = }")
 
         fig, axes = plt.subplots(
             self.nrows,
             self.ncols,
-            figsize=(fig_width / self._dpi, fig_height / self._dpi),
+            figsize=(fig_width, fig_height),
             squeeze=False,
             dpi=self._dpi,
         )
@@ -189,7 +195,7 @@ class Canvas:
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
         # Set caption, labels, etc., if needed
-        plt.tight_layout()
+        # plt.tight_layout()
 
         if show:
             plt.show()
@@ -205,9 +211,9 @@ class Canvas:
         show (bool): Whether to display the plot.
         savefig (str, optional): Filename to save the figure if provided.
         """
-        fontsize = 14
+
         tex_fonts = plt_utils.setup_tex_fonts(
-            fontsize=fontsize
+            fontsize=self.fontsize
         )  # adjust or redefine for Plotly if needed
 
         # Set default width and height if not specified
@@ -217,7 +223,7 @@ class Canvas:
             fig_width, fig_height = plt_utils.set_size(
                 width=self._width, ratio=self._ratio
             )
-        print(self._width, fig_width, fig_height)
+        # print(self._width, fig_width, fig_height)
         # Create subplots
         fig = make_subplots(
             rows=self.nrows,
@@ -255,6 +261,10 @@ class Canvas:
     @property
     def dpi(self):
         return self._dpi
+
+    @property
+    def fontsize(self):
+        return self._fontsize
 
     @property
     def nrows(self):

@@ -1,8 +1,10 @@
+import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-import matplotlib.pyplot as plt
+
 import maxplotlib.subfigure.tikz_figure as tf
+
 
 class Node:
     def __init__(self, x, y, label="", content="", layer=0, **kwargs):
@@ -12,6 +14,7 @@ class Node:
         self.content = content
         self.layer = layer
         self.options = kwargs
+
 
 class Path:
     def __init__(
@@ -23,6 +26,7 @@ class Path:
         self.layer = layer
         self.label = label
         self.options = kwargs
+
 
 class LinePlot:
     def __init__(self, **kwargs):
@@ -56,7 +60,7 @@ class LinePlot:
         # Initialize lists to hold Node and Path objects
         self.nodes = []
         self.paths = []
-        #self.layers = {}
+        # self.layers = {}
 
         # Counter for unnamed nodes
         self._node_counter = 0
@@ -77,7 +81,7 @@ class LinePlot:
         else:
             self.layered_line_data[layer] = [obj]
 
-    def add_line(self, x_data, y_data, layer=0, plot_type='plot', **kwargs):
+    def add_line(self, x_data, y_data, layer=0, plot_type="plot", **kwargs):
         """
         Add a line to the plot.
 
@@ -95,8 +99,8 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
-    
-    def add_imshow(self, data, layer=0, plot_type='imshow', **kwargs):
+
+    def add_imshow(self, data, layer=0, plot_type="imshow", **kwargs):
         ld = {
             "data": np.array(data),
             "layer": layer,
@@ -104,8 +108,8 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
-    
-    def add_patch(self, patch, layer=0, plot_type='patch', **kwargs):
+
+    def add_patch(self, patch, layer=0, plot_type="patch", **kwargs):
         ld = {
             "patch": patch,
             "layer": layer,
@@ -114,7 +118,7 @@ class LinePlot:
         }
         self._add(ld, layer)
 
-    def add_colorbar(self, label="", layer=0, plot_type='colorbar', **kwargs):
+    def add_colorbar(self, label="", layer=0, plot_type="colorbar", **kwargs):
         cb = {
             "label": label,
             "layer": layer,
@@ -159,9 +163,10 @@ class LinePlot:
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "patch":
-                    ax.add_patch(line["patch"],
-                                 **line["kwargs"],
-                                )
+                    ax.add_patch(
+                        line["patch"],
+                        **line["kwargs"],
+                    )
                 elif line["plot_type"] == "colorbar":
                     divider = make_axes_locatable(ax)
                     cax = divider.append_axes("right", size="5%", pad=0.05)
@@ -208,7 +213,7 @@ class LinePlot:
             traces.append(trace)
 
         return traces
-    
+
     def add_node(self, x, y, label=None, content="", layer=0, **kwargs):
         """
         Add a node to the TikZ figure.

@@ -36,6 +36,7 @@ class Tikzlayer:
         tikz_script += f"\\end{{pgfonlayer}}{{{self.label}}}\n"
         return tikz_script
 
+
 class TikzWrapper:
     def __init__(self, raw_tikz, label="", content="", layer=0, **kwargs):
         self.raw_tikz = raw_tikz
@@ -46,6 +47,7 @@ class TikzWrapper:
 
     def to_tikz(self):
         return self.raw_tikz
+
 
 class Node:
     def __init__(self, x, y, label="", content="", layer=0, **kwargs):
@@ -298,10 +300,12 @@ class TikzFigure:
             tikz_script = figure_env
         tikz_script = self.add_tabs(tikz_script)
         return tikz_script
+
     def savefig(self, filepath):
         tikz_code = self.generate_tikz()
-        with open(filepath, 'w') as f:
+        with open(filepath, "w") as f:
             f.write(tikz_code)
+
     def generate_standalone(self):
         tikz_code = self.generate_tikz()
 
