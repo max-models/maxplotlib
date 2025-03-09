@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
 import maxplotlib.subfigure.tikz_figure as tf
+from maxplotlib.objects.layer import Tikzlayer
 
 
 class Node:
@@ -50,6 +51,10 @@ class LinePlot:
         self._label = kwargs.get("label", None)
         self._grid = kwargs.get("grid", False)
         self._legend = kwargs.get("legend", False)
+        self._xmin = kwargs.get("xmin", None)
+        self._xmax = kwargs.get("xmax", None)
+        self._ymin = kwargs.get("ymin", None)
+        self._ymax = kwargs.get("ymax", None)
 
         self._xlabel = kwargs.get("xlabel", None)
         self._ylabel = kwargs.get("ylabel", None)
@@ -183,6 +188,14 @@ class LinePlot:
                 ax.legend()
             if self._grid:
                 ax.grid()
+            if self.xmin:
+                ax.axis(xmin=self.xmin)
+            if self.xmax:
+                ax.axis(xmax=self.xmax)
+            if self.ymin:
+                ax.axis(ymin=self.ymin)
+            if self.ymax:
+                ax.axis(ymax=self.ymax)
 
     def plot_plotly(self):
         """
@@ -274,6 +287,22 @@ class LinePlot:
             self.layers[layer] = Tikzlayer(layer)
             self.layers[layer].add(path)
         return path
+
+    @property
+    def xmin(self):
+        return self._xmin
+
+    @property
+    def xmax(self):
+        return self._xmax
+
+    @property
+    def ymin(self):
+        return self._ymin
+
+    @property
+    def ymax(self):
+        return self._ymax
 
     # Getter and Setter for figsize
     @property

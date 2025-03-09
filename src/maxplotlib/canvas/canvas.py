@@ -243,7 +243,7 @@ class Canvas:
         fig.update_layout(
             # width=fig_width,
             # height=fig_height,
-            font=dict(size=fontsize),
+            font=dict(size=self.fontsize),
             margin=dict(l=10, r=10, t=40, b=10),  # Adjust margins if needed
         )
 
