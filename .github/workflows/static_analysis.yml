@@ -29,11 +29,13 @@ jobs:
           pip install black
           pip install "black[jupyter]"
           black --check src/
+          black --check tutorials/
 
       - name: Code formatting with isort
         run: |
           pip install isort
           isort --check src/
+          isort --check tutorials/
 
       - name: Code formatting with prospector
         continue-on-error: true
