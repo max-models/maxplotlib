@@ -1,7 +1,9 @@
+import os
+
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-import os
+
 import maxplotlib.backends.matplotlib.utils as plt_utils
 import maxplotlib.subfigure.line_plot as lp
 import maxplotlib.subfigure.tikz_figure as tf
