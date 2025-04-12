@@ -1,7 +1,7 @@
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-
+import os
 import maxplotlib.backends.matplotlib.utils as plt_utils
 import maxplotlib.subfigure.line_plot as lp
 import maxplotlib.subfigure.tikz_figure as tf
@@ -120,11 +120,12 @@ class Canvas:
     def savefig(
         self,
         filename,
-        extension="pdf",
         backend="matplotlib",
         layers=None,
         layer_by_layer=False,
+        verbose=False,
     ):
+        filename_no_extension, extension = os.path.splitext(filename)
         if backend == "matplotlib":
             if layer_by_layer:
                 layers = []
@@ -133,17 +134,21 @@ class Canvas:
                     fig, axs = self.plot(
                         show=False, backend="matplotlib", savefig=True, layers=layers
                     )
-                    fig.savefig(f"{filename}_{layers}.{extension}")
+                    _fn = f"{filename_no_extension}_{layers}.{extension}"
+                    fig.savefig(_fn)
+                    print(f"Saved {_fn}")
             else:
                 if layers is None:
                     layers = self.layers
-                    full_filepath = f"{filename}.{extension}"
+                    full_filepath = filename
                 else:
-                    full_filepath = f"{filename}_{layers}.{extension}"
+                    full_filepath = f"{filename_no_extension}_{layers}.{extension}"
                 fig, axs = self.plot(
                     show=False, backend="matplotlib", savefig=True, layers=layers
                 )
                 fig.savefig(full_filepath)
+                if verbose:
+                    print(f"Saved {full_filepath}")
 
     def plot(self, backend="matplotlib", show=True, savefig=False, layers=None):
         if backend == "matplotlib":
