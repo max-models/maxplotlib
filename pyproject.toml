@@ -18,17 +18,19 @@ dependencies = [
     "matplotlib",
     "pint",
     "plotly",
+]
+[project.optional-dependencies]
+test = [
     "pytest",
+    "coverage",
+]
+dev = [
+    "maxplotlib[test]",
     "ruff",
     "black",
     "isort",
     "jupyterlab",
-    "maxtikzlib @ git+https://github.com/max-models/maxtikzlib.git@main",
 ]
-
-[project.optional-dependencies]
-dev = ["check-manifest"]
-test = ["coverage"]
 [project.urls]
 "Source" = "https://github.com/max-models/maxplotlib"
 
