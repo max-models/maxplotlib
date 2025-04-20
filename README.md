@@ -16,6 +16,12 @@ Install the code and requirements with pip
 pip install -e .
 ```
 
+Additional dependencies for developers can be installed with
+
+```
+pip install -e ".[dev]"
+```
+
 Run the code with
 
 ```
