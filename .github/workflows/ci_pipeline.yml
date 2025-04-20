@@ -36,4 +36,5 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest .
+          coverage run -m pytest .
+          coverage report --sort=cover
