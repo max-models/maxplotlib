@@ -28,7 +28,7 @@ jobs:
       - name: Install python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install .
+          pip install ".[test]"
 
       - name: Inspect maxplotlib arguments
         run: |
@@ -36,4 +36,5 @@ jobs:
 
       - name: Run tests
         run: |
-          pytest .
+          coverage run -m pytest .
+          coverage report --sort=cover
