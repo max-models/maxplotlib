@@ -158,7 +158,7 @@ class Canvas:
         elif backend == "plotly":
             self.plot_plotly(show=show, savefig=savefig)
 
-    def plot_matplotlib(self, show=True, savefig=False, layers=None):
+    def plot_matplotlib(self, show=True, savefig=False, layers=None, usetex=False):
         """
         Generate and optionally display the subplots.
 
@@ -167,7 +167,7 @@ class Canvas:
         show (bool): Whether to display the plot.
         """
 
-        tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize)
+        tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
 
         plt_utils.setup_plotstyle(
             tex_fonts=tex_fonts,
@@ -210,7 +210,7 @@ class Canvas:
         #     plt.close()
         return fig, axes
 
-    def plot_plotly(self, show=True, savefig=None):
+    def plot_plotly(self, show=True, savefig=None, usetex=False):
         """
         Generate and optionally display the subplots using Plotly.
 
@@ -220,7 +220,8 @@ class Canvas:
         """
 
         tex_fonts = plt_utils.setup_tex_fonts(
-            fontsize=self.fontsize
+            fontsize=self.fontsize,
+            usetex=usetex,
         )  # adjust or redefine for Plotly if needed
 
         # Set default width and height if not specified
