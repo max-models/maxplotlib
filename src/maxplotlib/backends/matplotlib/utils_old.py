@@ -419,7 +419,7 @@ class figure:
 
         if not axs_in == None:
             ax = axs_in
-        print("precision", precision, precision, precision)
+        # print("precision", precision, precision, precision)
         plt.sca(ax)
         if axis == "x":
             if locs_labels == None:
@@ -520,7 +520,7 @@ class figure:
         ax=None,
     ):
         limits = self.get_limits(ax)
-        print(limits)
+        # print(limits)
         lx = limits[1] - limits[0]
         ly = limits[3] - limits[2]
 

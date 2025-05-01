@@ -33,6 +33,7 @@ class Canvas:
         self._width = kwargs.get("width", "17cm")
         self._ratio = kwargs.get("ratio", "golden")
         self._gridspec_kw = kwargs.get("gridspec_kw", {"wspace": 0.08, "hspace": 0.1})
+        self._plotted = False
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
@@ -126,6 +127,7 @@ class Canvas:
         layers=None,
         layer_by_layer=False,
         verbose=False,
+        plot=True,
     ):
         filename_no_extension, extension = os.path.splitext(filename)
         if backend == "matplotlib":
@@ -145,10 +147,16 @@ class Canvas:
                     full_filepath = filename
                 else:
                     full_filepath = f"{filename_no_extension}_{layers}.{extension}"
-                fig, axs = self.plot(
-                    show=False, backend="matplotlib", savefig=True, layers=layers
-                )
-                fig.savefig(full_filepath)
+                # print(f"Save to {full_filepath}")
+                if self._plotted:
+                    self._matplotlib_fig.savefig(full_filepath)
+                else:
+
+                    fig, axs = self.plot(
+                        show=False, backend="matplotlib", savefig=True, layers=layers
+                    )
+                    # print('done plotting')
+                    fig.savefig(full_filepath)
                 if verbose:
                     print(f"Saved {full_filepath}")
 
@@ -158,7 +166,7 @@ class Canvas:
         elif backend == "plotly":
             self.plot_plotly(show=show, savefig=savefig)
 
-    def plot_matplotlib(self, show=True, savefig=False, layers=None):
+    def plot_matplotlib(self, show=True, savefig=False, layers=None, usetex=False):
         """
         Generate and optionally display the subplots.
 
@@ -166,8 +174,7 @@ class Canvas:
         filename (str, optional): Filename to save the figure.
         show (bool): Whether to display the plot.
         """
-
-        tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize)
+        tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
 
         plt_utils.setup_plotstyle(
             tex_fonts=tex_fonts,
@@ -208,9 +215,12 @@ class Canvas:
             plt.show()
         # else:
         #     plt.close()
+        self._plotted = True
+        self._matplotlib_fig = fig
+        self._matplotlib_axes = axes
         return fig, axes
 
-    def plot_plotly(self, show=True, savefig=None):
+    def plot_plotly(self, show=True, savefig=None, usetex=False):
         """
         Generate and optionally display the subplots using Plotly.
 
@@ -220,7 +230,8 @@ class Canvas:
         """
 
         tex_fonts = plt_utils.setup_tex_fonts(
-            fontsize=self.fontsize
+            fontsize=self.fontsize,
+            usetex=usetex,
         )  # adjust or redefine for Plotly if needed
 
         # Set default width and height if not specified
