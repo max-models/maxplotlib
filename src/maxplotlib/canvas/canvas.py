@@ -147,15 +147,15 @@ class Canvas:
                     full_filepath = filename
                 else:
                     full_filepath = f"{filename_no_extension}_{layers}.{extension}"
-                print(f"Save to {full_filepath}")
+                # print(f"Save to {full_filepath}")
                 if self._plotted:
                     self._matplotlib_fig.savefig(full_filepath)
                 else:
-                        
+
                     fig, axs = self.plot(
                         show=False, backend="matplotlib", savefig=True, layers=layers
                     )
-                    print('done plotting')
+                    # print('done plotting')
                     fig.savefig(full_filepath)
                 if verbose:
                     print(f"Saved {full_filepath}")
@@ -174,7 +174,6 @@ class Canvas:
         filename (str, optional): Filename to save the figure.
         show (bool): Whether to display the plot.
         """
-        print(f"Plotting with maxplotlib ")
         tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
 
         plt_utils.setup_plotstyle(
@@ -206,7 +205,6 @@ class Canvas:
 
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
-            print(f"subplot.plot_matplotlib(ax, layers=layers)")
             subplot.plot_matplotlib(ax, layers=layers)
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
