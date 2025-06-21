@@ -147,7 +147,7 @@ class Canvas:
                     full_filepath = filename
                 else:
                     full_filepath = f"{filename_no_extension}_{layers}.{extension}"
-                print(f"Save to {full_filepath}")
+
                 if self._plotted:
                     self._matplotlib_fig.savefig(full_filepath)
                 else:
@@ -174,7 +174,7 @@ class Canvas:
         filename (str, optional): Filename to save the figure.
         show (bool): Whether to display the plot.
         """
-        print(f"Plotting with maxplotlib ")
+
         tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
 
         plt_utils.setup_plotstyle(

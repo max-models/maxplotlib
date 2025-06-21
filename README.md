@@ -1,5 +1,9 @@
 # maxplotlib
 
+This is a wrapper for matplotlib so I can produce figures with consistent formatting. It also has some pretty nice additions such as using layers and exporting to tikz.
+
+Related packages: [maxtikzlib](https://github.com/max-models/maxtikzlib) and [maxtexlib](https://github.com/max-models/maxtexlib).
+
 ## Install
 
 Create and activate python environment
@@ -22,8 +26,4 @@ Additional dependencies for developers can be installed with
 pip install -e ".[dev]"
 ```
 
-Run the code with
-
-```
-maxplotlib
-```
+Some examples can be found in `tutorials/`
