@@ -151,11 +151,11 @@ class Canvas:
                 if self._plotted:
                     self._matplotlib_fig.savefig(full_filepath)
                 else:
-                        
+
                     fig, axs = self.plot(
                         show=False, backend="matplotlib", savefig=True, layers=layers
                     )
-                    print('done plotting')
+                    print("done plotting")
                     fig.savefig(full_filepath)
                 if verbose:
                     print(f"Saved {full_filepath}")
