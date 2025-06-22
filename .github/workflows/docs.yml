@@ -2,7 +2,7 @@ name: Deploy docs to GitHub Pages
 
 on:
   push:
-    branches: ["devel"]
+    branches: ["devel", "13-create-a-gallery"]
   workflow_dispatch:
 
 permissions:
