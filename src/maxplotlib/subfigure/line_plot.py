@@ -247,7 +247,7 @@ class LinePlot:
         if layer in self.layers:
             self.layers[layer].add(node)
         else:
-            print(f"{self.layers = } {layer = }")
+            # print(f"{self.layers = } {layer = }")
             self.layers[layer] = Tikzlayer(layer)
             self.layers[layer].add(node)
         self._node_counter += 1
