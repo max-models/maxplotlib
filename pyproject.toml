@@ -24,14 +24,23 @@ test = [
     "pytest",
     "coverage",
 ]
+docs = [
+    "myst-parser",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "nbsphinx",
+    "ipykernel",
+    "nbconvert",
+]
 dev = [
-    "maxplotlib[test]",
+    "maxplotlib[test,docs]",
     "ruff",
     "black",
     "isort",
     "jupyterlab",
     "nbstripout",
     "pre-commit",
+    "pyproject-fmt",
 ]
 [project.urls]
 "Source" = "https://github.com/max-models/maxplotlib"
