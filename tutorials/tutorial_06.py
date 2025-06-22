@@ -3,7 +3,7 @@ import numpy as np
 
 import maxplotlib.canvas.canvas as canvas
 
-c = canvas.Canvas(width=2000, ratio=0.5)
+c = canvas.Canvas(width="17cm", ratio=0.5)
 sp = c.add_subplot(grid=False, xlabel="x", ylabel="y")
 # sp.add_line([0, 1, 2, 3], [0, 1, 4, 9], label="Line 1",layer=1)
 data = np.random.random((10, 10))

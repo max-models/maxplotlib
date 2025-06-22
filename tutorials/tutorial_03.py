@@ -1,6 +1,6 @@
 import maxplotlib.canvas.canvas as canvas
 
-c = canvas.Canvas(width=2000, ratio=0.5)
+c = canvas.Canvas(width="17cm", ratio=0.5)
 sp = c.add_subplot(
     grid=False, xlabel="(x - 10) * 0.1", ylabel="10y", yscale=10, xshift=-10, xscale=0.1
 )

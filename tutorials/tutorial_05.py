@@ -2,7 +2,7 @@ import numpy as np
 
 import maxplotlib.canvas.canvas as canvas
 
-c = canvas.Canvas(width=2000, ratio=0.5)
+c = canvas.Canvas(width="17cm", ratio=0.5)
 sp = c.add_subplot(grid=True, xlabel="x", ylabel="y")
 
 node_a = sp.add_node(
