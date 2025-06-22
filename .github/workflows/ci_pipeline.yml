@@ -28,7 +28,7 @@ jobs:
       - name: Install python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ".[test]"
+          pip install ".[dev]"
 
       - name: Inspect maxplotlib arguments
         run: |
@@ -38,3 +38,7 @@ jobs:
         run: |
           coverage run -m pytest .
           coverage report --sort=cover
+      
+      - name: Test tutorials
+        run: |
+          jupyter nbconvert --to notebook --execute tutorials/*.ipynb --output-dir=/tmp --ExecutePreprocessor.timeout=300
