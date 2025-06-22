@@ -359,7 +359,7 @@ class TikzFigure:
             else:
                 print("PDF compilation failed. Please check the LaTeX log for details.")
 
-    def plot_matplotlib(self, ax):
+    def plot_matplotlib(self, ax, layers=None):
         """
         Plot all nodes and paths on the provided axis using Matplotlib.
 
