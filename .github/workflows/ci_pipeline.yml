@@ -28,7 +28,7 @@ jobs:
       - name: Install python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ".[test]"
+          pip install ".[dev]"
 
       - name: Inspect maxplotlib arguments
         run: |
@@ -38,24 +38,7 @@ jobs:
         run: |
           coverage run -m pytest .
           coverage report --sort=cover
-  build_docs:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out the code
-        uses: actions/checkout@v3
-
-      - name: Install python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install ".[docs]"
       
-      - name: Build Sphinx documentation
+      - name: Test tutorials
         run: |
-          cd docs/
-          make html
-
-      - name: Upload built docs as artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: html-docs
-          path: docs/build/html/
+          jupyter nbconvert --to notebook --execute tutorials/*.ipynb --output-dir=/tmp --ExecutePreprocessor.timeout=300
