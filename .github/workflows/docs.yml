@@ -2,7 +2,7 @@ name: Deploy docs to GitHub Pages
 
 on:
   push:
-    branches: ["devel", "13-create-a-gallery"]
+    branches: ["devel", "main"] # TODO: Set to main only after release
   workflow_dispatch:
 
 permissions:
