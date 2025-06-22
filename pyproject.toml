@@ -30,6 +30,7 @@ dev = [
     "black",
     "isort",
     "jupyterlab",
+    "nbstripout"
 ]
 [project.urls]
 "Source" = "https://github.com/max-models/maxplotlib"
