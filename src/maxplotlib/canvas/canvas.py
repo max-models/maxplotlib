@@ -155,7 +155,6 @@ class Canvas:
                     fig, axs = self.plot(
                         show=False, backend="matplotlib", savefig=True, layers=layers
                     )
-                    print("done plotting")
                     fig.savefig(full_filepath)
                 if verbose:
                     print(f"Saved {full_filepath}")
@@ -206,7 +205,6 @@ class Canvas:
 
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
-            print(f"subplot.plot_matplotlib(ax, layers=layers)")
             subplot.plot_matplotlib(ax, layers=layers)
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
