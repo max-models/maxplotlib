@@ -30,34 +30,52 @@ class Path:
 
 
 class LinePlot:
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        title: str | None = None,
+        grid: bool = False,
+        legend: bool = False,
+        xmin: float | int | None = None,
+        xmax: float | int | None = None,
+        ymin: float | int | None = None,
+        ymax: float | int | None = None,
+        xlabel: str | None = None,
+        ylabel: str | None = None,
+        xscale: float | int = 1.0,
+        yscale: float | int = 1.0,
+        xshift: float | int = 0.0,
+        yshift: float | int = 0.0,
+    ):
         """
         Initialize the LinePlot class for a subplot.
 
         Parameters:
-        **kwargs: Arbitrary keyword arguments.
-            - figsize (tuple): Figure size (default is (10, 6)).
-            - caption (str): Caption for the plot.
-            - description (str): Description of the plot.
-            - label (str): Label for the plot.
-            - grid (bool): Whether to display grid lines (default is False).
-            TODO: Add all options
+            title (str): Title of the plot.
+            caption (str): Caption for the plot.
+            description (str): Description of the plot.
+            label (str): Label for the plot.
+            grid (bool): Whether to display grid lines (default is False).
+            legend (bool): Whether to display legend (default is False).
+            xmin, xmax, ymin, ymax (float): Axis limits.
+            xlabel, ylabel (str): Axis labels.
+            xscale, yscale (float): Scaling factors for axes.
+            xshift, yshift (float): Shifts for axes.
         """
-        # Set default values
-        self._figsize = kwargs.get("figsize", (10, 6))
-        self._title = kwargs.get("title", None)
-        self._caption = kwargs.get("caption", None)
-        self._description = kwargs.get("description", None)
-        self._label = kwargs.get("label", None)
-        self._grid = kwargs.get("grid", False)
-        self._legend = kwargs.get("legend", False)
-        self._xmin = kwargs.get("xmin", None)
-        self._xmax = kwargs.get("xmax", None)
-        self._ymin = kwargs.get("ymin", None)
-        self._ymax = kwargs.get("ymax", None)
 
-        self._xlabel = kwargs.get("xlabel", None)
-        self._ylabel = kwargs.get("ylabel", None)
+        self._title = title
+        self._grid = grid
+        self._legend = legend
+        self._xmin = xmin
+        self._xmax = xmax
+        self._ymin = ymin
+        self._ymax = ymax
+        self._xlabel = xlabel
+        self._ylabel = ylabel
+        self._xscale = xscale
+        self._yscale = yscale
+        self._xshift = xshift
+        self._yshift = yshift
+
         # List to store line data, each entry contains x and y data, label, and plot kwargs
         self.line_data = []
         self.layered_line_data = {}
@@ -65,16 +83,9 @@ class LinePlot:
         # Initialize lists to hold Node and Path objects
         self.nodes = []
         self.paths = []
-        # self.layers = {}
 
         # Counter for unnamed nodes
         self._node_counter = 0
-
-        # Scaling
-        self._xscale = kwargs.get("xscale", 1.0)
-        self._yscale = kwargs.get("yscale", 1.0)
-        self._xshift = kwargs.get("xshift", 0.0)
-        self._yshift = kwargs.get("yshift", 0.0)
 
     def add_caption(self, caption):
         self._caption = caption
@@ -185,8 +196,6 @@ class LinePlot:
                     plt.colorbar(im, cax=cax, label="Potential (V)")
             if self._title:
                 ax.set_title(self._title)
-            if self._label:
-                ax.set_ylabel(self._label)
             if self._xlabel:
                 ax.set_xlabel(self._xlabel)
             if self._ylabel:
@@ -311,42 +320,6 @@ class LinePlot:
     @property
     def ymax(self):
         return self._ymax
-
-    # Getter and Setter for figsize
-    @property
-    def figsize(self):
-        return self._figsize
-
-    @figsize.setter
-    def figsize(self, value):
-        self._figsize = value
-
-    # Getter and Setter for caption
-    @property
-    def caption(self):
-        return self._caption
-
-    @caption.setter
-    def caption(self, value):
-        self._caption = value
-
-    # Getter and Setter for description
-    @property
-    def description(self):
-        return self._description
-
-    @description.setter
-    def description(self, value):
-        self._description = value
-
-    # Getter and Setter for label
-    @property
-    def label(self):
-        return self._label
-
-    @label.setter
-    def label(self, value):
-        self._label = value
 
     # Getter and Setter for grid
     @property

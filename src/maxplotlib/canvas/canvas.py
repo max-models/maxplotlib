@@ -133,8 +133,23 @@ class Canvas:
         self,
         col: int | None = None,
         row: int | None = None,
+        figsize: tuple = (10, 6),
+        title: str | None = None,
+        caption: str | None = None,
+        description: str | None = None,
         label: str | None = None,
-        **kwargs,
+        grid: bool = False,
+        legend: bool = False,
+        xmin: float | int | None = None,
+        xmax: float | int | None = None,
+        ymin: float | int | None = None,
+        ymax: float | int | None = None,
+        xlabel: str | None = None,
+        ylabel: str | None = None,
+        xscale: float | int = 1.0,
+        yscale: float | int = 1.0,
+        xshift: float | int = 0.0,
+        yshift: float | int = 0.0,
     ):
         """
         Adds a subplot to the figure.
@@ -149,7 +164,21 @@ class Canvas:
         row, col = self.generate_new_rowcol(row, col)
 
         # Initialize the LinePlot for the given subplot position
-        line_plot = LinePlot(col=col, row=row, label=label, **kwargs)
+        line_plot = LinePlot(
+            title=title,
+            grid=grid,
+            legend=legend,
+            xmin=xmin,
+            xmax=xmax,
+            ymin=ymin,
+            ymax=ymax,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            xscale=xscale,
+            yscale=yscale,
+            xshift=xshift,
+            yshift=yshift,
+        )
         self._subplot_matrix[row][col] = line_plot
 
         # Store the LinePlot instance by its position for easy access
