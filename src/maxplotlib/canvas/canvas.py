@@ -243,8 +243,8 @@ class Canvas:
             return self.plot_matplotlib(savefig=savefig, layers=layers)
         elif backend == "plotly":
             return self.plot_plotly(savefig=savefig)
-        else:
-            raise ValueError("Invalid backend")
++        else:
++            raise ValueError(f"Invalid backend: {backend}")
 
     def show(self, backend="matplotlib"):
         if backend == "matplotlib":
