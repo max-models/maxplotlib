@@ -209,7 +209,10 @@ class Canvas:
                 for layer in self.layers:
                     layers.append(layer)
                     fig, axs = self.plot(
-                        show=False, backend="matplotlib", savefig=True, layers=layers
+                        show=False,
+                        backend="matplotlib",
+                        savefig=True,
+                        layers=layers,
                     )
                     _fn = f"{filename_no_extension}_{layers}.{extension}"
                     fig.savefig(_fn)
@@ -226,7 +229,10 @@ class Canvas:
                 else:
 
                     fig, axs = self.plot(
-                        show=False, backend="matplotlib", savefig=True, layers=layers
+                        show=False,
+                        backend="matplotlib",
+                        savefig=True,
+                        layers=layers,
                     )
                     fig.savefig(full_filepath)
                 if verbose:
@@ -317,7 +323,8 @@ class Canvas:
             fig_width, fig_height = self._figsize
         else:
             fig_width, fig_height = plt_utils.set_size(
-                width=self._width, ratio=self._ratio
+                width=self._width,
+                ratio=self._ratio,
             )
         # print(self._width, fig_width, fig_height)
         # Create subplots

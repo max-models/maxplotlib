@@ -19,7 +19,13 @@ class Node:
 
 class Path:
     def __init__(
-        self, nodes, path_actions=[], cycle=False, label="", layer=0, **kwargs
+        self,
+        nodes,
+        path_actions=[],
+        cycle=False,
+        label="",
+        layer=0,
+        **kwargs,
     ):
         self.nodes = nodes
         self.path_actions = path_actions
@@ -235,7 +241,8 @@ class LinePlot:
                 line=dict(
                     color=line["kwargs"].get("color", None),
                     dash=linestyle_map.get(
-                        line["kwargs"].get("linestyle", "solid"), "solid"
+                        line["kwargs"].get("linestyle", "solid"),
+                        "solid",
                     ),
                 ),
             )
