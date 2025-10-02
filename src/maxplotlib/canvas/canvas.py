@@ -5,8 +5,8 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 import maxplotlib.backends.matplotlib.utils as plt_utils
-import maxplotlib.subfigure.line_plot as lp
-import maxplotlib.subfigure.tikz_figure as tf
+from maxplotlib.subfigure.line_plot import LinePlot
+from maxplotlib.subfigure.tikz_figure import TikzFigure
 
 
 class Canvas:
@@ -70,6 +70,38 @@ class Canvas:
         assert col is not None, "Not enough columns!"
         return row, col
 
+    def add_line(
+        self,
+        x_data,
+        y_data,
+        layer=0,
+        subplot: LinePlot | None = None,
+        row: int | None = None,
+        col: int | None = None,
+        plot_type="plot",
+        **kwargs,
+    ):
+        if row is not None and col is not None:
+            try:
+                subplot = self._subplot_matrix[row][col]
+            except KeyError:
+                raise ValueError("Invalid subplot position.")
+        else:
+            row, col = 0, 0
+            subplot = self._subplot_matrix[row][col]
+
+        if subplot is None:
+            row, col = self.generate_new_rowcol(row, col)
+            subplot = self.add_subplot(col=col, row=row)
+
+        subplot.add_line(
+            x_data=x_data,
+            y_data=y_data,
+            layer=layer,
+            plot_type=plot_type,
+            **kwargs,
+        )
+
     def add_tikzfigure(self, **kwargs):
         """
         Adds a subplot to the figure.
@@ -87,7 +119,7 @@ class Canvas:
         row, col = self.generate_new_rowcol(row, col)
 
         # Initialize the LinePlot for the given subplot position
-        tikz_figure = tf.TikzFigure(**kwargs)
+        tikz_figure = TikzFigure(**kwargs)
         self._subplot_matrix[row][col] = tikz_figure
 
         # Store the LinePlot instance by its position for easy access
@@ -97,7 +129,13 @@ class Canvas:
             self._subplots[label] = tikz_figure
         return tikz_figure
 
-    def add_subplot(self, col: int | None = None, row: int | None = None, label: str | None = None, **kwargs):
+    def add_subplot(
+        self,
+        col: int | None = None,
+        row: int | None = None,
+        label: str | None = None,
+        **kwargs,
+    ):
         """
         Adds a subplot to the figure.
 
@@ -108,11 +146,10 @@ class Canvas:
             - label (str): Label to identify the subplot.
         """
 
-
         row, col = self.generate_new_rowcol(row, col)
 
         # Initialize the LinePlot for the given subplot position
-        line_plot = lp.LinePlot(col=col, row=row, label=label, **kwargs)
+        line_plot = LinePlot(col=col, row=row, label=label, **kwargs)
         self._subplot_matrix[row][col] = line_plot
 
         # Store the LinePlot instance by its position for easy access
@@ -171,10 +208,8 @@ class Canvas:
 
     def show(self, backend="matplotlib"):
         if backend == "matplotlib":
-            fig, axs = self.plot(backend="matplotlib", savefig=False, layers=None)
-            print('hmm')
+            self.plot(backend="matplotlib", savefig=False, layers=None)
             self._matplotlib_fig.show()
-            plt.show()
         elif backend == "plotly":
             plot = self.plot_plotly(savefig=False)
         else:

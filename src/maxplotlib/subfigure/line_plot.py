@@ -86,7 +86,14 @@ class LinePlot:
         else:
             self.layered_line_data[layer] = [obj]
 
-    def add_line(self, x_data, y_data, layer=0, plot_type="plot", **kwargs):
+    def add_line(
+        self,
+        x_data,
+        y_data,
+        layer=0,
+        plot_type="plot",
+        **kwargs,
+    ):
         """
         Add a line to the plot.
 
