@@ -84,7 +84,13 @@ class Node:
 
 class Path:
     def __init__(
-        self, nodes, path_actions=[], cycle=False, label="", layer=0, **kwargs
+        self,
+        nodes,
+        path_actions=[],
+        cycle=False,
+        label="",
+        layer=0,
+        **kwargs,
     ):
         """
         Represents a path (line) connecting multiple nodes.
@@ -388,7 +394,7 @@ class TikzFigure:
                     line_width = float(match.group(1))
                 else:
                     print(
-                        f"Invalid line width specification: '{line_width_spec}', defaulting to 1"
+                        f"Invalid line width specification: '{line_width_spec}', defaulting to 1",
                     )
                     line_width = 1
             else:
