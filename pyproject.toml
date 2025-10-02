@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "maxplotlib"
+name = "maxplotlibx"
 version = "0.1"
 description = "A reproducible plotting module with various backends and export options."
 readme = "README.md"
