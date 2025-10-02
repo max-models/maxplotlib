@@ -15,12 +15,12 @@ from mpl_toolkits.mplot3d import Axes3D
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
 
-def setup_tex_fonts(fontsize=14):
+def setup_tex_fonts(fontsize=14, usetex=False):
     """
     Sets up LaTeX fonts for plotting.
     """
     tex_fonts = {
-        "text.usetex": True,
+        "text.usetex": usetex,
         "font.family": "serif",
         "pgf.rcfonts": False,
         "axes.labelsize": fontsize,

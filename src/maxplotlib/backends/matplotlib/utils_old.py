@@ -299,7 +299,12 @@ class figure:
 
     def set_common_xlabel(self, xlabel="common X"):
         self.fig.text(
-            0.5, -0.075, xlabel, va="center", ha="center", fontsize=self.fontsize
+            0.5,
+            -0.075,
+            xlabel,
+            va="center",
+            ha="center",
+            fontsize=self.fontsize,
         )
         # fig.text(0.04, 0.5, 'common Y', va='center', ha='center', rotation='vertical', fontsize=rcParams['axes.labelsize'])
 
@@ -419,7 +424,7 @@ class figure:
 
         if not axs_in == None:
             ax = axs_in
-        print("precision", precision, precision, precision)
+        # print("precision", precision, precision, precision)
         plt.sca(ax)
         if axis == "x":
             if locs_labels == None:
@@ -438,7 +443,9 @@ class figure:
                     i0 = int(xmin / delta)
                     i1 = int(xmax / delta + 1)
                     locs = np.arange(
-                        includepoint - width, includepoint + width + delta, delta
+                        includepoint - width,
+                        includepoint + width + delta,
+                        delta,
                     )
                     locs = locs[locs >= xmin - 1e-12]
                     locs = locs[locs <= xmax + 1e-12]
@@ -473,7 +480,9 @@ class figure:
                     i0 = int(ymin / delta)
                     i1 = int(ymax / delta + 1)
                     locs = np.arange(
-                        includepoint - width, includepoint + width + delta, delta
+                        includepoint - width,
+                        includepoint + width + delta,
+                        delta,
                     )
                     locs = locs[locs >= ymin - 1e-12]
                     locs = locs[locs <= ymax + 1e-12]
@@ -507,7 +516,10 @@ class figure:
         else:
             ylim /= aspect
         self.fig.subplots_adjust(
-            left=0.5 - xlim, right=0.5 + xlim, bottom=0.5 - ylim, top=0.5 + ylim
+            left=0.5 - xlim,
+            right=0.5 + xlim,
+            bottom=0.5 - ylim,
+            top=0.5 + ylim,
         )
 
     def add_figure_label(
@@ -520,7 +532,7 @@ class figure:
         ax=None,
     ):
         limits = self.get_limits(ax)
-        print(limits)
+        # print(limits)
         lx = limits[1] - limits[0]
         ly = limits[3] - limits[2]
 
@@ -619,14 +631,16 @@ class figure:
                 # self.fig.savefig(self.directory + filename + '.' + format,bbox_inches='tight', transparent=False)
                 if tight_layout:
                     self.fig.savefig(
-                        self.directory + filename + "." + format, bbox_inches="tight"
+                        self.directory + filename + "." + format,
+                        bbox_inches="tight",
                     )
                 else:
                     self.fig.savefig(self.directory + filename + "." + format)
             elif format == "pgf":
                 # Save pgf figure
                 self.fig.savefig(
-                    self.directory + filename + "." + format, bbox_inches="tight"
+                    self.directory + filename + "." + format,
+                    bbox_inches="tight",
                 )
 
                 # Replace pgf figure colors with colorlet
@@ -672,7 +686,8 @@ class figure:
             else:
                 try:
                     plt.savefig(
-                        self.directory + filename + "." + format, bbox_inches="tight"
+                        self.directory + filename + "." + format,
+                        bbox_inches="tight",
                     )
                 except Exception as e:
                     print(
@@ -680,7 +695,7 @@ class figure:
                         + self.directory
                         + filename
                         + "."
-                        + format
+                        + format,
                     )
                     print(e)
 
@@ -690,7 +705,7 @@ class figure:
                 for format in formats:
                     if format in imgcat_formats:
                         f.write(
-                            "imgcat " + self.directory + filename + "." + format + "\n"
+                            "imgcat " + self.directory + filename + "." + format + "\n",
                         )
 
         if print_imgcat and ("png" in formats or "pdf" in formats):
