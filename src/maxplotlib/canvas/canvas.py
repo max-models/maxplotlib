@@ -102,24 +102,29 @@ class Canvas:
             **kwargs,
         )
 
-    def add_tikzfigure(self, **kwargs):
+    def add_tikzfigure(
+        self,
+        col=None,
+        row=None,
+        label=None,
+        **kwargs,
+    ):
         """
         Adds a subplot to the figure.
 
         Parameters:
         **kwargs: Arbitrary keyword arguments.
-            - col (int): Column index for the subplot.
-            - row (int): Row index for the subplot.
-            - label (str): Label to identify the subplot.
         """
-        col = kwargs.get("col", None)
-        row = kwargs.get("row", None)
-        label = kwargs.get("label", None)
 
         row, col = self.generate_new_rowcol(row, col)
 
         # Initialize the LinePlot for the given subplot position
-        tikz_figure = TikzFigure(**kwargs)
+        tikz_figure = TikzFigure(
+            col=col,
+            row=row,
+            label=label,
+            **kwargs,
+        )
         self._subplot_matrix[row][col] = tikz_figure
 
         # Store the LinePlot instance by its position for easy access
