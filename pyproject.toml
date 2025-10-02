@@ -33,7 +33,7 @@ docs = [
     "nbconvert",
 ]
 dev = [
-    "maxplotlib[test,docs]",
+    "maxplotlibx[test,docs]",
     "ruff",
     "black",
     "isort",
