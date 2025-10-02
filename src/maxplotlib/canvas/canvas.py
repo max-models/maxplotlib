@@ -37,10 +37,14 @@ class Canvas:
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
-        self.subplots = {}
+        self._subplots = {}
         self._num_subplots = 0
 
         self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
+
+    @property
+    def subplots(self):
+        return self._subplots
 
     @property
     def layers(self):
@@ -88,12 +92,12 @@ class Canvas:
 
         # Store the LinePlot instance by its position for easy access
         if label is None:
-            self.subplots[(row, col)] = tikz_figure
+            self._subplots[(row, col)] = tikz_figure
         else:
-            self.subplots[label] = tikz_figure
+            self._subplots[label] = tikz_figure
         return tikz_figure
 
-    def add_subplot(self, **kwargs):
+    def add_subplot(self, col: int | None = None, row: int | None = None, label: str | None = None, **kwargs):
         """
         Adds a subplot to the figure.
 
@@ -103,21 +107,19 @@ class Canvas:
             - row (int): Row index for the subplot.
             - label (str): Label to identify the subplot.
         """
-        col = kwargs.get("col", None)
-        row = kwargs.get("row", None)
-        label = kwargs.get("label", None)
+
 
         row, col = self.generate_new_rowcol(row, col)
 
         # Initialize the LinePlot for the given subplot position
-        line_plot = lp.LinePlot(**kwargs)
+        line_plot = lp.LinePlot(col=col, row=row, label=label, **kwargs)
         self._subplot_matrix[row][col] = line_plot
 
         # Store the LinePlot instance by its position for easy access
         if label is None:
-            self.subplots[(row, col)] = line_plot
+            self._subplots[(row, col)] = line_plot
         else:
-            self.subplots[label] = line_plot
+            self._subplots[label] = line_plot
         return line_plot
 
     def savefig(
@@ -159,19 +161,31 @@ class Canvas:
                 if verbose:
                     print(f"Saved {full_filepath}")
 
-    def plot(self, backend="matplotlib", show=True, savefig=False, layers=None):
+    def plot(self, backend="matplotlib", savefig=False, layers=None):
         if backend == "matplotlib":
-            return self.plot_matplotlib(show=show, savefig=savefig, layers=layers)
+            return self.plot_matplotlib(savefig=savefig, layers=layers)
         elif backend == "plotly":
-            self.plot_plotly(show=show, savefig=savefig)
+            return self.plot_plotly(savefig=savefig)
+        else:
+            raise ValueError("Invalid backend")
 
-    def plot_matplotlib(self, show=True, savefig=False, layers=None, usetex=False):
+    def show(self, backend="matplotlib"):
+        if backend == "matplotlib":
+            fig, axs = self.plot(backend="matplotlib", savefig=False, layers=None)
+            print('hmm')
+            self._matplotlib_fig.show()
+            plt.show()
+        elif backend == "plotly":
+            plot = self.plot_plotly(savefig=False)
+        else:
+            raise ValueError("Invalid backend")
+
+    def plot_matplotlib(self, savefig=False, layers=None, usetex=False):
         """
         Generate and optionally display the subplots.
 
         Parameters:
         filename (str, optional): Filename to save the figure.
-        show (bool): Whether to display the plot.
         """
 
         tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
@@ -205,17 +219,11 @@ class Canvas:
 
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
-            # print(f"{subplot = }")
             subplot.plot_matplotlib(ax, layers=layers)
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
-        # Set caption, labels, etc., if needed
-        # plt.tight_layout()
 
-        if show:
-            plt.show()
-        # else:
-        #     plt.close()
+        # Set caption, labels, etc., if needed
         self._plotted = True
         self._matplotlib_fig = fig
         self._matplotlib_axes = axes
@@ -271,8 +279,8 @@ class Canvas:
             fig.write_image(savefig)
 
         # Show or return the figure
-        if show:
-            fig.show()
+        # if show:
+        #     fig.show()
         return fig
 
     # Property getters
