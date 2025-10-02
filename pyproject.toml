@@ -47,6 +47,3 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[project.scripts]
-maxplotlib = "maxplotlib.console.main:maxplotlib"
