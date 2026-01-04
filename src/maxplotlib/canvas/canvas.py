@@ -3,7 +3,7 @@ import os
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-
+from maxplotlib.utils.options import Backends
 import maxplotlib.backends.matplotlib.utils as plt_utils
 import maxplotlib.subfigure.line_plot as lp
 import maxplotlib.subfigure.tikz_figure as tf
@@ -123,11 +123,11 @@ class Canvas:
     def savefig(
         self,
         filename,
-        backend="matplotlib",
-        layers=None,
-        layer_by_layer=False,
-        verbose=False,
-        plot=True,
+        backend: Backends = "matplotlib",
+        layers: list | None = None,
+        layer_by_layer: bool = False,
+        verbose: bool = False,
+        plot: bool = True,
     ):
         filename_no_extension, extension = os.path.splitext(filename)
         if backend == "matplotlib":
@@ -136,7 +136,10 @@ class Canvas:
                 for layer in self.layers:
                     layers.append(layer)
                     fig, axs = self.plot(
-                        show=False, backend="matplotlib", savefig=True, layers=layers
+                        show=False,
+                        backend="matplotlib",
+                        savefig=True,
+                        layers=layers,
                     )
                     _fn = f"{filename_no_extension}_{layers}.{extension}"
                     fig.savefig(_fn)
@@ -160,7 +163,7 @@ class Canvas:
                 if verbose:
                     print(f"Saved {full_filepath}")
 
-    def plot(self, backend="matplotlib", show=True, savefig=False, layers=None):
+    def plot(self, backend: Backends = "matplotlib", show=True, savefig=False, layers=None,):
         if backend == "matplotlib":
             return self.plot_matplotlib(show=show, savefig=savefig, layers=layers)
         elif backend == "plotly":
