@@ -163,7 +163,12 @@ class LinePlot:
             layers.append(layer_name)
         return layers
 
-    def plot_matplotlib(self, ax, layers=None):
+    def plot_matplotlib(
+        self,
+        ax,
+        layers=None,
+        verbose: bool = False,
+    ):
         """
         Plot all lines on the provided axis.
 
@@ -210,13 +215,13 @@ class LinePlot:
                 ax.legend()
             if self._grid:
                 ax.grid()
-            if self.xmin:
+            if self.xmin is not None:
                 ax.axis(xmin=self.xmin)
-            if self.xmax:
+            if self.xmax is not None:
                 ax.axis(xmax=self.xmax)
-            if self.ymin:
+            if self.ymin is not None:
                 ax.axis(ymin=self.ymin)
-            if self.ymax:
+            if self.ymax is not None:
                 ax.axis(ymax=self.ymax)
 
     def plot_plotly(self):

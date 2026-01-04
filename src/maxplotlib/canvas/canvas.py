@@ -1,16 +1,35 @@
 import os
+from typing import Dict
 
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-import maxplotlib.backends.matplotlib.utils as plt_utils
+from maxplotlib.backends.matplotlib.utils import (
+    set_size,
+    setup_plotstyle,
+    setup_tex_fonts,
+)
 from maxplotlib.subfigure.line_plot import LinePlot
 from maxplotlib.subfigure.tikz_figure import TikzFigure
+from maxplotlib.utils.options import Backends
 
 
 class Canvas:
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        nrows: int = 1,
+        ncols: int = 1,
+        figsize: tuple | None = None,
+        caption: str | None = None,
+        description: str | None = None,
+        label: str | None = None,
+        fontsize: int = 14,
+        dpi: int = 300,
+        width: str = "17cm",
+        ratio: str = "golden",  # TODO Add literal
+        gridspec_kw: Dict = {"wspace": 0.08, "hspace": 0.1},
+    ):
         """
         Initialize the Canvas class for multiple subplots.
 
@@ -18,21 +37,27 @@ class Canvas:
         nrows (int): Number of subplot rows. Default is 1.
         ncols (int): Number of subplot columns. Default is 1.
         figsize (tuple): Figure size.
+        caption (str): Caption for the figure.
+        description (str): Description for the figure.
+        label (str): Label for the figure.
+        fontsize (int): Font size. Default is 14.
+        dpi (int): DPI for the figure. Default is 300.
+        width (str): Width of the figure. Default is "17cm".
+        ratio (str): Aspect ratio. Default is "golden".
+        gridspec_kw (dict): Gridspec keyword arguments. Default is {"wspace": 0.08, "hspace": 0.1}.
         """
 
-        # nrows=1, ncols=1, caption=None, description=None, label=None, figsize=None
-        self._nrows = kwargs.get("nrows", 1)
-        self._ncols = kwargs.get("ncols", 1)
-        self._figsize = kwargs.get("figsize", None)
-        self._caption = kwargs.get("caption", None)
-        self._description = kwargs.get("description", None)
-        self._label = kwargs.get("label", None)
-        self._fontsize = kwargs.get("fontsize", 14)
-        self._dpi = kwargs.get("dpi", 300)
-        # self._width = kwargs.get("width", 426.79135)
-        self._width = kwargs.get("width", "17cm")
-        self._ratio = kwargs.get("ratio", "golden")
-        self._gridspec_kw = kwargs.get("gridspec_kw", {"wspace": 0.08, "hspace": 0.1})
+        self._nrows = nrows
+        self._ncols = ncols
+        self._figsize = figsize
+        self._caption = caption
+        self._description = description
+        self._label = label
+        self._fontsize = fontsize
+        self._dpi = dpi
+        self._width = width
+        self._ratio = ratio
+        self._gridspec_kw = gridspec_kw
         self._plotted = False
 
         # Dictionary to store lines for each subplot
@@ -196,11 +221,11 @@ class Canvas:
     def savefig(
         self,
         filename,
-        backend="matplotlib",
-        layers=None,
-        layer_by_layer=False,
-        verbose=False,
-        plot=True,
+        backend: Backends = "matplotlib",
+        layers: list | None = None,
+        layer_by_layer: bool = False,
+        verbose: bool = False,
+        plot: bool = True,
     ):
         filename_no_extension, extension = os.path.splitext(filename)
         if backend == "matplotlib":
@@ -238,7 +263,7 @@ class Canvas:
                 if verbose:
                     print(f"Saved {full_filepath}")
 
-    def plot(self, backend="matplotlib", savefig=False, layers=None):
+    def plot(self, backend: Backends = "matplotlib", savefig=False, layers=None):
         if backend == "matplotlib":
             return self.plot_matplotlib(savefig=savefig, layers=layers)
         elif backend == "plotly":
@@ -263,9 +288,9 @@ class Canvas:
         filename (str, optional): Filename to save the figure.
         """
 
-        tex_fonts = plt_utils.setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
+        tex_fonts = setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
 
-        plt_utils.setup_plotstyle(
+        setup_plotstyle(
             tex_fonts=tex_fonts,
             axes_grid=True,
             axes_grid_which="major",
@@ -276,7 +301,7 @@ class Canvas:
         if self._figsize is not None:
             fig_width, fig_height = self._figsize
         else:
-            fig_width, fig_height = plt_utils.set_size(
+            fig_width, fig_height = set_size(
                 width=self._width,
                 ratio=self._ratio,
                 dpi=self.dpi,
@@ -313,7 +338,7 @@ class Canvas:
         savefig (str, optional): Filename to save the figure if provided.
         """
 
-        tex_fonts = plt_utils.setup_tex_fonts(
+        tex_fonts = setup_tex_fonts(
             fontsize=self.fontsize,
             usetex=usetex,
         )  # adjust or redefine for Plotly if needed
@@ -322,7 +347,7 @@ class Canvas:
         if self._figsize is not None:
             fig_width, fig_height = self._figsize
         else:
-            fig_width, fig_height = plt_utils.set_size(
+            fig_width, fig_height = set_size(
                 width=self._width,
                 ratio=self._ratio,
             )
