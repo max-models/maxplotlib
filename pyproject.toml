@@ -3,7 +3,7 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "maxplotlib"
+name = "maxplotlibx"
 version = "0.1"
 description = "A reproducible plotting module with various backends and export options."
 readme = "README.md"
@@ -24,18 +24,26 @@ test = [
     "pytest",
     "coverage",
 ]
+docs = [
+    "myst-parser",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "nbsphinx",
+    "ipykernel",
+    "nbconvert",
+]
 dev = [
-    "maxplotlib[test]",
+    "maxplotlibx[test,docs]",
     "ruff",
     "black",
     "isort",
     "jupyterlab",
+    "nbstripout",
+    "pre-commit",
+    "pyproject-fmt",
 ]
 [project.urls]
 "Source" = "https://github.com/max-models/maxplotlib"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[project.scripts]
-maxplotlib = "maxplotlib.console.main:maxplotlib"
