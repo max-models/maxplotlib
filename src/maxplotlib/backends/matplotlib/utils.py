@@ -62,7 +62,6 @@ def _2pt(width, dpi=300):
     elif isinstance(width, str):
         length_in = convert_to_inches(width)
         length_pt = length_in * dpi
-        # print(f"{length_in = } {length_pt = }")
         return length_pt
     else:
         raise NotImplementedError

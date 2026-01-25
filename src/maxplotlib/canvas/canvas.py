@@ -333,12 +333,10 @@ class Canvas:
 
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
-            print("yo")
             if isinstance(subplot, TikzFigure):
                 plot_matplotlib(subplot, ax, layers=layers)
             else:
                 subplot.plot_matplotlib(ax, layers=layers)
-            print("yo2")
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
 
@@ -507,76 +505,6 @@ class Canvas:
             raise IndexError("Subplot index out of range")
         self._subplot_matrix[row][col] = value
 
-    # def generate_matplotlib_code(self):
-    #     """Generate code for plotting the data using matplotlib."""
-    #     code = "import matplotlib.pyplot as plt\n\n"
-    #     code += f"fig, axes = plt.subplots({self.nrows}, {self.ncols}, figsize={self.figsize})\n\n"
-    #     if self.nrows == 1 and self.ncols == 1:
-    #         code += "axes = [axes]  # Single subplot\n\n"
-    #     else:
-    #         code += "axes = axes.flatten()\n\n"
-    #     for idx, (subplot_idx, lines) in enumerate(self.subplots.items()):
-    #         code += f"# Subplot {subplot_idx}\n"
-    #         code += f"ax = axes[{idx}]\n"
-    #         for line in lines:
-    #             x_data = line['x']
-    #             y_data = line['y']
-    #             label = line['label']
-    #             kwargs = line.get('kwargs', {})
-    #             kwargs_str = ', '.join(f"{k}={repr(v)}" for k, v in kwargs.items())
-    #             code += f"ax.plot({x_data}, {y_data}, label={repr(label)}"
-    #             if kwargs_str:
-    #                 code += f", {kwargs_str}"
-    #             code += ")\n"
-    #         code += "ax.set_xlabel('X-axis')\n"
-    #         code += "ax.set_ylabel('Y-axis')\n"
-    #         if self.nrows * self.ncols > 1:
-    #             code += f"ax.set_title('Subplot {subplot_idx}')\n"
-    #         code += "ax.legend()\n\n"
-    #     code += "plt.tight_layout()\nplt.show()\n"
-    #     return code
-
-    # def generate_latex_plot(self):
-    #     """Generate LaTeX code for plotting the data using pgfplots in subplots."""
-    #     latex_code = "\\begin{figure}[h!]\n\\centering\n"
-    #     total_subplots = self.nrows * self.ncols
-    #     for idx in range(total_subplots):
-    #         subplot_idx = divmod(idx, self.ncols)
-    #         lines = self.subplots.get(subplot_idx, [])
-    #         if not lines:
-    #             continue  # Skip empty subplots
-    #         latex_code += "\\begin{subfigure}[b]{0.45\\textwidth}\n"
-    #         latex_code += "    \\begin{tikzpicture}\n"
-    #         latex_code += "        \\begin{axis}[\n"
-    #         latex_code += "            xlabel={X-axis},\n"
-    #         latex_code += "            ylabel={Y-axis},\n"
-    #         if self.nrows * self.ncols > 1:
-    #             latex_code += f"            title={{Subplot {subplot_idx}}},\n"
-    #         latex_code += "            legend style={at={(1.05,1)}, anchor=north west},\n"
-    #         latex_code += "            legend entries={" + ", ".join(f"{{{line['label']}}}" for line in lines) + "}\n"
-    #         latex_code += "        ]\n"
-    #         for line in lines:
-    #             options = []
-    #             kwargs = line.get('kwargs', {})
-    #             if 'color' in kwargs:
-    #                 options.append(f"color={kwargs['color']}")
-    #             if 'linestyle' in kwargs:
-    #                 linestyle_map = {'-': 'solid', '--': 'dashed', '-.': 'dash dot', ':': 'dotted'}
-    #                 linestyle = linestyle_map.get(kwargs['linestyle'], kwargs['linestyle'])
-    #                 options.append(f"style={linestyle}")
-    #             options_str = f"[{', '.join(options)}]" if options else ""
-    #             latex_code += f"        \\addplot {options_str} coordinates {{\n"
-    #             for x, y in zip(line['x'], line['y']):
-    #                 latex_code += f"            ({x}, {y})\n"
-    #             latex_code += "        };\n"
-    #         latex_code += "        \\end{axis}\n"
-    #         latex_code += "    \\end{tikzpicture}\n"
-    #         latex_code += "\\end{subfigure}\n"
-    #         latex_code += "\\hfill\n" if (idx + 1) % self.ncols != 0 else "\n"
-    #     latex_code += "\\caption{Multiple Subplots}\n"
-    #     latex_code += "\\end{figure}\n"
-    #     return latex_code
-
 
 def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
     """
@@ -586,15 +514,10 @@ def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
     - ax (matplotlib.axes.Axes): Axis on which to plot the figure.
     """
 
-    # Plot paths first so they appear behind nodes
-    for key, layer in tikzfigure.layers.layers.items():
-        print(f"{layer = }")
-        print(f"Layer: {layer.generate_tikz()}")
-
     # TODO: Specify which layers to retreive nodes from with layers=layers
     nodes = tikzfigure.layers.get_nodes()
     paths = tikzfigure.layers.get_paths()
-    print(nodes)
+
 
     for path in paths:
         x_coords = [node.x for node in path.nodes]
