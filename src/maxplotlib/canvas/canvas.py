@@ -11,7 +11,8 @@ from maxplotlib.backends.matplotlib.utils import (
     setup_tex_fonts,
 )
 from maxplotlib.subfigure.line_plot import LinePlot
-from maxplotlib.subfigure.tikz_figure import TikzFigure
+from maxplotlib.subfigure.tikz_figure import TikzFigure as TikzFigureMPL
+from tikzpics import TikzFigure
 from maxplotlib.utils.options import Backends
 
 
@@ -144,7 +145,7 @@ class Canvas:
         row, col = self.generate_new_rowcol(row, col)
 
         # Initialize the LinePlot for the given subplot position
-        tikz_figure = TikzFigure(
+        tikz_figure = TikzFigureMPL(
             col=col,
             row=row,
             label=label,
@@ -271,15 +272,23 @@ class Canvas:
             return self.plot_matplotlib(savefig=savefig, layers=layers)
         elif backend == "plotly":
             return self.plot_plotly(savefig=savefig)
+        elif backend == "tikzpics":
+            return self.plot_tikzpics(savefig=savefig)
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
-    def show(self, backend="matplotlib"):
+    def show(
+        self,
+        backend: Backends = "matplotlib",
+    ):
         if backend == "matplotlib":
             self.plot(backend="matplotlib", savefig=False, layers=None)
             self._matplotlib_fig.show()
         elif backend == "plotly":
             plot = self.plot_plotly(savefig=False)
+        elif backend == "tikzpics":
+            fig = self.plot_tikzpics(savefig=False)
+            fig.show()
         else:
             raise ValueError("Invalid backend")
 
@@ -331,6 +340,22 @@ class Canvas:
         self._matplotlib_fig = fig
         self._matplotlib_axes = axes
         return fig, axes
+
+    def plot_tikzpics(
+        self,
+        savefig=None,
+        verbose=False,
+    ) -> TikzFigure:
+        if len(self.subplots) > 0:
+            raise NotImplementedError(
+                "Only one subplot is supported for tikzpics backend."
+            )
+        for (row, col), line_plot in self.subplots.items():
+            if verbose:
+                print(f"Plotting subplot at row {row}, col {col}")
+                print(f"{line_plot = }")
+            tikz_subplot = line_plot.plot_tikzpics(verbose=verbose)
+        return tikz_subplot
 
     def plot_plotly(self, show=True, savefig=None, usetex=False):
         """

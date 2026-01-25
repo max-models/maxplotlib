@@ -3,8 +3,8 @@ import numpy as np
 import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 
-import maxplotlib.subfigure.tikz_figure as tf
 from maxplotlib.objects.layer import Tikzlayer
+from tikzpics import TikzFigure
 
 
 class Node:
@@ -224,6 +224,21 @@ class LinePlot:
             if self.ymax is not None:
                 ax.axis(ymax=self.ymax)
 
+    def plot_tikzpics(self, layers=None, verbose: bool = False) -> TikzFigure:
+
+        tikz_figure = TikzFigure()
+        for layer_name, layer_lines in self.layered_line_data.items():
+            if layers and layer_name not in layers:
+                continue
+            for line in layer_lines:
+                if line["plot_type"] == "plot":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y = (line["y"] + self._yshift) * self._yscale
+
+                    nodes = [[xi, yi] for xi, yi in zip(x, y)]
+                    tikz_figure.draw(nodes=nodes, **line["kwargs"])
+        return tikz_figure
+
     def plot_plotly(self):
         """
         Plot all lines using Plotly and return a list of traces for each line.
@@ -255,7 +270,17 @@ class LinePlot:
 
         return traces
 
-    def add_node(self, x, y, label=None, content="", layer=0, **kwargs):
+    # def plot_tikzpics(self):
+
+    def add_node(
+        self,
+        x: int | float,
+        y: int | float,
+        label: str | None = None,
+        content: str = "",
+        layer=0,
+        **kwargs,
+    ):
         """
         Add a node to the TikZ figure.
 
