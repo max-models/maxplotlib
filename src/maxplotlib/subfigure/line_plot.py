@@ -2,9 +2,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from tikzpics import TikzFigure
 
 from maxplotlib.objects.layer import Tikzlayer
-from tikzpics import TikzFigure
 
 
 class Node:

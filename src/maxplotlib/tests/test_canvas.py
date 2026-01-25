@@ -1,6 +1,5 @@
 def test():
-    import maxplotlib.canvas.canvas
-    import maxplotlib.subfigure.line_plot
+    pass
 
 
 if __name__ == "__main__":

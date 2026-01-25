@@ -1,18 +1,20 @@
 import os
+import re
 from typing import Dict
 
+import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from tikzpics import TikzFigure
 
 from maxplotlib.backends.matplotlib.utils import (
     set_size,
     setup_plotstyle,
     setup_tex_fonts,
 )
+from maxplotlib.colors.colors import Color
+from maxplotlib.linestyle.linestyle import Linestyle
 from maxplotlib.subfigure.line_plot import LinePlot
-from maxplotlib.subfigure.tikz_figure import TikzFigure as TikzFigureMPL
-from tikzpics import TikzFigure
 from maxplotlib.utils.options import Backends
 
 
@@ -145,9 +147,7 @@ class Canvas:
         row, col = self.generate_new_rowcol(row, col)
 
         # Initialize the LinePlot for the given subplot position
-        tikz_figure = TikzFigureMPL(
-            col=col,
-            row=row,
+        tikz_figure = TikzFigure(
             label=label,
             **kwargs,
         )
@@ -333,7 +333,12 @@ class Canvas:
 
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
-            subplot.plot_matplotlib(ax, layers=layers)
+            print("yo")
+            if isinstance(subplot, TikzFigure):
+                plot_matplotlib(subplot, ax, layers=layers)
+            else:
+                subplot.plot_matplotlib(ax, layers=layers)
+            print("yo2")
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
 
@@ -571,6 +576,148 @@ class Canvas:
     #     latex_code += "\\caption{Multiple Subplots}\n"
     #     latex_code += "\\end{figure}\n"
     #     return latex_code
+
+
+def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
+    """
+    Plot all nodes and paths on the provided axis using Matplotlib.
+
+    Parameters:
+    - ax (matplotlib.axes.Axes): Axis on which to plot the figure.
+    """
+
+    # Plot paths first so they appear behind nodes
+    for key, layer in tikzfigure.layers.layers.items():
+        print(f"{layer = }")
+        print(f"Layer: {layer.generate_tikz()}")
+
+    # TODO: Specify which layers to retreive nodes from with layers=layers
+    nodes = tikzfigure.layers.get_nodes()
+    paths = tikzfigure.layers.get_paths()
+    print(nodes)
+
+    for path in paths:
+        x_coords = [node.x for node in path.nodes]
+        y_coords = [node.y for node in path.nodes]
+
+        # Parse path color
+        path_color_spec = path.kwargs.get("color", "black")
+        try:
+            color = Color(path_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            color = "black"
+
+        # Parse line width
+        line_width_spec = path.kwargs.get("line_width", 1)
+        if isinstance(line_width_spec, str):
+            match = re.match(r"([\d.]+)(pt)?", line_width_spec)
+            if match:
+                line_width = float(match.group(1))
+            else:
+                print(
+                    f"Invalid line width specification: '{line_width_spec}', defaulting to 1",
+                )
+                line_width = 1
+        else:
+            line_width = float(line_width_spec)
+
+        # Parse line style using Linestyle class
+        style_spec = path.kwargs.get("style", "solid")
+        linestyle = Linestyle(style_spec).to_matplotlib()
+
+        ax.plot(
+            x_coords,
+            y_coords,
+            color=color,
+            linewidth=line_width,
+            linestyle=linestyle,
+            zorder=1,  # Lower z-order to place behind nodes
+        )
+
+    # Plot nodes after paths so they appear on top
+    for node in nodes:
+        print(node.__dict__)
+        # Determine shape and size
+        shape = node.kwargs.get("shape", "circle")
+        fill_color_spec = node.kwargs.get("fill", "white")
+        edge_color_spec = node.kwargs.get("draw", "black")
+        linewidth = float(node.kwargs.get("line_width", 1))
+        size = float(node.kwargs.get("size", 1))
+
+        # Parse colors using the Color class
+        try:
+            facecolor = Color(fill_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            facecolor = "white"
+
+        try:
+            edgecolor = Color(edge_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            edgecolor = "black"
+
+        # Plot shapes
+        if shape == "circle":
+            radius = size / 2
+            circle = patches.Circle(
+                (node.x, node.y),
+                radius,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,  # Higher z-order to place on top of paths
+            )
+            ax.add_patch(circle)
+        elif shape == "rectangle":
+            width = height = size
+            rect = patches.Rectangle(
+                (node.x - width / 2, node.y - height / 2),
+                width,
+                height,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,  # Higher z-order
+            )
+            ax.add_patch(rect)
+        else:
+            # Default to circle if shape is unknown
+            radius = size / 2
+            circle = patches.Circle(
+                (node.x, node.y),
+                radius,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,
+            )
+            ax.add_patch(circle)
+
+        # Add text inside the shape
+        if node.content:
+            ax.text(
+                node.x,
+                node.y,
+                node.content,
+                fontsize=10,
+                ha="center",
+                va="center",
+                wrap=True,
+                zorder=3,  # Even higher z-order for text
+            )
+
+    # Remove axes, ticks, and legend
+    ax.axis("off")
+
+    # Adjust plot limits
+    all_x = [node.x for node in nodes]
+    all_y = [node.y for node in nodes]
+    padding = 1  # Adjust padding as needed
+    ax.set_xlim(min(all_x) - padding, max(all_x) + padding)
+    ax.set_ylim(min(all_y) - padding, max(all_y) + padding)
+    ax.set_aspect("equal", adjustable="datalim")
 
 
 if __name__ == "__main__":
