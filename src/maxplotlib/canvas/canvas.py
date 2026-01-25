@@ -558,7 +558,6 @@ def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
 
     # Plot nodes after paths so they appear on top
     for node in nodes:
-        print(node.__dict__)
         # Determine shape and size
         shape = node.kwargs.get("shape", "circle")
         fill_color_spec = node.kwargs.get("fill", "white")
