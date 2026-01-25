@@ -225,7 +225,6 @@ class Canvas:
         layers: list | None = None,
         layer_by_layer: bool = False,
         verbose: bool = False,
-        plot: bool = True,
     ):
         filename_no_extension, extension = os.path.splitext(filename)
         if backend == "matplotlib":
@@ -254,7 +253,6 @@ class Canvas:
                 else:
 
                     fig, axs = self.plot(
-                        show=False,
                         backend="matplotlib",
                         savefig=True,
                         layers=layers,
@@ -263,7 +261,12 @@ class Canvas:
                 if verbose:
                     print(f"Saved {full_filepath}")
 
-    def plot(self, backend: Backends = "matplotlib", savefig=False, layers=None):
+    def plot(
+        self,
+        backend: Backends = "matplotlib",
+        savefig=False,
+        layers=None,
+    ):
         if backend == "matplotlib":
             return self.plot_matplotlib(savefig=savefig, layers=layers)
         elif backend == "plotly":
