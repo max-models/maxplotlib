@@ -1,18 +1,9 @@
 # import sys; from os.path import dirname; sys.path.append(f'{dirname(__file__)}/../../')
 
 # import matplotlib.pylab as pylab
-import math
-import pickle
-from pathlib import Path
 
-import _pickle as cPickle
-import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
-import numpy as np
 import pint
-from matplotlib.collections import PatchCollection
-from mpl_toolkits.mplot3d import Axes3D
-from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
 
 
 def setup_tex_fonts(fontsize=14, usetex=False):

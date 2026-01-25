@@ -4,8 +4,6 @@ import subprocess
 import tempfile
 
 import matplotlib.patches as patches
-import numpy as np
-from matplotlib.image import imread
 
 from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
