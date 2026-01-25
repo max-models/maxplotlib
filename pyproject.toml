@@ -18,6 +18,7 @@ dependencies = [
     "matplotlib",
     "pint",
     "plotly",
+    "tikzpics",
 ]
 [project.optional-dependencies]
 test = [
