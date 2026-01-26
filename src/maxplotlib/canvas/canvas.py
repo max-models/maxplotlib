@@ -5,6 +5,7 @@ from typing import Dict
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 from plotly.subplots import make_subplots
+from pygame import ver
 from tikzpics import TikzFigure
 
 from maxplotlib.backends.matplotlib.utils import (
@@ -267,9 +268,17 @@ class Canvas:
         backend: Backends = "matplotlib",
         savefig=False,
         layers=None,
+        verbose: bool = False,
     ):
+        if verbose:
+            print(f"Plotting figure using backend: {backend}")
+
         if backend == "matplotlib":
-            return self.plot_matplotlib(savefig=savefig, layers=layers)
+            return self.plot_matplotlib(
+                savefig=savefig,
+                layers=layers,
+                verbose=verbose,
+            )
         elif backend == "plotly":
             return self.plot_plotly(savefig=savefig)
         elif backend == "tikzpics":
@@ -280,10 +289,19 @@ class Canvas:
     def show(
         self,
         backend: Backends = "matplotlib",
+        verbose: bool = False,
     ):
+        if verbose:
+            print(f"Showing figure using backend: {backend}")
+
         if backend == "matplotlib":
-            self.plot(backend="matplotlib", savefig=False, layers=None)
-            self._matplotlib_fig.show()
+            self.plot(
+                backend="matplotlib",
+                savefig=False,
+                layers=None,
+                verbose=verbose,
+            )
+            # self._matplotlib_fig.show()
         elif backend == "plotly":
             self.plot_plotly(savefig=False)
         elif backend == "tikzpics":
@@ -292,24 +310,34 @@ class Canvas:
         else:
             raise ValueError("Invalid backend")
 
-    def plot_matplotlib(self, savefig=False, layers=None, usetex=False):
+    def plot_matplotlib(
+        self,
+        savefig: bool = False,
+        layers: list | None = None,
+        usetex: bool = False,
+        verbose: bool = False,
+    ):
         """
         Generate and optionally display the subplots.
 
         Parameters:
         filename (str, optional): Filename to save the figure.
         """
+        if verbose:
+            print("Generating Matplotlib figure...")
 
-        tex_fonts = setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
+        # tex_fonts = setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
 
-        setup_plotstyle(
-            tex_fonts=tex_fonts,
-            axes_grid=True,
-            axes_grid_which="major",
-            grid_alpha=1.0,
-            grid_linestyle="dotted",
-        )
-
+        # setup_plotstyle(
+        #     tex_fonts=tex_fonts,
+        #     axes_grid=True,
+        #     axes_grid_which="major",
+        #     grid_alpha=1.0,
+        #     grid_linestyle="dotted",
+        # )
+        if verbose:
+            print("Plot style set up.")
+            print(f"{self._figsize = } {self._width = } {self._ratio = }")
         if self._figsize is not None:
             fig_width, fig_height = self._figsize
         else:
@@ -317,7 +345,10 @@ class Canvas:
                 width=self._width,
                 ratio=self._ratio,
                 dpi=self.dpi,
+                verbose=verbose,
             )
+        if verbose:
+            print(f"Figure size: {fig_width} x {fig_height} points")
 
         fig, axes = plt.subplots(
             self.nrows,
@@ -326,7 +357,7 @@ class Canvas:
             squeeze=False,
             dpi=self.dpi,
         )
-
+        return
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
             if isinstance(subplot, TikzFigure):
