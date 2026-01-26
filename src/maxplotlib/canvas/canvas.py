@@ -285,7 +285,7 @@ class Canvas:
             self.plot(backend="matplotlib", savefig=False, layers=None)
             self._matplotlib_fig.show()
         elif backend == "plotly":
-            plot = self.plot_plotly(savefig=False)
+            self.plot_plotly(savefig=False)
         elif backend == "tikzpics":
             fig = self.plot_tikzpics(savefig=False)
             fig.show()
@@ -319,14 +319,12 @@ class Canvas:
                 dpi=self.dpi,
             )
 
-        # print(f"{(fig_width / self._dpi, fig_height / self._dpi) = }")
-
         fig, axes = plt.subplots(
             self.nrows,
             self.ncols,
             figsize=(fig_width, fig_height),
             squeeze=False,
-            dpi=self._dpi,
+            dpi=self.dpi,
         )
 
         for (row, col), subplot in self.subplots.items():
@@ -369,7 +367,7 @@ class Canvas:
         savefig (str, optional): Filename to save the figure if provided.
         """
 
-        tex_fonts = setup_tex_fonts(
+        setup_tex_fonts(
             fontsize=self.fontsize,
             usetex=usetex,
         )  # adjust or redefine for Plotly if needed
@@ -454,9 +452,6 @@ class Canvas:
         return self._subplot_matrix
 
     # Property setters
-    @nrows.setter
-    def dpi(self, value):
-        self._dpi = value
 
     @nrows.setter
     def nrows(self, value):
@@ -515,7 +510,6 @@ def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
     # TODO: Specify which layers to retreive nodes from with layers=layers
     nodes = tikzfigure.layers.get_nodes()
     paths = tikzfigure.layers.get_paths()
-
 
     for path in paths:
         x_coords = [node.x for node in path.nodes]
