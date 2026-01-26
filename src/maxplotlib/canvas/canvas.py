@@ -5,7 +5,6 @@ from typing import Dict
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 from plotly.subplots import make_subplots
-from pygame import ver
 from tikzpics import TikzFigure
 
 from maxplotlib.backends.matplotlib.utils import (
@@ -326,15 +325,15 @@ class Canvas:
         if verbose:
             print("Generating Matplotlib figure...")
 
-        # tex_fonts = setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
+        tex_fonts = setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
 
-        # setup_plotstyle(
-        #     tex_fonts=tex_fonts,
-        #     axes_grid=True,
-        #     axes_grid_which="major",
-        #     grid_alpha=1.0,
-        #     grid_linestyle="dotted",
-        # )
+        setup_plotstyle(
+            tex_fonts=tex_fonts,
+            axes_grid=True,
+            axes_grid_which="major",
+            grid_alpha=1.0,
+            grid_linestyle="dotted",
+        )
         if verbose:
             print("Plot style set up.")
             print(f"{self._figsize = } {self._width = } {self._ratio = }")
@@ -357,7 +356,7 @@ class Canvas:
             squeeze=False,
             dpi=self.dpi,
         )
-        return
+
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
             if isinstance(subplot, TikzFigure):
