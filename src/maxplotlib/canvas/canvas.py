@@ -1,17 +1,20 @@
 import os
+import re
 from typing import Dict
 
+import matplotlib.patches as patches
 import matplotlib.pyplot as plt
-import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from tikzpics import TikzFigure
 
 from maxplotlib.backends.matplotlib.utils import (
     set_size,
     setup_plotstyle,
     setup_tex_fonts,
 )
+from maxplotlib.colors.colors import Color
+from maxplotlib.linestyle.linestyle import Linestyle
 from maxplotlib.subfigure.line_plot import LinePlot
-from maxplotlib.subfigure.tikz_figure import TikzFigure
 from maxplotlib.utils.options import Backends
 
 
@@ -145,8 +148,6 @@ class Canvas:
 
         # Initialize the LinePlot for the given subplot position
         tikz_figure = TikzFigure(
-            col=col,
-            row=row,
             label=label,
             **kwargs,
         )
@@ -271,15 +272,23 @@ class Canvas:
             return self.plot_matplotlib(savefig=savefig, layers=layers)
         elif backend == "plotly":
             return self.plot_plotly(savefig=savefig)
+        elif backend == "tikzpics":
+            return self.plot_tikzpics(savefig=savefig)
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
-    def show(self, backend="matplotlib"):
+    def show(
+        self,
+        backend: Backends = "matplotlib",
+    ):
         if backend == "matplotlib":
             self.plot(backend="matplotlib", savefig=False, layers=None)
             self._matplotlib_fig.show()
         elif backend == "plotly":
-            plot = self.plot_plotly(savefig=False)
+            self.plot_plotly(savefig=False)
+        elif backend == "tikzpics":
+            fig = self.plot_tikzpics(savefig=False)
+            fig.show()
         else:
             raise ValueError("Invalid backend")
 
@@ -310,19 +319,20 @@ class Canvas:
                 dpi=self.dpi,
             )
 
-        # print(f"{(fig_width / self._dpi, fig_height / self._dpi) = }")
-
         fig, axes = plt.subplots(
             self.nrows,
             self.ncols,
             figsize=(fig_width, fig_height),
             squeeze=False,
-            dpi=self._dpi,
+            dpi=self.dpi,
         )
 
         for (row, col), subplot in self.subplots.items():
             ax = axes[row][col]
-            subplot.plot_matplotlib(ax, layers=layers)
+            if isinstance(subplot, TikzFigure):
+                plot_matplotlib(subplot, ax, layers=layers)
+            else:
+                subplot.plot_matplotlib(ax, layers=layers)
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
 
@@ -331,6 +341,22 @@ class Canvas:
         self._matplotlib_fig = fig
         self._matplotlib_axes = axes
         return fig, axes
+
+    def plot_tikzpics(
+        self,
+        savefig=None,
+        verbose=False,
+    ) -> TikzFigure:
+        if len(self.subplots) > 1:
+            raise NotImplementedError(
+                "Only one subplot is supported for tikzpics backend."
+            )
+        for (row, col), line_plot in self.subplots.items():
+            if verbose:
+                print(f"Plotting subplot at row {row}, col {col}")
+                print(f"{line_plot = }")
+            tikz_subplot = line_plot.plot_tikzpics(verbose=verbose)
+        return tikz_subplot
 
     def plot_plotly(self, show=True, savefig=None, usetex=False):
         """
@@ -341,7 +367,7 @@ class Canvas:
         savefig (str, optional): Filename to save the figure if provided.
         """
 
-        tex_fonts = setup_tex_fonts(
+        setup_tex_fonts(
             fontsize=self.fontsize,
             usetex=usetex,
         )  # adjust or redefine for Plotly if needed
@@ -426,9 +452,6 @@ class Canvas:
         return self._subplot_matrix
 
     # Property setters
-    @nrows.setter
-    def dpi(self, value):
-        self._dpi = value
 
     @nrows.setter
     def nrows(self, value):
@@ -475,75 +498,140 @@ class Canvas:
             raise IndexError("Subplot index out of range")
         self._subplot_matrix[row][col] = value
 
-    # def generate_matplotlib_code(self):
-    #     """Generate code for plotting the data using matplotlib."""
-    #     code = "import matplotlib.pyplot as plt\n\n"
-    #     code += f"fig, axes = plt.subplots({self.nrows}, {self.ncols}, figsize={self.figsize})\n\n"
-    #     if self.nrows == 1 and self.ncols == 1:
-    #         code += "axes = [axes]  # Single subplot\n\n"
-    #     else:
-    #         code += "axes = axes.flatten()\n\n"
-    #     for idx, (subplot_idx, lines) in enumerate(self.subplots.items()):
-    #         code += f"# Subplot {subplot_idx}\n"
-    #         code += f"ax = axes[{idx}]\n"
-    #         for line in lines:
-    #             x_data = line['x']
-    #             y_data = line['y']
-    #             label = line['label']
-    #             kwargs = line.get('kwargs', {})
-    #             kwargs_str = ', '.join(f"{k}={repr(v)}" for k, v in kwargs.items())
-    #             code += f"ax.plot({x_data}, {y_data}, label={repr(label)}"
-    #             if kwargs_str:
-    #                 code += f", {kwargs_str}"
-    #             code += ")\n"
-    #         code += "ax.set_xlabel('X-axis')\n"
-    #         code += "ax.set_ylabel('Y-axis')\n"
-    #         if self.nrows * self.ncols > 1:
-    #             code += f"ax.set_title('Subplot {subplot_idx}')\n"
-    #         code += "ax.legend()\n\n"
-    #     code += "plt.tight_layout()\nplt.show()\n"
-    #     return code
 
-    # def generate_latex_plot(self):
-    #     """Generate LaTeX code for plotting the data using pgfplots in subplots."""
-    #     latex_code = "\\begin{figure}[h!]\n\\centering\n"
-    #     total_subplots = self.nrows * self.ncols
-    #     for idx in range(total_subplots):
-    #         subplot_idx = divmod(idx, self.ncols)
-    #         lines = self.subplots.get(subplot_idx, [])
-    #         if not lines:
-    #             continue  # Skip empty subplots
-    #         latex_code += "\\begin{subfigure}[b]{0.45\\textwidth}\n"
-    #         latex_code += "    \\begin{tikzpicture}\n"
-    #         latex_code += "        \\begin{axis}[\n"
-    #         latex_code += "            xlabel={X-axis},\n"
-    #         latex_code += "            ylabel={Y-axis},\n"
-    #         if self.nrows * self.ncols > 1:
-    #             latex_code += f"            title={{Subplot {subplot_idx}}},\n"
-    #         latex_code += "            legend style={at={(1.05,1)}, anchor=north west},\n"
-    #         latex_code += "            legend entries={" + ", ".join(f"{{{line['label']}}}" for line in lines) + "}\n"
-    #         latex_code += "        ]\n"
-    #         for line in lines:
-    #             options = []
-    #             kwargs = line.get('kwargs', {})
-    #             if 'color' in kwargs:
-    #                 options.append(f"color={kwargs['color']}")
-    #             if 'linestyle' in kwargs:
-    #                 linestyle_map = {'-': 'solid', '--': 'dashed', '-.': 'dash dot', ':': 'dotted'}
-    #                 linestyle = linestyle_map.get(kwargs['linestyle'], kwargs['linestyle'])
-    #                 options.append(f"style={linestyle}")
-    #             options_str = f"[{', '.join(options)}]" if options else ""
-    #             latex_code += f"        \\addplot {options_str} coordinates {{\n"
-    #             for x, y in zip(line['x'], line['y']):
-    #                 latex_code += f"            ({x}, {y})\n"
-    #             latex_code += "        };\n"
-    #         latex_code += "        \\end{axis}\n"
-    #         latex_code += "    \\end{tikzpicture}\n"
-    #         latex_code += "\\end{subfigure}\n"
-    #         latex_code += "\\hfill\n" if (idx + 1) % self.ncols != 0 else "\n"
-    #     latex_code += "\\caption{Multiple Subplots}\n"
-    #     latex_code += "\\end{figure}\n"
-    #     return latex_code
+def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
+    """
+    Plot all nodes and paths on the provided axis using Matplotlib.
+
+    Parameters:
+    - ax (matplotlib.axes.Axes): Axis on which to plot the figure.
+    """
+
+    # TODO: Specify which layers to retreive nodes from with layers=layers
+    nodes = tikzfigure.layers.get_nodes()
+    paths = tikzfigure.layers.get_paths()
+
+    for path in paths:
+        x_coords = [node.x for node in path.nodes]
+        y_coords = [node.y for node in path.nodes]
+
+        # Parse path color
+        path_color_spec = path.kwargs.get("color", "black")
+        try:
+            color = Color(path_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            color = "black"
+
+        # Parse line width
+        line_width_spec = path.kwargs.get("line_width", 1)
+        if isinstance(line_width_spec, str):
+            match = re.match(r"([\d.]+)(pt)?", line_width_spec)
+            if match:
+                line_width = float(match.group(1))
+            else:
+                print(
+                    f"Invalid line width specification: '{line_width_spec}', defaulting to 1",
+                )
+                line_width = 1
+        else:
+            line_width = float(line_width_spec)
+
+        # Parse line style using Linestyle class
+        style_spec = path.kwargs.get("style", "solid")
+        linestyle = Linestyle(style_spec).to_matplotlib()
+
+        ax.plot(
+            x_coords,
+            y_coords,
+            color=color,
+            linewidth=line_width,
+            linestyle=linestyle,
+            zorder=1,  # Lower z-order to place behind nodes
+        )
+
+    # Plot nodes after paths so they appear on top
+    for node in nodes:
+        # Determine shape and size
+        shape = node.kwargs.get("shape", "circle")
+        fill_color_spec = node.kwargs.get("fill", "white")
+        edge_color_spec = node.kwargs.get("draw", "black")
+        linewidth = float(node.kwargs.get("line_width", 1))
+        size = float(node.kwargs.get("size", 1))
+
+        # Parse colors using the Color class
+        try:
+            facecolor = Color(fill_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            facecolor = "white"
+
+        try:
+            edgecolor = Color(edge_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            edgecolor = "black"
+
+        # Plot shapes
+        if shape == "circle":
+            radius = size / 2
+            circle = patches.Circle(
+                (node.x, node.y),
+                radius,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,  # Higher z-order to place on top of paths
+            )
+            ax.add_patch(circle)
+        elif shape == "rectangle":
+            width = height = size
+            rect = patches.Rectangle(
+                (node.x - width / 2, node.y - height / 2),
+                width,
+                height,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,  # Higher z-order
+            )
+            ax.add_patch(rect)
+        else:
+            # Default to circle if shape is unknown
+            radius = size / 2
+            circle = patches.Circle(
+                (node.x, node.y),
+                radius,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,
+            )
+            ax.add_patch(circle)
+
+        # Add text inside the shape
+        if node.content:
+            ax.text(
+                node.x,
+                node.y,
+                node.content,
+                fontsize=10,
+                ha="center",
+                va="center",
+                wrap=True,
+                zorder=3,  # Even higher z-order for text
+            )
+
+    # Remove axes, ticks, and legend
+    ax.axis("off")
+
+    # Adjust plot limits
+    all_x = [node.x for node in nodes]
+    all_y = [node.y for node in nodes]
+    padding = 1  # Adjust padding as needed
+    ax.set_xlim(min(all_x) - padding, max(all_x) + padding)
+    ax.set_ylim(min(all_y) - padding, max(all_y) + padding)
+    ax.set_aspect("equal", adjustable="datalim")
 
 
 if __name__ == "__main__":

@@ -2,9 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-import maxplotlib.subfigure.tikz_figure as tf
-from maxplotlib.objects.layer import Tikzlayer
+from tikzpics import TikzFigure
 
 
 class Node:
@@ -224,6 +222,21 @@ class LinePlot:
             if self.ymax is not None:
                 ax.axis(ymax=self.ymax)
 
+    def plot_tikzpics(self, layers=None, verbose: bool = False) -> TikzFigure:
+
+        tikz_figure = TikzFigure()
+        for layer_name, layer_lines in self.layered_line_data.items():
+            if layers and layer_name not in layers:
+                continue
+            for line in layer_lines:
+                if line["plot_type"] == "plot":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y = (line["y"] + self._yshift) * self._yscale
+
+                    nodes = [[xi, yi] for xi, yi in zip(x, y)]
+                    tikz_figure.draw(nodes=nodes, **line["kwargs"])
+        return tikz_figure
+
     def plot_plotly(self):
         """
         Plot all lines using Plotly and return a list of traces for each line.
@@ -254,68 +267,6 @@ class LinePlot:
             traces.append(trace)
 
         return traces
-
-    def add_node(self, x, y, label=None, content="", layer=0, **kwargs):
-        """
-        Add a node to the TikZ figure.
-
-        Parameters:
-        - x (float): X-coordinate of the node.
-        - y (float): Y-coordinate of the node.
-        - label (str, optional): Label of the node. If None, a default label will be assigned.
-        - **kwargs: Additional TikZ node options (e.g., shape, color).
-
-        Returns:
-        - node (Node): The Node object that was added.
-        """
-        if label is None:
-            label = f"node{self._node_counter}"
-        node = Node(x=x, y=y, label=label, layer=layer, content=content, **kwargs)
-        self.nodes.append(node)
-        if layer in self.layers:
-            self.layers[layer].add(node)
-        else:
-            # print(f"{self.layers = } {layer = }")
-            self.layers[layer] = Tikzlayer(layer)
-            self.layers[layer].add(node)
-        self._node_counter += 1
-        return node
-
-    def add_path(self, nodes, layer=0, **kwargs):
-        """
-        Add a line or path connecting multiple nodes.
-
-        Parameters:
-        - nodes (list of str): List of node names to connect.
-        - **kwargs: Additional TikZ path options (e.g., style, color).
-
-        Examples:
-        - add_path(['A', 'B', 'C'], color='blue')
-          Connects nodes A -> B -> C with a blue line.
-        """
-        if not isinstance(nodes, list):
-            raise ValueError("nodes parameter must be a list of node names.")
-
-        nodes = [
-            (
-                node
-                if isinstance(node, Node)
-                else (
-                    self.get_node(node)
-                    if isinstance(node, str)
-                    else ValueError(f"Invalid node type: {type(node)}")
-                )
-            )
-            for node in nodes
-        ]
-        path = Path(nodes, **kwargs)
-        self.paths.append(path)
-        if layer in self.layers:
-            self.layers[layer].add(path)
-        else:
-            self.layers[layer] = Tikzlayer(layer)
-            self.layers[layer].add(path)
-        return path
 
     @property
     def xmin(self):
