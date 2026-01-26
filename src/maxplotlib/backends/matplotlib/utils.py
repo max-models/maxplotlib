@@ -56,18 +56,30 @@ def convert_to_inches(length_str):
     return quantity.to("inch").magnitude  # Convert to inches
 
 
-def _2pt(width, dpi=300):
+def _2pt(width, dpi=300, verbose: bool = False):
+    if verbose:
+        print(f"Converting width: {width} to points with dpi={dpi}")
+
     if isinstance(width, (int, float)):
         return width
     elif isinstance(width, str):
         length_in = convert_to_inches(width)
         length_pt = length_in * dpi
+        if verbose:
+            print(f"Converted length: {length_in} inches = {length_pt} points")
         return length_pt
     else:
         raise NotImplementedError
 
 
-def set_size(width, fraction=1, ratio="golden", dpi=300):
+# TODO: Use literal types for width and ratio
+def set_size(
+    width: str,
+    fraction: int | float = 1,
+    ratio: str | int | float = "golden",
+    dpi=300,
+    verbose: bool = False,
+) -> tuple:
     """
     Sets figure dimensions to avoid scaling in LaTeX.
     """
@@ -76,9 +88,11 @@ def set_size(width, fraction=1, ratio="golden", dpi=300):
     elif width == "beamer":
         width_pt = 307.28987
     else:
-        width_pt = _2pt(width=width, dpi=dpi)
+        width_pt = _2pt(width=width, dpi=dpi, verbose=verbose)
 
     fig_width_pt = width_pt * fraction
+    inches_per_pt = 1 / 72.27
+    # fig_width_pt = width_pt * fraction
     # inches_per_pt = 1 / 72.27
 
     # Calculate the figure height based on the desired ratio
@@ -91,7 +105,11 @@ def set_size(width, fraction=1, ratio="golden", dpi=300):
         fig_height_pt = fig_width_pt * ratio
     else:
         raise ValueError("Invalid ratio specified.")
-    fig_dim = (fig_width_pt, fig_height_pt)
+
+    # Convert from points to inches for matplotlib
+    fig_width_in = fig_width_pt * inches_per_pt
+    fig_height_in = fig_height_pt * inches_per_pt
+    fig_dim = (fig_width_in, fig_height_in)
     return fig_dim
 
 
