@@ -349,7 +349,7 @@ class Canvas:
         savefig=None,
         verbose=False,
     ) -> TikzFigure:
-        if len(self.subplots) > 0:
+        if len(self.subplots) > 1:
             raise NotImplementedError(
                 "Only one subplot is supported for tikzpics backend."
             )
