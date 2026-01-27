@@ -304,7 +304,7 @@ class Canvas:
         elif backend == "plotly":
             self.plot_plotly(savefig=False)
         elif backend == "tikzpics":
-            fig = self.plot_tikzpics(savefig=False)
+            fig = self.plot_tikzpics(savefig=False, verbose=verbose)
             fig.show()
         else:
             raise ValueError("Invalid backend")
@@ -374,8 +374,8 @@ class Canvas:
 
     def plot_tikzpics(
         self,
-        savefig=None,
-        verbose=False,
+        savefig: str | None = None,
+        verbose: bool = False,
     ) -> TikzFigure:
         if len(self.subplots) > 1:
             raise NotImplementedError(

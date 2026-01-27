@@ -235,6 +235,9 @@ class LinePlot:
 
                     nodes = [[xi, yi] for xi, yi in zip(x, y)]
                     tikz_figure.draw(nodes=nodes, **line["kwargs"])
+        if verbose:
+            print("Generated TikZ figure:")
+            print(tikz_figure.generate_tikz())
         return tikz_figure
 
     def plot_plotly(self):
