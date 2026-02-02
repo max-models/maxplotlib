@@ -62,6 +62,8 @@ class Canvas:
         self._ratio = ratio
         self._gridspec_kw = gridspec_kw
         self._plotted = False
+        self._matplotlib_fig = None
+        self._matplotlib_axes = None
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
