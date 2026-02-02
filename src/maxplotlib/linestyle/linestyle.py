@@ -2,16 +2,6 @@ import re
 
 
 class Linestyle:
-    def __init__(self, style_spec):
-        """
-        Initialize the Linestyle object by parsing the style specification.
-
-        Parameters:
-        - style_spec: Can be a TikZ-style line style string (e.g., 'dashed', 'dotted', 'solid', 'dashdot'),
-                      or a custom dash pattern.
-        """
-        self.style_spec = style_spec
-        self.matplotlib_style = self._parse_style(style_spec)
 
     def _parse_style(self, style_spec):
         """
@@ -47,6 +37,17 @@ class Linestyle:
                 # Default to solid if style is unknown
                 print(f"Unknown line style: '{style_spec}', defaulting to 'solid'")
                 return "solid"
+
+    def __init__(self, style_spec):
+        """
+        Initialize the Linestyle object by parsing the style specification.
+
+        Parameters:
+        - style_spec: Can be a TikZ-style line style string (e.g., 'dashed', 'dotted', 'solid', 'dashdot'),
+                      or a custom dash pattern.
+        """
+        self.style_spec = style_spec
+        self.matplotlib_style = self._parse_style(style_spec)
 
     def to_matplotlib(self):
         """
