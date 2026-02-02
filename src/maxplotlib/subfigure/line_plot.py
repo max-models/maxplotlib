@@ -106,7 +106,6 @@ class LinePlot:
         x_data,
         y_data,
         layer=0,
-        plot_type="plot",
         **kwargs,
     ):
         """
@@ -122,34 +121,34 @@ class LinePlot:
             "x": np.array(x_data),
             "y": np.array(y_data),
             "layer": layer,
-            "plot_type": plot_type,
+            "plot_type": "plot",
             "kwargs": kwargs,
         }
         self._add(ld, layer)
 
-    def add_imshow(self, data, layer=0, plot_type="imshow", **kwargs):
+    def add_imshow(self, data, layer=0, **kwargs):
         ld = {
             "data": np.array(data),
             "layer": layer,
-            "plot_type": plot_type,
+            "plot_type": "imshow",
             "kwargs": kwargs,
         }
         self._add(ld, layer)
 
-    def add_patch(self, patch, layer=0, plot_type="patch", **kwargs):
+    def add_patch(self, patch, layer=0, **kwargs):
         ld = {
             "patch": patch,
             "layer": layer,
-            "plot_type": plot_type,
+            "plot_type": "patch",
             "kwargs": kwargs,
         }
         self._add(ld, layer)
 
-    def add_colorbar(self, label="", layer=0, plot_type="colorbar", **kwargs):
+    def add_colorbar(self, label="", layer=0, **kwargs):
         cb = {
             "label": label,
             "layer": layer,
-            "plot_type": plot_type,
+            "plot_type": "colorbar",
             "kwargs": kwargs,
         }
         self._add(cb, layer)
