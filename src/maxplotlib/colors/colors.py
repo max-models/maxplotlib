@@ -5,16 +5,6 @@ import numpy as np
 
 
 class Color:
-    def __init__(self, color_spec):
-        """
-        Initialize the Color object by parsing the color specification.
-
-        Parameters:
-        - color_spec: Can be a TikZ color string (e.g., 'blue!20'), a standard color name,
-                      an RGB tuple, a hex code, etc.
-        """
-        self.color_spec = color_spec
-        self.rgb = self._parse_color(color_spec)
 
     def _parse_color(self, color_spec):
         """
@@ -52,6 +42,17 @@ class Color:
             return mcolors.to_rgb(color_spec)
         except ValueError:
             raise ValueError(f"Invalid color specification: '{color_spec}'")
+
+    def __init__(self, color_spec):
+        """
+        Initialize the Color object by parsing the color specification.
+
+        Parameters:
+        - color_spec: Can be a TikZ color string (e.g., 'blue!20'), a standard color name,
+                      an RGB tuple, a hex code, etc.
+        """
+        self.color_spec = color_spec
+        self.rgb = self._parse_color(color_spec)
 
     def to_rgb(self):
         """

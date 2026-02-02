@@ -18,6 +18,141 @@ from maxplotlib.subfigure.line_plot import LinePlot
 from maxplotlib.utils.options import Backends
 
 
+def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
+    """
+    Plot all nodes and paths on the provided axis using Matplotlib.
+
+    Parameters:
+    - ax (matplotlib.axes.Axes): Axis on which to plot the figure.
+    """
+
+    # TODO: Specify which layers to retreive nodes from with layers=layers
+    nodes = tikzfigure.layers.get_nodes()
+    paths = tikzfigure.layers.get_paths()
+
+    for path in paths:
+        x_coords = [node.x for node in path.nodes]
+        y_coords = [node.y for node in path.nodes]
+
+        # Parse path color
+        path_color_spec = path.kwargs.get("color", "black")
+        try:
+            color = Color(path_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            color = "black"
+
+        # Parse line width
+        line_width_spec = path.kwargs.get("line_width", 1)
+        if isinstance(line_width_spec, str):
+            match = re.match(r"([\d.]+)(pt)?", line_width_spec)
+            if match:
+                line_width = float(match.group(1))
+            else:
+                print(
+                    f"Invalid line width specification: '{line_width_spec}', defaulting to 1",
+                )
+                line_width = 1
+        else:
+            line_width = float(line_width_spec)
+
+        # Parse line style using Linestyle class
+        style_spec = path.kwargs.get("style", "solid")
+        linestyle = Linestyle(style_spec).to_matplotlib()
+
+        ax.plot(
+            x_coords,
+            y_coords,
+            color=color,
+            linewidth=line_width,
+            linestyle=linestyle,
+            zorder=1,  # Lower z-order to place behind nodes
+        )
+
+    # Plot nodes after paths so they appear on top
+    for node in nodes:
+        # Determine shape and size
+        shape = node.kwargs.get("shape", "circle")
+        fill_color_spec = node.kwargs.get("fill", "white")
+        edge_color_spec = node.kwargs.get("draw", "black")
+        linewidth = float(node.kwargs.get("line_width", 1))
+        size = float(node.kwargs.get("size", 1))
+
+        # Parse colors using the Color class
+        try:
+            facecolor = Color(fill_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            facecolor = "white"
+
+        try:
+            edgecolor = Color(edge_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            edgecolor = "black"
+
+        # Plot shapes
+        if shape == "circle":
+            radius = size / 2
+            circle = patches.Circle(
+                (node.x, node.y),
+                radius,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,  # Higher z-order to place on top of paths
+            )
+            ax.add_patch(circle)
+        elif shape == "rectangle":
+            width = height = size
+            rect = patches.Rectangle(
+                (node.x - width / 2, node.y - height / 2),
+                width,
+                height,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,  # Higher z-order
+            )
+            ax.add_patch(rect)
+        else:
+            # Default to circle if shape is unknown
+            radius = size / 2
+            circle = patches.Circle(
+                (node.x, node.y),
+                radius,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,
+            )
+            ax.add_patch(circle)
+
+        # Add text inside the shape
+        if node.content:
+            ax.text(
+                node.x,
+                node.y,
+                node.content,
+                fontsize=10,
+                ha="center",
+                va="center",
+                wrap=True,
+                zorder=3,  # Even higher z-order for text
+            )
+
+    # Remove axes, ticks, and legend
+    ax.axis("off")
+
+    # Adjust plot limits
+    all_x = [node.x for node in nodes]
+    all_y = [node.y for node in nodes]
+    padding = 1  # Adjust padding as needed
+    ax.set_xlim(min(all_x) - padding, max(all_x) + padding)
+    ax.set_ylim(min(all_y) - padding, max(all_y) + padding)
+    ax.set_aspect("equal", adjustable="datalim")
+
+
 class Canvas:
     def __init__(
         self,
@@ -509,13 +644,6 @@ class Canvas:
     def figsize(self, value):
         self._figsize = value
 
-    # Magic methods
-    def __str__(self):
-        return f"Canvas(nrows={self.nrows}, ncols={self.ncols}, figsize={self.figsize})"
-
-    def __repr__(self):
-        return f"Canvas(nrows={self.nrows}, ncols={self.ncols}, caption={self.caption}, label={self.label})"
-
     def __getitem__(self, key):
         """Allows accessing subplots by tuple index."""
         row, col = key
@@ -530,140 +658,12 @@ class Canvas:
             raise IndexError("Subplot index out of range")
         self._subplot_matrix[row][col] = value
 
+    def __repr__(self):
+        return f"Canvas(nrows={self.nrows}, ncols={self.ncols}, caption={self.caption}, label={self.label})"
 
-def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
-    """
-    Plot all nodes and paths on the provided axis using Matplotlib.
-
-    Parameters:
-    - ax (matplotlib.axes.Axes): Axis on which to plot the figure.
-    """
-
-    # TODO: Specify which layers to retreive nodes from with layers=layers
-    nodes = tikzfigure.layers.get_nodes()
-    paths = tikzfigure.layers.get_paths()
-
-    for path in paths:
-        x_coords = [node.x for node in path.nodes]
-        y_coords = [node.y for node in path.nodes]
-
-        # Parse path color
-        path_color_spec = path.kwargs.get("color", "black")
-        try:
-            color = Color(path_color_spec).to_rgb()
-        except ValueError as e:
-            print(e)
-            color = "black"
-
-        # Parse line width
-        line_width_spec = path.kwargs.get("line_width", 1)
-        if isinstance(line_width_spec, str):
-            match = re.match(r"([\d.]+)(pt)?", line_width_spec)
-            if match:
-                line_width = float(match.group(1))
-            else:
-                print(
-                    f"Invalid line width specification: '{line_width_spec}', defaulting to 1",
-                )
-                line_width = 1
-        else:
-            line_width = float(line_width_spec)
-
-        # Parse line style using Linestyle class
-        style_spec = path.kwargs.get("style", "solid")
-        linestyle = Linestyle(style_spec).to_matplotlib()
-
-        ax.plot(
-            x_coords,
-            y_coords,
-            color=color,
-            linewidth=line_width,
-            linestyle=linestyle,
-            zorder=1,  # Lower z-order to place behind nodes
-        )
-
-    # Plot nodes after paths so they appear on top
-    for node in nodes:
-        # Determine shape and size
-        shape = node.kwargs.get("shape", "circle")
-        fill_color_spec = node.kwargs.get("fill", "white")
-        edge_color_spec = node.kwargs.get("draw", "black")
-        linewidth = float(node.kwargs.get("line_width", 1))
-        size = float(node.kwargs.get("size", 1))
-
-        # Parse colors using the Color class
-        try:
-            facecolor = Color(fill_color_spec).to_rgb()
-        except ValueError as e:
-            print(e)
-            facecolor = "white"
-
-        try:
-            edgecolor = Color(edge_color_spec).to_rgb()
-        except ValueError as e:
-            print(e)
-            edgecolor = "black"
-
-        # Plot shapes
-        if shape == "circle":
-            radius = size / 2
-            circle = patches.Circle(
-                (node.x, node.y),
-                radius,
-                facecolor=facecolor,
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                zorder=2,  # Higher z-order to place on top of paths
-            )
-            ax.add_patch(circle)
-        elif shape == "rectangle":
-            width = height = size
-            rect = patches.Rectangle(
-                (node.x - width / 2, node.y - height / 2),
-                width,
-                height,
-                facecolor=facecolor,
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                zorder=2,  # Higher z-order
-            )
-            ax.add_patch(rect)
-        else:
-            # Default to circle if shape is unknown
-            radius = size / 2
-            circle = patches.Circle(
-                (node.x, node.y),
-                radius,
-                facecolor=facecolor,
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                zorder=2,
-            )
-            ax.add_patch(circle)
-
-        # Add text inside the shape
-        if node.content:
-            ax.text(
-                node.x,
-                node.y,
-                node.content,
-                fontsize=10,
-                ha="center",
-                va="center",
-                wrap=True,
-                zorder=3,  # Even higher z-order for text
-            )
-
-    # Remove axes, ticks, and legend
-    ax.axis("off")
-
-    # Adjust plot limits
-    all_x = [node.x for node in nodes]
-    all_y = [node.y for node in nodes]
-    padding = 1  # Adjust padding as needed
-    ax.set_xlim(min(all_x) - padding, max(all_x) + padding)
-    ax.set_ylim(min(all_y) - padding, max(all_y) + padding)
-    ax.set_aspect("equal", adjustable="datalim")
+    # Magic methods
+    def __str__(self):
+        return f"Canvas(nrows={self.nrows}, ncols={self.ncols}, figsize={self.figsize})"
 
 
 if __name__ == "__main__":
