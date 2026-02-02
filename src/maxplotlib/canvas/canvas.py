@@ -164,7 +164,7 @@ class Canvas:
         label: str | None = None,
         fontsize: int = 14,
         dpi: int = 300,
-        width: str = "17cm",
+        width: str = "5cm",
         ratio: str = "golden",  # TODO Add literal
         gridspec_kw: Dict = {"wspace": 0.08, "hspace": 0.1},
     ):
@@ -243,7 +243,6 @@ class Canvas:
         subplot: LinePlot | None = None,
         row: int | None = None,
         col: int | None = None,
-        plot_type="plot",
         **kwargs,
     ):
         if row is not None and col is not None:
@@ -263,7 +262,6 @@ class Canvas:
             x_data=x_data,
             y_data=y_data,
             layer=layer,
-            plot_type=plot_type,
             **kwargs,
         )
 
