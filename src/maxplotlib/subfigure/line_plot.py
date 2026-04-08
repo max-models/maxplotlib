@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-from tikzpics import TikzFigure
+from tikzfigure import TikzFigure
 
 
 class Node:
@@ -221,7 +221,7 @@ class LinePlot:
             if self.ymax is not None:
                 ax.axis(ymax=self.ymax)
 
-    def plot_tikzpics(self, layers=None, verbose: bool = False) -> TikzFigure:
+    def plot_tikzfigure(self, layers=None, verbose: bool = False) -> TikzFigure:
 
         tikz_figure = TikzFigure()
         for layer_name, layer_lines in self.layered_line_data.items():

@@ -5,7 +5,7 @@ from typing import Dict
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 from plotly.subplots import make_subplots
-from tikzpics import TikzFigure
+from tikzfigure import TikzFigure
 
 from maxplotlib.backends.matplotlib.utils import (
     set_size,
@@ -415,8 +415,8 @@ class Canvas:
             )
         elif backend == "plotly":
             return self.plot_plotly(savefig=savefig)
-        elif backend == "tikzpics":
-            return self.plot_tikzpics(savefig=savefig)
+        elif backend == "tikzfigure":
+            return self.plot_tikzfigure(savefig=savefig)
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
@@ -438,8 +438,8 @@ class Canvas:
             # self._matplotlib_fig.show()
         elif backend == "plotly":
             self.plot_plotly(savefig=False)
-        elif backend == "tikzpics":
-            fig = self.plot_tikzpics(savefig=False, verbose=verbose)
+        elif backend == "tikzfigure":
+            fig = self.plot_tikzfigure(savefig=False, verbose=verbose)
             fig.show()
         else:
             raise ValueError("Invalid backend")
@@ -507,20 +507,20 @@ class Canvas:
         self._matplotlib_axes = axes
         return fig, axes
 
-    def plot_tikzpics(
+    def plot_tikzfigure(
         self,
         savefig: str | None = None,
         verbose: bool = False,
     ) -> TikzFigure:
         if len(self.subplots) > 1:
             raise NotImplementedError(
-                "Only one subplot is supported for tikzpics backend."
+                "Only one subplot is supported for tikzfigure backend."
             )
         for (row, col), line_plot in self.subplots.items():
             if verbose:
                 print(f"Plotting subplot at row {row}, col {col}")
                 print(f"{line_plot = }")
-            tikz_subplot = line_plot.plot_tikzpics(verbose=verbose)
+            tikz_subplot = line_plot.plot_tikzfigure(verbose=verbose)
         return tikz_subplot
 
     def plot_plotly(self, show=True, savefig=None, usetex=False):
