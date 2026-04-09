@@ -103,28 +103,139 @@ class LinePlot:
 
     def add_line(
         self,
-        x_data,
-        y_data,
+        x,
+        y,
         layer=0,
         **kwargs,
     ):
         """
-        Add a line to the plot.
+        Add a line to the subplot.
 
         Parameters:
-        label (str): Label for the line.
-        x_data (list): X-axis data.
-        y_data (list): Y-axis data.
-        **kwargs: Additional keyword arguments for the plot (e.g., color, linestyle).
+        x (array-like): X-axis data.
+        y (array-like): Y-axis data.
+        layer (int): Layer index (default 0).
+        **kwargs: Additional keyword arguments forwarded to the backend
+            (e.g., color, linestyle, label, linewidth).
         """
         ld = {
-            "x": np.array(x_data),
-            "y": np.array(y_data),
+            "x": np.array(x),
+            "y": np.array(y),
             "layer": layer,
             "plot_type": "plot",
             "kwargs": kwargs,
         }
         self._add(ld, layer)
+
+    def plot(self, x, y, layer=0, **kwargs):
+        """Matplotlib-style alias for :meth:`add_line`."""
+        self.add_line(x, y, layer=layer, **kwargs)
+
+    def scatter(self, x, y, layer=0, **kwargs):
+        """
+        Add a scatter plot to the subplot.
+
+        Parameters:
+        x (array-like): X-axis data.
+        y (array-like): Y-axis data.
+        layer (int): Layer index (default 0).
+        **kwargs: Additional keyword arguments forwarded to the backend
+            (e.g., color, marker, s, label).
+        """
+        ld = {
+            "x": np.array(x),
+            "y": np.array(y),
+            "layer": layer,
+            "plot_type": "scatter",
+            "kwargs": kwargs,
+        }
+        self._add(ld, layer)
+
+    def bar(self, x, height, layer=0, **kwargs):
+        """
+        Add a bar chart to the subplot.
+
+        Parameters:
+        x (array-like): X positions of the bars.
+        height (array-like): Heights of the bars.
+        layer (int): Layer index (default 0).
+        **kwargs: Additional keyword arguments forwarded to the backend
+            (e.g., color, width, label).
+        """
+        ld = {
+            "x": np.array(x),
+            "height": np.array(height),
+            "layer": layer,
+            "plot_type": "bar",
+            "kwargs": kwargs,
+        }
+        self._add(ld, layer)
+
+    def axhline(self, y=0, layer=0, **kwargs):
+        """
+        Add a horizontal line spanning the full width of the axes.
+
+        Parameters:
+        y (float): Y-coordinate of the line (default 0).
+        **kwargs: Additional keyword arguments (e.g., color, linestyle, label).
+        """
+        ld = {
+            "y": y,
+            "layer": layer,
+            "plot_type": "axhline",
+            "kwargs": kwargs,
+        }
+        self._add(ld, layer)
+
+    def axvline(self, x=0, layer=0, **kwargs):
+        """
+        Add a vertical line spanning the full height of the axes.
+
+        Parameters:
+        x (float): X-coordinate of the line (default 0).
+        **kwargs: Additional keyword arguments (e.g., color, linestyle, label).
+        """
+        ld = {
+            "x": x,
+            "layer": layer,
+            "plot_type": "axvline",
+            "kwargs": kwargs,
+        }
+        self._add(ld, layer)
+
+    def set_xlabel(self, label: str):
+        """Set the x-axis label."""
+        self._xlabel = label
+
+    def set_ylabel(self, label: str):
+        """Set the y-axis label."""
+        self._ylabel = label
+
+    def set_title(self, title: str):
+        """Set the subplot title."""
+        self._title = title
+
+    def set_xlim(self, left=None, right=None):
+        """Set the x-axis limits."""
+        if left is not None:
+            self._xmin = left
+        if right is not None:
+            self._xmax = right
+
+    def set_ylim(self, bottom=None, top=None):
+        """Set the y-axis limits."""
+        if bottom is not None:
+            self._ymin = bottom
+        if top is not None:
+            self._ymax = top
+
+    def set_grid(self, visible: bool = True):
+        """Show or hide the grid."""
+        self._grid = visible
+
+    def set_legend(self, visible: bool = True):
+        """Show or hide the legend."""
+        self._legend = visible
 
     def add_imshow(self, data, layer=0, **kwargs):
         ld = {
@@ -172,6 +283,7 @@ class LinePlot:
         Parameters:
         ax (matplotlib.axes.Axes): Axis on which to plot the lines.
         """
+        im = None
         for layer_name, layer_lines in self.layered_line_data.items():
             if layers and layer_name not in layers:
                 continue
@@ -188,6 +300,16 @@ class LinePlot:
                         (line["y"] + self._yshift) * self._yscale,
                         **line["kwargs"],
                     )
+                elif line["plot_type"] == "bar":
+                    ax.bar(
+                        (line["x"] + self._xshift) * self._xscale,
+                        line["height"] * self._yscale,
+                        **line["kwargs"],
+                    )
+                elif line["plot_type"] == "axhline":
+                    ax.axhline(y=line["y"], **line["kwargs"])
+                elif line["plot_type"] == "axvline":
+                    ax.axvline(x=line["x"], **line["kwargs"])
                 elif line["plot_type"] == "imshow":
                     im = ax.imshow(
                         line["data"],
@@ -202,24 +324,25 @@ class LinePlot:
                     divider = make_axes_locatable(ax)
                     cax = divider.append_axes("right", size="5%", pad=0.05)
                     plt.colorbar(im, cax=cax, label="Potential (V)")
-            if self._title:
-                ax.set_title(self._title)
-            if self._xlabel:
-                ax.set_xlabel(self._xlabel)
-            if self._ylabel:
-                ax.set_ylabel(self._ylabel)
-            if self._legend and len(self.line_data) > 0:
-                ax.legend()
-            if self._grid:
-                ax.grid()
-            if self.xmin is not None:
-                ax.axis(xmin=self.xmin)
-            if self.xmax is not None:
-                ax.axis(xmax=self.xmax)
-            if self.ymin is not None:
-                ax.axis(ymin=self.ymin)
-            if self.ymax is not None:
-                ax.axis(ymax=self.ymax)
+
+        if self._title:
+            ax.set_title(self._title)
+        if self._xlabel:
+            ax.set_xlabel(self._xlabel)
+        if self._ylabel:
+            ax.set_ylabel(self._ylabel)
+        if self._legend and len(self.line_data) > 0:
+            ax.legend()
+        if self._grid:
+            ax.grid()
+        if self.xmin is not None:
+            ax.axis(xmin=self.xmin)
+        if self.xmax is not None:
+            ax.axis(xmax=self.xmax)
+        if self.ymin is not None:
+            ax.axis(ymin=self.ymin)
+        if self.ymax is not None:
+            ax.axis(ymax=self.ymax)
 
     def plot_tikzfigure(self, layers=None, verbose: bool = False) -> TikzFigure:
 
@@ -243,7 +366,6 @@ class LinePlot:
         """
         Plot all lines using Plotly and return a list of traces for each line.
         """
-        # Mapping Matplotlib linestyles to Plotly dash styles
         linestyle_map = {
             "solid": "solid",
             "dashed": "dash",
@@ -253,20 +375,41 @@ class LinePlot:
 
         traces = []
         for line in self.line_data:
-            trace = go.Scatter(
-                x=(line["x"] + self._xshift) * self._xscale,
-                y=(line["y"] + self._yshift) * self._yscale,
-                mode="lines+markers" if "marker" in line["kwargs"] else "lines",
-                name=line["kwargs"].get("label", ""),
-                line=dict(
-                    color=line["kwargs"].get("color", None),
-                    dash=linestyle_map.get(
-                        line["kwargs"].get("linestyle", "solid"),
-                        "solid",
+            plot_type = line["plot_type"]
+            if plot_type == "plot":
+                trace = go.Scatter(
+                    x=(line["x"] + self._xshift) * self._xscale,
+                    y=(line["y"] + self._yshift) * self._yscale,
+                    mode="lines+markers" if "marker" in line["kwargs"] else "lines",
+                    name=line["kwargs"].get("label", ""),
+                    line=dict(
+                        color=line["kwargs"].get("color", None),
+                        dash=linestyle_map.get(
+                            line["kwargs"].get("linestyle", "solid"),
+                            "solid",
+                        ),
                     ),
-                ),
-            )
-            traces.append(trace)
+                )
+                traces.append(trace)
+            elif plot_type == "scatter":
+                trace = go.Scatter(
+                    x=(line["x"] + self._xshift) * self._xscale,
+                    y=(line["y"] + self._yshift) * self._yscale,
+                    mode="markers",
+                    name=line["kwargs"].get("label", ""),
+                    marker=dict(color=line["kwargs"].get("color", None)),
+                )
+                traces.append(trace)
+            elif plot_type == "bar":
+                trace = go.Bar(
+                    x=(line["x"] + self._xshift) * self._xscale,
+                    y=line["height"] * self._yscale,
+                    name=line["kwargs"].get("label", ""),
+                    marker_color=line["kwargs"].get("color", None),
+                )
+                traces.append(trace)
+            elif plot_type in ("axhline", "axvline"):
+                pass  # Rendered as shape annotations; no trace needed
 
         return traces
 
@@ -306,10 +449,7 @@ class LinePlot:
 
 
 if __name__ == "__main__":
-    plotter = LinePlot()
-    plotter.add_line("Line 1", [0, 1, 2, 3], [0, 1, 4, 9])
-    plotter.add_line("Line 2", [0, 1, 2, 3], [0, 2, 3, 6])
-    latex_code = plotter.generate_latex_plot()
-    with open("figures/latex_code.tex", "w") as f:
-        f.write(latex_code)
-    print(latex_code)
+    plotter = LinePlot(xlabel="x", ylabel="y", title="Example", legend=True)
+    plotter.plot([0, 1, 2, 3], [0, 1, 4, 9], label="Line 1")
+    plotter.plot([0, 1, 2, 3], [0, 2, 3, 6], linestyle="dashed", color="red", label="Line 2")
+    plotter.scatter([0, 1, 2, 3], [0, 0.5, 2, 5], label="Scatter")

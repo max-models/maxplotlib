@@ -237,8 +237,8 @@ class Canvas:
 
     def add_line(
         self,
-        x_data,
-        y_data,
+        x,
+        y,
         layer=0,
         subplot: LinePlot | None = None,
         row: int | None = None,
@@ -259,11 +259,90 @@ class Canvas:
             subplot = self.add_subplot(col=col, row=row)
 
         subplot.add_line(
-            x_data=x_data,
-            y_data=y_data,
+            x=x,
+            y=y,
             layer=layer,
             **kwargs,
         )
+
+    def _get_or_create_subplot(self, row, col):
+        """Return the subplot at (row, col), creating it if needed."""
+        if row is not None and col is not None:
+            try:
+                sp = self._subplot_matrix[row][col]
+            except (IndexError, KeyError):
+                raise ValueError("Invalid subplot position.")
+        else:
+            row, col = 0, 0
+            sp = self._subplot_matrix[row][col]
+        if sp is None:
+            row, col = self.generate_new_rowcol(row, col)
+            sp = self.add_subplot(col=col, row=row)
+        return sp
+
+    def scatter(
+        self,
+        x,
+        y,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """
+        Add a scatter plot to the canvas (matplotlib-style convenience method).
+
+        Parameters:
+        x (array-like): X-axis data.
+        y (array-like): Y-axis data.
+        layer (int): Layer index (default 0).
+        row, col (int): Subplot position (default top-left).
+        **kwargs: Forwarded to the backend (e.g., color, marker, s, label).
+        """
+        sp = self._get_or_create_subplot(row, col)
+        sp.scatter(x, y, layer=layer, **kwargs)
+
+    def bar(
+        self,
+        x,
+        height,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """
+        Add a bar chart to the canvas (matplotlib-style convenience method).
+
+        Parameters:
+        x (array-like): X positions of the bars.
+        height (array-like): Heights of the bars.
+        layer (int): Layer index (default 0).
+        row, col (int): Subplot position (default top-left).
+        **kwargs: Forwarded to the backend (e.g., color, width, label).
+        """
+        sp = self._get_or_create_subplot(row, col)
+        sp.bar(x, height, layer=layer, **kwargs)
+
+    def set_xlabel(self, label: str, row: int | None = None, col: int | None = None):
+        """Set the x-axis label for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_xlabel(label)
+
+    def set_ylabel(self, label: str, row: int | None = None, col: int | None = None):
+        """Set the y-axis label for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_ylabel(label)
+
+    def set_title(self, title: str, row: int | None = None, col: int | None = None):
+        """Set the title for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_title(title)
+
+    def set_xlim(self, left=None, right=None, row: int | None = None, col: int | None = None):
+        """Set the x-axis limits for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_xlim(left, right)
+
+    def set_ylim(self, bottom=None, top=None, row: int | None = None, col: int | None = None):
+        """Set the y-axis limits for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_ylim(bottom, top)
 
     def add_tikzfigure(
         self,
@@ -667,6 +746,6 @@ class Canvas:
 if __name__ == "__main__":
     c = Canvas(ncols=2, nrows=2)
     sp = c.add_subplot()
-    sp.add_line("Line 1", [0, 1, 2, 3], [0, 1, 4, 9])
-    c.plot()
+    sp.plot([0, 1, 2, 3], [0, 1, 4, 9], label="Line 1")
+    c.plot(backend="matplotlib")
     print("done")
