@@ -36,7 +36,7 @@ docs = [
 dev = [
     "maxplotlibx[test,docs]",
     "ruff",
-    "black",
+    "black[jupyter]",
     "isort",
     "jupyterlab",
     "nbstripout",

@@ -465,8 +465,16 @@ class LinePlot:
                 elif line["plot_type"] == "fill_between":
                     ax.fill_between(
                         (line["x"] + self._xshift) * self._xscale,
-                        line["y1"] if np.isscalar(line["y1"]) else (line["y1"] + self._yshift) * self._yscale,
-                        line["y2"] if np.isscalar(line["y2"]) else (line["y2"] + self._yshift) * self._yscale,
+                        (
+                            line["y1"]
+                            if np.isscalar(line["y1"])
+                            else (line["y1"] + self._yshift) * self._yscale
+                        ),
+                        (
+                            line["y2"]
+                            if np.isscalar(line["y2"])
+                            else (line["y2"] + self._yshift) * self._yscale
+                        ),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "errorbar":
@@ -645,5 +653,7 @@ class LinePlot:
 if __name__ == "__main__":
     plotter = LinePlot(xlabel="x", ylabel="y", title="Example", legend=True)
     plotter.plot([0, 1, 2, 3], [0, 1, 4, 9], label="Line 1")
-    plotter.plot([0, 1, 2, 3], [0, 2, 3, 6], linestyle="dashed", color="red", label="Line 2")
+    plotter.plot(
+        [0, 1, 2, 3], [0, 2, 3, 6], linestyle="dashed", color="red", label="Line 2"
+    )
     plotter.scatter([0, 1, 2, 3], [0, 0.5, 2, 5], label="Scatter")

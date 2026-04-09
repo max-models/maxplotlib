@@ -384,19 +384,27 @@ class Canvas:
         """Set the title for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_title(title)
 
-    def set_xlim(self, left=None, right=None, row: int | None = None, col: int | None = None):
+    def set_xlim(
+        self, left=None, right=None, row: int | None = None, col: int | None = None
+    ):
         """Set the x-axis limits for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_xlim(left, right)
 
-    def set_ylim(self, bottom=None, top=None, row: int | None = None, col: int | None = None):
+    def set_ylim(
+        self, bottom=None, top=None, row: int | None = None, col: int | None = None
+    ):
         """Set the y-axis limits for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_ylim(bottom, top)
 
-    def set_grid(self, visible: bool = True, row: int | None = None, col: int | None = None):
+    def set_grid(
+        self, visible: bool = True, row: int | None = None, col: int | None = None
+    ):
         """Show or hide the grid for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_grid(visible)
 
-    def set_legend(self, visible: bool = True, row: int | None = None, col: int | None = None):
+    def set_legend(
+        self, visible: bool = True, row: int | None = None, col: int | None = None
+    ):
         """Show or hide the legend for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_legend(visible)
 
@@ -408,43 +416,109 @@ class Canvas:
         """Set y-axis scale ('linear', 'log', 'symlog') for a subplot."""
         self._get_or_create_subplot(row, col).set_yscale(scale)
 
-    def set_xticks(self, ticks, labels=None, row: int | None = None, col: int | None = None):
+    def set_xticks(
+        self, ticks, labels=None, row: int | None = None, col: int | None = None
+    ):
         """Set x-axis tick positions (and optional labels) for a subplot."""
         self._get_or_create_subplot(row, col).set_xticks(ticks, labels)
 
-    def set_yticks(self, ticks, labels=None, row: int | None = None, col: int | None = None):
+    def set_yticks(
+        self, ticks, labels=None, row: int | None = None, col: int | None = None
+    ):
         """Set y-axis tick positions (and optional labels) for a subplot."""
         self._get_or_create_subplot(row, col).set_yticks(ticks, labels)
 
-    def fill_between(self, x, y1, y2=0, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+    def fill_between(
+        self,
+        x,
+        y1,
+        y2=0,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
         """Fill the region between two curves on a subplot."""
-        self._get_or_create_subplot(row, col).fill_between(x, y1, y2, layer=layer, **kwargs)
+        self._get_or_create_subplot(row, col).fill_between(
+            x, y1, y2, layer=layer, **kwargs
+        )
 
-    def errorbar(self, x, y, yerr=None, xerr=None, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+    def errorbar(
+        self,
+        x,
+        y,
+        yerr=None,
+        xerr=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
         """Add an error-bar line to a subplot."""
-        self._get_or_create_subplot(row, col).errorbar(x, y, yerr=yerr, xerr=xerr, layer=layer, **kwargs)
+        self._get_or_create_subplot(row, col).errorbar(
+            x, y, yerr=yerr, xerr=xerr, layer=layer, **kwargs
+        )
 
-    def axhline(self, y=0, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+    def axhline(
+        self, y=0, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
         """Add a full-width horizontal reference line to a subplot."""
         self._get_or_create_subplot(row, col).axhline(y=y, layer=layer, **kwargs)
 
-    def axvline(self, x=0, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+    def axvline(
+        self, x=0, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
         """Add a full-height vertical reference line to a subplot."""
         self._get_or_create_subplot(row, col).axvline(x=x, layer=layer, **kwargs)
 
-    def hlines(self, y, xmin, xmax, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+    def hlines(
+        self,
+        y,
+        xmin,
+        xmax,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
         """Add horizontal lines at specified y positions to a subplot."""
-        self._get_or_create_subplot(row, col).hlines(y, xmin, xmax, layer=layer, **kwargs)
+        self._get_or_create_subplot(row, col).hlines(
+            y, xmin, xmax, layer=layer, **kwargs
+        )
 
-    def vlines(self, x, ymin, ymax, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+    def vlines(
+        self,
+        x,
+        ymin,
+        ymax,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
         """Add vertical lines at specified x positions to a subplot."""
-        self._get_or_create_subplot(row, col).vlines(x, ymin, ymax, layer=layer, **kwargs)
+        self._get_or_create_subplot(row, col).vlines(
+            x, ymin, ymax, layer=layer, **kwargs
+        )
 
-    def annotate(self, text, xy, xytext=None, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+    def annotate(
+        self,
+        text,
+        xy,
+        xytext=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
         """Add an annotation (with optional arrow) to a subplot."""
-        self._get_or_create_subplot(row, col).annotate(text, xy, xytext=xytext, layer=layer, **kwargs)
+        self._get_or_create_subplot(row, col).annotate(
+            text, xy, xytext=xytext, layer=layer, **kwargs
+        )
 
-    def text(self, x, y, s, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+    def text(
+        self, x, y, s, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
         """Add a text label at (x, y) on a subplot."""
         self._get_or_create_subplot(row, col).text(x, y, s, layer=layer, **kwargs)
 
