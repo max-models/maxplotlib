@@ -199,6 +199,8 @@ class Canvas:
         self._plotted = False
         self._matplotlib_fig = None
         self._matplotlib_axes = None
+        self._suptitle: str | None = None
+        self._suptitle_kwargs: dict = {}
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
@@ -207,14 +209,60 @@ class Canvas:
 
         self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
 
+    # ------------------------------------------------------------------
+    # Factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def subplots(
+        cls,
+        nrows: int = 1,
+        ncols: int = 1,
+        squeeze: bool = True,
+        **canvas_kwargs,
+    ):
+        """
+        Create a Canvas pre-filled with LinePlot subplots, mirroring
+        ``matplotlib.pyplot.subplots()``.
+
+        Parameters:
+        nrows, ncols (int): Grid dimensions.
+        squeeze (bool): If True, return a single subplot instead of a 1-element
+            list when the grid is 1×1 or when one dimension is 1.
+        **canvas_kwargs: Forwarded to the Canvas constructor.
+
+        Returns:
+        (canvas, axes): A tuple of the Canvas and either a single LinePlot,
+            a flat list (when one dimension is 1 and squeeze=True), or a
+            2-D list of LinePlots.
+
+        Examples:
+        >>> canvas, ax = Canvas.subplots()
+        >>> canvas, (ax1, ax2) = Canvas.subplots(ncols=2)
+        >>> canvas, axes = Canvas.subplots(nrows=2, ncols=2)  # axes[row][col]
+        """
+        canvas = cls(nrows=nrows, ncols=ncols, **canvas_kwargs)
+        axes = [
+            [canvas.add_subplot(row=r, col=c) for c in range(ncols)]
+            for r in range(nrows)
+        ]
+        if squeeze:
+            if nrows == 1 and ncols == 1:
+                return canvas, axes[0][0]
+            if nrows == 1:
+                return canvas, axes[0]
+            if ncols == 1:
+                return canvas, [row[0] for row in axes]
+        return canvas, axes
+
     @property
-    def subplots(self):
+    def _subplot_dict(self):
         return self._subplots
 
     @property
     def layers(self):
         layers = []
-        for (row, col), subplot in self.subplots.items():
+        for (row, col), subplot in self._subplot_dict.items():
             layers.extend(subplot.layers)
         return list(set(layers))
 
@@ -343,6 +391,99 @@ class Canvas:
     def set_ylim(self, bottom=None, top=None, row: int | None = None, col: int | None = None):
         """Set the y-axis limits for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_ylim(bottom, top)
+
+    def set_grid(self, visible: bool = True, row: int | None = None, col: int | None = None):
+        """Show or hide the grid for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_grid(visible)
+
+    def set_legend(self, visible: bool = True, row: int | None = None, col: int | None = None):
+        """Show or hide the legend for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_legend(visible)
+
+    def set_xscale(self, scale: str, row: int | None = None, col: int | None = None):
+        """Set x-axis scale ('linear', 'log', 'symlog') for a subplot."""
+        self._get_or_create_subplot(row, col).set_xscale(scale)
+
+    def set_yscale(self, scale: str, row: int | None = None, col: int | None = None):
+        """Set y-axis scale ('linear', 'log', 'symlog') for a subplot."""
+        self._get_or_create_subplot(row, col).set_yscale(scale)
+
+    def set_xticks(self, ticks, labels=None, row: int | None = None, col: int | None = None):
+        """Set x-axis tick positions (and optional labels) for a subplot."""
+        self._get_or_create_subplot(row, col).set_xticks(ticks, labels)
+
+    def set_yticks(self, ticks, labels=None, row: int | None = None, col: int | None = None):
+        """Set y-axis tick positions (and optional labels) for a subplot."""
+        self._get_or_create_subplot(row, col).set_yticks(ticks, labels)
+
+    def fill_between(self, x, y1, y2=0, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+        """Fill the region between two curves on a subplot."""
+        self._get_or_create_subplot(row, col).fill_between(x, y1, y2, layer=layer, **kwargs)
+
+    def errorbar(self, x, y, yerr=None, xerr=None, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+        """Add an error-bar line to a subplot."""
+        self._get_or_create_subplot(row, col).errorbar(x, y, yerr=yerr, xerr=xerr, layer=layer, **kwargs)
+
+    def axhline(self, y=0, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+        """Add a full-width horizontal reference line to a subplot."""
+        self._get_or_create_subplot(row, col).axhline(y=y, layer=layer, **kwargs)
+
+    def axvline(self, x=0, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+        """Add a full-height vertical reference line to a subplot."""
+        self._get_or_create_subplot(row, col).axvline(x=x, layer=layer, **kwargs)
+
+    def hlines(self, y, xmin, xmax, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+        """Add horizontal lines at specified y positions to a subplot."""
+        self._get_or_create_subplot(row, col).hlines(y, xmin, xmax, layer=layer, **kwargs)
+
+    def vlines(self, x, ymin, ymax, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+        """Add vertical lines at specified x positions to a subplot."""
+        self._get_or_create_subplot(row, col).vlines(x, ymin, ymax, layer=layer, **kwargs)
+
+    def annotate(self, text, xy, xytext=None, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+        """Add an annotation (with optional arrow) to a subplot."""
+        self._get_or_create_subplot(row, col).annotate(text, xy, xytext=xytext, layer=layer, **kwargs)
+
+    def text(self, x, y, s, layer=0, row: int | None = None, col: int | None = None, **kwargs):
+        """Add a text label at (x, y) on a subplot."""
+        self._get_or_create_subplot(row, col).text(x, y, s, layer=layer, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Multi-subplot helpers
+    # ------------------------------------------------------------------
+
+    def subplot(self, row: int = 0, col: int = 0) -> LinePlot:
+        """
+        Return the LinePlot at position (row, col).
+
+        Raises ValueError if no subplot has been created there yet.
+        """
+        sp = self._subplot_matrix[row][col]
+        if sp is None:
+            raise ValueError(
+                f"No subplot at ({row}, {col}). "
+                "Call add_subplot() or use Canvas.subplots() first."
+            )
+        return sp
+
+    def iter_subplots(self):
+        """Yield (row, col, subplot) for every initialized subplot, row-major."""
+        for r in range(self.nrows):
+            for c in range(self.ncols):
+                sp = self._subplot_matrix[r][c]
+                if sp is not None:
+                    yield r, c, sp
+
+    def suptitle(self, title: str, **kwargs):
+        """
+        Set a figure-level title (rendered above all subplots).
+
+        Parameters:
+        title (str): Title text.
+        **kwargs: Forwarded to matplotlib's fig.suptitle (e.g., fontsize, y).
+        """
+        self._suptitle = title
+        self._suptitle_kwargs = kwargs
 
     def add_tikzfigure(
         self,
@@ -502,6 +643,7 @@ class Canvas:
     def show(
         self,
         backend: Backends = "matplotlib",
+        layers: list | None = None,
         verbose: bool = False,
     ):
         if verbose:
@@ -511,7 +653,7 @@ class Canvas:
             self.plot(
                 backend="matplotlib",
                 savefig=False,
-                layers=None,
+                layers=layers,
                 verbose=verbose,
             )
             # self._matplotlib_fig.show()
@@ -571,7 +713,7 @@ class Canvas:
             dpi=self.dpi,
         )
 
-        for (row, col), subplot in self.subplots.items():
+        for (row, col), subplot in self._subplot_dict.items():
             ax = axes[row][col]
             if isinstance(subplot, TikzFigure):
                 plot_matplotlib(subplot, ax, layers=layers)
@@ -579,6 +721,9 @@ class Canvas:
                 subplot.plot_matplotlib(ax, layers=layers)
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
+
+        if self._suptitle:
+            fig.suptitle(self._suptitle, **self._suptitle_kwargs)
 
         # Set caption, labels, etc., if needed
         self._plotted = True
@@ -591,11 +736,11 @@ class Canvas:
         savefig: str | None = None,
         verbose: bool = False,
     ) -> TikzFigure:
-        if len(self.subplots) > 1:
+        if len(self._subplot_dict) > 1:
             raise NotImplementedError(
                 "Only one subplot is supported for tikzfigure backend."
             )
-        for (row, col), line_plot in self.subplots.items():
+        for (row, col), line_plot in self._subplot_dict.items():
             if verbose:
                 print(f"Plotting subplot at row {row}, col {col}")
                 print(f"{line_plot = }")
@@ -630,31 +775,45 @@ class Canvas:
             rows=self.nrows,
             cols=self.ncols,
             subplot_titles=[
-                f"Subplot ({row}, {col})" for (row, col) in self.subplots.keys()
+                sp._title or f"({row}, {col})"
+                for (row, col), sp in self._subplot_dict.items()
             ],
         )
 
-        # Plot each subplot
-        for (row, col), line_plot in self.subplots.items():
-            traces = line_plot.plot_plotly()  # Generate Plotly traces for the line_plot
+        # Plot each subplot and propagate axis labels/scale
+        axis_index = 1
+        for (row, col), line_plot in self._subplot_dict.items():
+            traces = line_plot.plot_plotly()
             for trace in traces:
                 fig.add_trace(trace, row=row + 1, col=col + 1)
 
+            # Axis label keys are "xaxis", "xaxis2", "xaxis3", ...
+            xkey = "xaxis" if axis_index == 1 else f"xaxis{axis_index}"
+            ykey = "yaxis" if axis_index == 1 else f"yaxis{axis_index}"
+            layout_patch = {}
+            if line_plot._xlabel:
+                layout_patch[xkey] = {"title": {"text": line_plot._xlabel}}
+            if line_plot._ylabel:
+                layout_patch[ykey] = {"title": {"text": line_plot._ylabel}}
+            if line_plot._xaxis_scale == "log":
+                layout_patch.setdefault(xkey, {})["type"] = "log"
+            if line_plot._yaxis_scale == "log":
+                layout_patch.setdefault(ykey, {})["type"] = "log"
+            if layout_patch:
+                fig.update_layout(**layout_patch)
+            axis_index += 1
+
         # Update layout settings
         fig.update_layout(
-            # width=fig_width,
-            # height=fig_height,
             font=dict(size=self.fontsize),
-            margin=dict(l=10, r=10, t=40, b=10),  # Adjust margins if needed
+            margin=dict(l=10, r=10, t=40, b=10),
         )
+        if self._suptitle:
+            fig.update_layout(title=dict(text=self._suptitle, x=0.5))
 
-        # Optionally save the figure
         if savefig:
             fig.write_image(savefig)
 
-        # Show or return the figure
-        # if show:
-        #     fig.show()
         return fig
 
     # Property getters
