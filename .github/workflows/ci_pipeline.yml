@@ -37,4 +37,7 @@ jobs:
       
       - name: Test tutorials
         run: |
-          jupyter nbconvert --to notebook --execute tutorials/*.ipynb --output-dir=/tmp --ExecutePreprocessor.timeout=300
+          # tutorial_07_tikz.ipynb requires pdflatex — skip it in CI
+          jupyter nbconvert --to notebook --execute \
+            $(ls tutorials/*.ipynb | grep -v tutorial_07_tikz) \
+            --output-dir=/tmp --ExecutePreprocessor.timeout=300
