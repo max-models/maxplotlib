@@ -39,7 +39,10 @@ extensions = [
 ]
 
 templates_path = ["_templates"]
-exclude_patterns = []
+exclude_patterns = [
+    # tutorial_07_tikz.ipynb requires pdflatex to render — skip during docs build
+    "tutorials/tutorial_07_tikz.ipynb",
+]
 
 
 # -- Options for HTML output -------------------------------------------------

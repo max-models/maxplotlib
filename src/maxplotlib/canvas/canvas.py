@@ -5,7 +5,7 @@ from typing import Dict
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 from plotly.subplots import make_subplots
-from tikzpics import TikzFigure
+from tikzfigure import TikzFigure
 
 from maxplotlib.backends.matplotlib.utils import (
     set_size,
@@ -16,6 +16,141 @@ from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
 from maxplotlib.subfigure.line_plot import LinePlot
 from maxplotlib.utils.options import Backends
+
+
+def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
+    """
+    Plot all nodes and paths on the provided axis using Matplotlib.
+
+    Parameters:
+    - ax (matplotlib.axes.Axes): Axis on which to plot the figure.
+    """
+
+    # TODO: Specify which layers to retreive nodes from with layers=layers
+    nodes = tikzfigure.layers.get_nodes()
+    paths = tikzfigure.layers.get_paths()
+
+    for path in paths:
+        x_coords = [node.x for node in path.nodes]
+        y_coords = [node.y for node in path.nodes]
+
+        # Parse path color
+        path_color_spec = path.kwargs.get("color", "black")
+        try:
+            color = Color(path_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            color = "black"
+
+        # Parse line width
+        line_width_spec = path.kwargs.get("line_width", 1)
+        if isinstance(line_width_spec, str):
+            match = re.match(r"([\d.]+)(pt)?", line_width_spec)
+            if match:
+                line_width = float(match.group(1))
+            else:
+                print(
+                    f"Invalid line width specification: '{line_width_spec}', defaulting to 1",
+                )
+                line_width = 1
+        else:
+            line_width = float(line_width_spec)
+
+        # Parse line style using Linestyle class
+        style_spec = path.kwargs.get("style", "solid")
+        linestyle = Linestyle(style_spec).to_matplotlib()
+
+        ax.plot(
+            x_coords,
+            y_coords,
+            color=color,
+            linewidth=line_width,
+            linestyle=linestyle,
+            zorder=1,  # Lower z-order to place behind nodes
+        )
+
+    # Plot nodes after paths so they appear on top
+    for node in nodes:
+        # Determine shape and size
+        shape = node.kwargs.get("shape", "circle")
+        fill_color_spec = node.kwargs.get("fill", "white")
+        edge_color_spec = node.kwargs.get("draw", "black")
+        linewidth = float(node.kwargs.get("line_width", 1))
+        size = float(node.kwargs.get("size", 1))
+
+        # Parse colors using the Color class
+        try:
+            facecolor = Color(fill_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            facecolor = "white"
+
+        try:
+            edgecolor = Color(edge_color_spec).to_rgb()
+        except ValueError as e:
+            print(e)
+            edgecolor = "black"
+
+        # Plot shapes
+        if shape == "circle":
+            radius = size / 2
+            circle = patches.Circle(
+                (node.x, node.y),
+                radius,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,  # Higher z-order to place on top of paths
+            )
+            ax.add_patch(circle)
+        elif shape == "rectangle":
+            width = height = size
+            rect = patches.Rectangle(
+                (node.x - width / 2, node.y - height / 2),
+                width,
+                height,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,  # Higher z-order
+            )
+            ax.add_patch(rect)
+        else:
+            # Default to circle if shape is unknown
+            radius = size / 2
+            circle = patches.Circle(
+                (node.x, node.y),
+                radius,
+                facecolor=facecolor,
+                edgecolor=edgecolor,
+                linewidth=linewidth,
+                zorder=2,
+            )
+            ax.add_patch(circle)
+
+        # Add text inside the shape
+        if node.content:
+            ax.text(
+                node.x,
+                node.y,
+                node.content,
+                fontsize=10,
+                ha="center",
+                va="center",
+                wrap=True,
+                zorder=3,  # Even higher z-order for text
+            )
+
+    # Remove axes, ticks, and legend
+    ax.axis("off")
+
+    # Adjust plot limits
+    all_x = [node.x for node in nodes]
+    all_y = [node.y for node in nodes]
+    padding = 1  # Adjust padding as needed
+    ax.set_xlim(min(all_x) - padding, max(all_x) + padding)
+    ax.set_ylim(min(all_y) - padding, max(all_y) + padding)
+    ax.set_aspect("equal", adjustable="datalim")
 
 
 class Canvas:
@@ -29,7 +164,7 @@ class Canvas:
         label: str | None = None,
         fontsize: int = 14,
         dpi: int = 300,
-        width: str = "17cm",
+        width: str = "5cm",
         ratio: str = "golden",  # TODO Add literal
         gridspec_kw: Dict = {"wspace": 0.08, "hspace": 0.1},
     ):
@@ -62,6 +197,10 @@ class Canvas:
         self._ratio = ratio
         self._gridspec_kw = gridspec_kw
         self._plotted = False
+        self._matplotlib_fig = None
+        self._matplotlib_axes = None
+        self._suptitle: str | None = None
+        self._suptitle_kwargs: dict = {}
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
@@ -70,14 +209,60 @@ class Canvas:
 
         self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
 
+    # ------------------------------------------------------------------
+    # Factory
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def subplots(
+        cls,
+        nrows: int = 1,
+        ncols: int = 1,
+        squeeze: bool = True,
+        **canvas_kwargs,
+    ):
+        """
+        Create a Canvas pre-filled with LinePlot subplots, mirroring
+        ``matplotlib.pyplot.subplots()``.
+
+        Parameters:
+        nrows, ncols (int): Grid dimensions.
+        squeeze (bool): If True, return a single subplot instead of a 1-element
+            list when the grid is 1×1 or when one dimension is 1.
+        **canvas_kwargs: Forwarded to the Canvas constructor.
+
+        Returns:
+        (canvas, axes): A tuple of the Canvas and either a single LinePlot,
+            a flat list (when one dimension is 1 and squeeze=True), or a
+            2-D list of LinePlots.
+
+        Examples:
+        >>> canvas, ax = Canvas.subplots()
+        >>> canvas, (ax1, ax2) = Canvas.subplots(ncols=2)
+        >>> canvas, axes = Canvas.subplots(nrows=2, ncols=2)  # axes[row][col]
+        """
+        canvas = cls(nrows=nrows, ncols=ncols, **canvas_kwargs)
+        axes = [
+            [canvas.add_subplot(row=r, col=c) for c in range(ncols)]
+            for r in range(nrows)
+        ]
+        if squeeze:
+            if nrows == 1 and ncols == 1:
+                return canvas, axes[0][0]
+            if nrows == 1:
+                return canvas, axes[0]
+            if ncols == 1:
+                return canvas, [row[0] for row in axes]
+        return canvas, axes
+
     @property
-    def subplots(self):
+    def _subplot_dict(self):
         return self._subplots
 
     @property
     def layers(self):
         layers = []
-        for (row, col), subplot in self.subplots.items():
+        for (row, col), subplot in self._subplot_dict.items():
             layers.extend(subplot.layers)
         return list(set(layers))
 
@@ -100,13 +285,12 @@ class Canvas:
 
     def add_line(
         self,
-        x_data,
-        y_data,
+        x,
+        y,
         layer=0,
         subplot: LinePlot | None = None,
         row: int | None = None,
         col: int | None = None,
-        plot_type="plot",
         **kwargs,
     ):
         if row is not None and col is not None:
@@ -123,12 +307,257 @@ class Canvas:
             subplot = self.add_subplot(col=col, row=row)
 
         subplot.add_line(
-            x_data=x_data,
-            y_data=y_data,
+            x=x,
+            y=y,
             layer=layer,
-            plot_type=plot_type,
             **kwargs,
         )
+
+    def _get_or_create_subplot(self, row, col):
+        """Return the subplot at (row, col), creating it if needed."""
+        if row is not None and col is not None:
+            try:
+                sp = self._subplot_matrix[row][col]
+            except (IndexError, KeyError):
+                raise ValueError("Invalid subplot position.")
+        else:
+            row, col = 0, 0
+            sp = self._subplot_matrix[row][col]
+        if sp is None:
+            row, col = self.generate_new_rowcol(row, col)
+            sp = self.add_subplot(col=col, row=row)
+        return sp
+
+    def scatter(
+        self,
+        x,
+        y,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """
+        Add a scatter plot to the canvas (matplotlib-style convenience method).
+
+        Parameters:
+        x (array-like): X-axis data.
+        y (array-like): Y-axis data.
+        layer (int): Layer index (default 0).
+        row, col (int): Subplot position (default top-left).
+        **kwargs: Forwarded to the backend (e.g., color, marker, s, label).
+        """
+        sp = self._get_or_create_subplot(row, col)
+        sp.scatter(x, y, layer=layer, **kwargs)
+
+    def bar(
+        self,
+        x,
+        height,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """
+        Add a bar chart to the canvas (matplotlib-style convenience method).
+
+        Parameters:
+        x (array-like): X positions of the bars.
+        height (array-like): Heights of the bars.
+        layer (int): Layer index (default 0).
+        row, col (int): Subplot position (default top-left).
+        **kwargs: Forwarded to the backend (e.g., color, width, label).
+        """
+        sp = self._get_or_create_subplot(row, col)
+        sp.bar(x, height, layer=layer, **kwargs)
+
+    def set_xlabel(self, label: str, row: int | None = None, col: int | None = None):
+        """Set the x-axis label for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_xlabel(label)
+
+    def set_ylabel(self, label: str, row: int | None = None, col: int | None = None):
+        """Set the y-axis label for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_ylabel(label)
+
+    def set_title(self, title: str, row: int | None = None, col: int | None = None):
+        """Set the title for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_title(title)
+
+    def set_xlim(
+        self, left=None, right=None, row: int | None = None, col: int | None = None
+    ):
+        """Set the x-axis limits for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_xlim(left, right)
+
+    def set_ylim(
+        self, bottom=None, top=None, row: int | None = None, col: int | None = None
+    ):
+        """Set the y-axis limits for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_ylim(bottom, top)
+
+    def set_grid(
+        self, visible: bool = True, row: int | None = None, col: int | None = None
+    ):
+        """Show or hide the grid for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_grid(visible)
+
+    def set_legend(
+        self, visible: bool = True, row: int | None = None, col: int | None = None
+    ):
+        """Show or hide the legend for a subplot (default top-left)."""
+        self._get_or_create_subplot(row, col).set_legend(visible)
+
+    def set_xscale(self, scale: str, row: int | None = None, col: int | None = None):
+        """Set x-axis scale ('linear', 'log', 'symlog') for a subplot."""
+        self._get_or_create_subplot(row, col).set_xscale(scale)
+
+    def set_yscale(self, scale: str, row: int | None = None, col: int | None = None):
+        """Set y-axis scale ('linear', 'log', 'symlog') for a subplot."""
+        self._get_or_create_subplot(row, col).set_yscale(scale)
+
+    def set_xticks(
+        self, ticks, labels=None, row: int | None = None, col: int | None = None
+    ):
+        """Set x-axis tick positions (and optional labels) for a subplot."""
+        self._get_or_create_subplot(row, col).set_xticks(ticks, labels)
+
+    def set_yticks(
+        self, ticks, labels=None, row: int | None = None, col: int | None = None
+    ):
+        """Set y-axis tick positions (and optional labels) for a subplot."""
+        self._get_or_create_subplot(row, col).set_yticks(ticks, labels)
+
+    def fill_between(
+        self,
+        x,
+        y1,
+        y2=0,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Fill the region between two curves on a subplot."""
+        self._get_or_create_subplot(row, col).fill_between(
+            x, y1, y2, layer=layer, **kwargs
+        )
+
+    def errorbar(
+        self,
+        x,
+        y,
+        yerr=None,
+        xerr=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add an error-bar line to a subplot."""
+        self._get_or_create_subplot(row, col).errorbar(
+            x, y, yerr=yerr, xerr=xerr, layer=layer, **kwargs
+        )
+
+    def axhline(
+        self, y=0, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a full-width horizontal reference line to a subplot."""
+        self._get_or_create_subplot(row, col).axhline(y=y, layer=layer, **kwargs)
+
+    def axvline(
+        self, x=0, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a full-height vertical reference line to a subplot."""
+        self._get_or_create_subplot(row, col).axvline(x=x, layer=layer, **kwargs)
+
+    def hlines(
+        self,
+        y,
+        xmin,
+        xmax,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add horizontal lines at specified y positions to a subplot."""
+        self._get_or_create_subplot(row, col).hlines(
+            y, xmin, xmax, layer=layer, **kwargs
+        )
+
+    def vlines(
+        self,
+        x,
+        ymin,
+        ymax,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add vertical lines at specified x positions to a subplot."""
+        self._get_or_create_subplot(row, col).vlines(
+            x, ymin, ymax, layer=layer, **kwargs
+        )
+
+    def annotate(
+        self,
+        text,
+        xy,
+        xytext=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add an annotation (with optional arrow) to a subplot."""
+        self._get_or_create_subplot(row, col).annotate(
+            text, xy, xytext=xytext, layer=layer, **kwargs
+        )
+
+    def text(
+        self, x, y, s, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a text label at (x, y) on a subplot."""
+        self._get_or_create_subplot(row, col).text(x, y, s, layer=layer, **kwargs)
+
+    # ------------------------------------------------------------------
+    # Multi-subplot helpers
+    # ------------------------------------------------------------------
+
+    def subplot(self, row: int = 0, col: int = 0) -> LinePlot:
+        """
+        Return the LinePlot at position (row, col).
+
+        Raises ValueError if no subplot has been created there yet.
+        """
+        sp = self._subplot_matrix[row][col]
+        if sp is None:
+            raise ValueError(
+                f"No subplot at ({row}, {col}). "
+                "Call add_subplot() or use Canvas.subplots() first."
+            )
+        return sp
+
+    def iter_subplots(self):
+        """Yield (row, col, subplot) for every initialized subplot, row-major."""
+        for r in range(self.nrows):
+            for c in range(self.ncols):
+                sp = self._subplot_matrix[r][c]
+                if sp is not None:
+                    yield r, c, sp
+
+    def suptitle(self, title: str, **kwargs):
+        """
+        Set a figure-level title (rendered above all subplots).
+
+        Parameters:
+        title (str): Title text.
+        **kwargs: Forwarded to matplotlib's fig.suptitle (e.g., fontsize, y).
+        """
+        self._suptitle = title
+        self._suptitle_kwargs = kwargs
 
     def add_tikzfigure(
         self,
@@ -280,14 +709,15 @@ class Canvas:
             )
         elif backend == "plotly":
             return self.plot_plotly(savefig=savefig)
-        elif backend == "tikzpics":
-            return self.plot_tikzpics(savefig=savefig)
+        elif backend == "tikzfigure":
+            return self.plot_tikzfigure(savefig=savefig)
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
     def show(
         self,
         backend: Backends = "matplotlib",
+        layers: list | None = None,
         verbose: bool = False,
     ):
         if verbose:
@@ -297,14 +727,14 @@ class Canvas:
             self.plot(
                 backend="matplotlib",
                 savefig=False,
-                layers=None,
+                layers=layers,
                 verbose=verbose,
             )
             # self._matplotlib_fig.show()
         elif backend == "plotly":
             self.plot_plotly(savefig=False)
-        elif backend == "tikzpics":
-            fig = self.plot_tikzpics(savefig=False)
+        elif backend == "tikzfigure":
+            fig = self.plot_tikzfigure(savefig=False, verbose=verbose)
             fig.show()
         else:
             raise ValueError("Invalid backend")
@@ -357,7 +787,7 @@ class Canvas:
             dpi=self.dpi,
         )
 
-        for (row, col), subplot in self.subplots.items():
+        for (row, col), subplot in self._subplot_dict.items():
             ax = axes[row][col]
             if isinstance(subplot, TikzFigure):
                 plot_matplotlib(subplot, ax, layers=layers)
@@ -366,26 +796,29 @@ class Canvas:
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
 
+        if self._suptitle:
+            fig.suptitle(self._suptitle, **self._suptitle_kwargs)
+
         # Set caption, labels, etc., if needed
         self._plotted = True
         self._matplotlib_fig = fig
         self._matplotlib_axes = axes
         return fig, axes
 
-    def plot_tikzpics(
+    def plot_tikzfigure(
         self,
-        savefig=None,
-        verbose=False,
+        savefig: str | None = None,
+        verbose: bool = False,
     ) -> TikzFigure:
-        if len(self.subplots) > 1:
+        if len(self._subplot_dict) > 1:
             raise NotImplementedError(
-                "Only one subplot is supported for tikzpics backend."
+                "Only one subplot is supported for tikzfigure backend."
             )
-        for (row, col), line_plot in self.subplots.items():
+        for (row, col), line_plot in self._subplot_dict.items():
             if verbose:
                 print(f"Plotting subplot at row {row}, col {col}")
                 print(f"{line_plot = }")
-            tikz_subplot = line_plot.plot_tikzpics(verbose=verbose)
+            tikz_subplot = line_plot.plot_tikzfigure(verbose=verbose)
         return tikz_subplot
 
     def plot_plotly(self, show=True, savefig=None, usetex=False):
@@ -416,31 +849,45 @@ class Canvas:
             rows=self.nrows,
             cols=self.ncols,
             subplot_titles=[
-                f"Subplot ({row}, {col})" for (row, col) in self.subplots.keys()
+                sp._title or f"({row}, {col})"
+                for (row, col), sp in self._subplot_dict.items()
             ],
         )
 
-        # Plot each subplot
-        for (row, col), line_plot in self.subplots.items():
-            traces = line_plot.plot_plotly()  # Generate Plotly traces for the line_plot
+        # Plot each subplot and propagate axis labels/scale
+        axis_index = 1
+        for (row, col), line_plot in self._subplot_dict.items():
+            traces = line_plot.plot_plotly()
             for trace in traces:
                 fig.add_trace(trace, row=row + 1, col=col + 1)
 
+            # Axis label keys are "xaxis", "xaxis2", "xaxis3", ...
+            xkey = "xaxis" if axis_index == 1 else f"xaxis{axis_index}"
+            ykey = "yaxis" if axis_index == 1 else f"yaxis{axis_index}"
+            layout_patch = {}
+            if line_plot._xlabel:
+                layout_patch[xkey] = {"title": {"text": line_plot._xlabel}}
+            if line_plot._ylabel:
+                layout_patch[ykey] = {"title": {"text": line_plot._ylabel}}
+            if line_plot._xaxis_scale == "log":
+                layout_patch.setdefault(xkey, {})["type"] = "log"
+            if line_plot._yaxis_scale == "log":
+                layout_patch.setdefault(ykey, {})["type"] = "log"
+            if layout_patch:
+                fig.update_layout(**layout_patch)
+            axis_index += 1
+
         # Update layout settings
         fig.update_layout(
-            # width=fig_width,
-            # height=fig_height,
             font=dict(size=self.fontsize),
-            margin=dict(l=10, r=10, t=40, b=10),  # Adjust margins if needed
+            margin=dict(l=10, r=10, t=40, b=10),
         )
+        if self._suptitle:
+            fig.update_layout(title=dict(text=self._suptitle, x=0.5))
 
-        # Optionally save the figure
         if savefig:
             fig.write_image(savefig)
 
-        # Show or return the figure
-        # if show:
-        #     fig.show()
         return fig
 
     # Property getters
@@ -507,13 +954,6 @@ class Canvas:
     def figsize(self, value):
         self._figsize = value
 
-    # Magic methods
-    def __str__(self):
-        return f"Canvas(nrows={self.nrows}, ncols={self.ncols}, figsize={self.figsize})"
-
-    def __repr__(self):
-        return f"Canvas(nrows={self.nrows}, ncols={self.ncols}, caption={self.caption}, label={self.label})"
-
     def __getitem__(self, key):
         """Allows accessing subplots by tuple index."""
         row, col = key
@@ -528,145 +968,17 @@ class Canvas:
             raise IndexError("Subplot index out of range")
         self._subplot_matrix[row][col] = value
 
+    def __repr__(self):
+        return f"Canvas(nrows={self.nrows}, ncols={self.ncols}, caption={self.caption}, label={self.label})"
 
-def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
-    """
-    Plot all nodes and paths on the provided axis using Matplotlib.
-
-    Parameters:
-    - ax (matplotlib.axes.Axes): Axis on which to plot the figure.
-    """
-
-    # TODO: Specify which layers to retreive nodes from with layers=layers
-    nodes = tikzfigure.layers.get_nodes()
-    paths = tikzfigure.layers.get_paths()
-
-    for path in paths:
-        x_coords = [node.x for node in path.nodes]
-        y_coords = [node.y for node in path.nodes]
-
-        # Parse path color
-        path_color_spec = path.kwargs.get("color", "black")
-        try:
-            color = Color(path_color_spec).to_rgb()
-        except ValueError as e:
-            print(e)
-            color = "black"
-
-        # Parse line width
-        line_width_spec = path.kwargs.get("line_width", 1)
-        if isinstance(line_width_spec, str):
-            match = re.match(r"([\d.]+)(pt)?", line_width_spec)
-            if match:
-                line_width = float(match.group(1))
-            else:
-                print(
-                    f"Invalid line width specification: '{line_width_spec}', defaulting to 1",
-                )
-                line_width = 1
-        else:
-            line_width = float(line_width_spec)
-
-        # Parse line style using Linestyle class
-        style_spec = path.kwargs.get("style", "solid")
-        linestyle = Linestyle(style_spec).to_matplotlib()
-
-        ax.plot(
-            x_coords,
-            y_coords,
-            color=color,
-            linewidth=line_width,
-            linestyle=linestyle,
-            zorder=1,  # Lower z-order to place behind nodes
-        )
-
-    # Plot nodes after paths so they appear on top
-    for node in nodes:
-        # Determine shape and size
-        shape = node.kwargs.get("shape", "circle")
-        fill_color_spec = node.kwargs.get("fill", "white")
-        edge_color_spec = node.kwargs.get("draw", "black")
-        linewidth = float(node.kwargs.get("line_width", 1))
-        size = float(node.kwargs.get("size", 1))
-
-        # Parse colors using the Color class
-        try:
-            facecolor = Color(fill_color_spec).to_rgb()
-        except ValueError as e:
-            print(e)
-            facecolor = "white"
-
-        try:
-            edgecolor = Color(edge_color_spec).to_rgb()
-        except ValueError as e:
-            print(e)
-            edgecolor = "black"
-
-        # Plot shapes
-        if shape == "circle":
-            radius = size / 2
-            circle = patches.Circle(
-                (node.x, node.y),
-                radius,
-                facecolor=facecolor,
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                zorder=2,  # Higher z-order to place on top of paths
-            )
-            ax.add_patch(circle)
-        elif shape == "rectangle":
-            width = height = size
-            rect = patches.Rectangle(
-                (node.x - width / 2, node.y - height / 2),
-                width,
-                height,
-                facecolor=facecolor,
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                zorder=2,  # Higher z-order
-            )
-            ax.add_patch(rect)
-        else:
-            # Default to circle if shape is unknown
-            radius = size / 2
-            circle = patches.Circle(
-                (node.x, node.y),
-                radius,
-                facecolor=facecolor,
-                edgecolor=edgecolor,
-                linewidth=linewidth,
-                zorder=2,
-            )
-            ax.add_patch(circle)
-
-        # Add text inside the shape
-        if node.content:
-            ax.text(
-                node.x,
-                node.y,
-                node.content,
-                fontsize=10,
-                ha="center",
-                va="center",
-                wrap=True,
-                zorder=3,  # Even higher z-order for text
-            )
-
-    # Remove axes, ticks, and legend
-    ax.axis("off")
-
-    # Adjust plot limits
-    all_x = [node.x for node in nodes]
-    all_y = [node.y for node in nodes]
-    padding = 1  # Adjust padding as needed
-    ax.set_xlim(min(all_x) - padding, max(all_x) + padding)
-    ax.set_ylim(min(all_y) - padding, max(all_y) + padding)
-    ax.set_aspect("equal", adjustable="datalim")
+    # Magic methods
+    def __str__(self):
+        return f"Canvas(nrows={self.nrows}, ncols={self.ncols}, figsize={self.figsize})"
 
 
 if __name__ == "__main__":
     c = Canvas(ncols=2, nrows=2)
     sp = c.add_subplot()
-    sp.add_line("Line 1", [0, 1, 2, 3], [0, 1, 4, 9])
-    c.plot()
+    sp.plot([0, 1, 2, 3], [0, 1, 4, 9], label="Line 1")
+    c.plot(backend="matplotlib")
     print("done")
