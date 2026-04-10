@@ -164,7 +164,7 @@ cython_debug/
 
 # Figures and videos
 figures/
-*.png
+#*.png
 *.pdf
 *.jpg
 *.jpeg
