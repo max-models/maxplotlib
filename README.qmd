@@ -1,29 +1,36 @@
+---
+title: maxplotlib
+format: gfm
+fig-dpi: 150
+---
+
 # maxplotlib
 
-
-# maxplotlib
-
-A clean, expressive wrapper around **Matplotlib** for producing
-publication-quality figures with minimal boilerplate. Swap backends
-without rewriting your data — render the same canvas as a crisp PNG, an
-interactive Plotly chart, or camera-ready **TikZ** code for LaTeX.
+A clean, expressive wrapper around **Matplotlib** for producing publication-quality figures
+with minimal boilerplate. Swap backends without rewriting your data — render the same canvas
+as a crisp PNG, an interactive Plotly chart, or camera-ready **TikZ** code for LaTeX.
 
 ## Install
 
-``` bash
+```bash
 python -m venv env && source env/bin/activate
 pip install maxplotlibx
 ```
 
 For development extras (tests, docs, linting):
 
-``` bash
+```bash
 pip install "maxplotlibx[dev]"
 ```
 
 ## Showcase
 
-``` python
+```{python}
+#| label: fig-showcase
+#| fig-cap: "maxplotlib showcase — four plot types, one canvas."
+#| fig-width: 9
+#| fig-height: 6
+
 import numpy as np
 from maxplotlib import Canvas
 
@@ -86,46 +93,14 @@ fig, _ = canvas.plot()
 fig
 ```
 
-<div id="fig-showcase">
-
-<div class="cell-output cell-output-display" execution_count="2">
-
-<div id="fig-showcase-1">
-
-<img src="README_files/figure-commonmark/fig-showcase-output-1.png"
-data-ref-parent="fig-showcase" />
-
-(a) maxplotlib showcase — four plot types, one canvas.
-
-</div>
-
-</div>
-
-<div class="cell-output cell-output-display">
-
-<div id="fig-showcase-2">
-
-<img src="README_files/figure-commonmark/fig-showcase-output-2.png"
-id="fig-showcase-2" data-ref-parent="fig-showcase" />
-
-(b)
-
-</div>
-
-</div>
-
-Figure 1
-
-</div>
-
 ## Quick start
 
 ### One-liner with `Canvas.subplots()`
 
-`Canvas.subplots()` mirrors `plt.subplots()` but returns a `Canvas` and
-subplot axes that speak the maxplotlib API.
+`Canvas.subplots()` mirrors `plt.subplots()` but returns a `Canvas` and subplot
+axes that speak the maxplotlib API.
 
-``` python
+```python
 import numpy as np
 from maxplotlib import Canvas
 
@@ -144,10 +119,10 @@ canvas.show()
 
 ### Canvas-level shortcut API
 
-For single-subplot figures every plot method is available directly on
-the `Canvas` object — no need to grab an axes handle:
+For single-subplot figures every plot method is available directly on the `Canvas`
+object — no need to grab an axes handle:
 
-``` python
+```python
 canvas = Canvas(ratio=0.5, fontsize=12)
 canvas.add_line(x, np.sin(x), label="sin", color="steelblue")
 canvas.add_line(x, np.cos(x), label="cos", color="darkorange", linestyle="dashed")
@@ -162,12 +137,12 @@ canvas.show()
 ### Multiple backends — same API
 
 | Backend | How to use | Output |
-|----|----|----|
+|---|---|---|
 | `matplotlib` (default) | `canvas.show()` | inline PNG / static file |
 | `plotly` | `fig = canvas.plot(backend='plotly')` | interactive HTML widget |
 | `tikzfigure` | `tz = canvas.plot(backend='tikzfigure')` | LaTeX `\draw` commands |
 
-``` python
+```python
 # Render as interactive Plotly figure
 fig = canvas.plot(backend="plotly")
 fig.show()
@@ -179,10 +154,10 @@ print(tikz.generate_tikz())
 
 ### Layers
 
-Tag each plot call with a `layer=` integer. Then render any subset —
-handy for step-by-step derivations, lecture slides, or overlays.
+Tag each plot call with a `layer=` integer. Then render any subset — handy for
+step-by-step derivations, lecture slides, or overlays.
 
-``` python
+```python
 canvas, ax = Canvas.subplots()
 ax.plot(x, np.sin(x), layer=0, label=r"$\sin(x)$",        color="steelblue")
 ax.plot(x, np.cos(x), layer=1, label=r"$\cos(x)$",        color="tomato")
@@ -196,19 +171,18 @@ canvas.show()                 # everything
 
 ### Size and typography
 
-Pass physical dimensions and a font size; maxplotlib converts to the
-correct `figsize` automatically.
+Pass physical dimensions and a font size; maxplotlib converts to the correct
+`figsize` automatically.
 
-``` python
+```python
 canvas = Canvas(width="17cm", ratio=0.5, fontsize=11)
 ```
 
-`ratio` accepts a float **or** the string `"golden"` (default) for the
-golden ratio.
+`ratio` accepts a float **or** the string `"golden"` (default) for the golden ratio.
 
 ### Saving figures
 
-``` python
+```python
 canvas.savefig("figure.pdf")     # vector PDF
 canvas.savefig("figure.png")     # raster PNG
 canvas.savefig("figure.svg")     # SVG
@@ -216,30 +190,30 @@ canvas.savefig("figure.svg")     # SVG
 
 ## Plot types
 
-| Method                            | Description                    |
-|-----------------------------------|--------------------------------|
-| `ax.plot(x, y)`                   | Line plot                      |
-| `ax.scatter(x, y)`                | Scatter plot                   |
-| `ax.bar(categories, values)`      | Bar chart                      |
-| `ax.fill_between(x, y1, y2)`      | Shaded band                    |
-| `ax.errorbar(x, y, yerr)`         | Error bars                     |
-| `ax.axhline(y)` / `ax.axvline(x)` | Reference lines                |
-| `ax.annotate(text, xy)`           | Annotation with optional arrow |
+| Method | Description |
+|---|---|
+| `ax.plot(x, y)` | Line plot |
+| `ax.scatter(x, y)` | Scatter plot |
+| `ax.bar(categories, values)` | Bar chart |
+| `ax.fill_between(x, y1, y2)` | Shaded band |
+| `ax.errorbar(x, y, yerr)` | Error bars |
+| `ax.axhline(y)` / `ax.axvline(x)` | Reference lines |
+| `ax.annotate(text, xy)` | Annotation with optional arrow |
 
 ## Tutorials
 
 Step-by-step Jupyter notebooks in `tutorials/`:
 
-| Notebook             | Topic                            |
-|----------------------|----------------------------------|
-| `tutorial_01`        | Quick start                      |
-| `tutorial_02`        | Multiple subplots                |
-| `tutorial_03`        | All plot types                   |
-| `tutorial_04`        | Colours, linestyles, markers     |
-| `tutorial_05`        | Axes, ticks, scales, annotations |
-| `tutorial_06`        | Layers                           |
-| `tutorial_07_tikz`   | TikZ backend                     |
-| `tutorial_08_plotly` | Plotly backend                   |
+| Notebook | Topic |
+|---|---|
+| `tutorial_01` | Quick start |
+| `tutorial_02` | Multiple subplots |
+| `tutorial_03` | All plot types |
+| `tutorial_04` | Colours, linestyles, markers |
+| `tutorial_05` | Axes, ticks, scales, annotations |
+| `tutorial_06` | Layers |
+| `tutorial_07_tikz` | TikZ backend |
+| `tutorial_08_plotly` | Plotly backend |
 
 ## License
 
