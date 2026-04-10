@@ -1,17 +1,18 @@
-# Maxlotlib
-
+---
+title: Maxlotlib
+format: gfm
+fig-dpi: 150
+---
 
 # Maxplotlib
 
-A clean, expressive wrapper around **Matplotlib** **tikzfigure** for
-producing publication-quality figures with minimal boilerplate. Swap
-backends without rewriting your data — render the same canvas as a crisp
-PNG, an interactive Plotly chart, or camera-ready **TikZ** code for
-LaTeX.
+A clean, expressive wrapper around **Matplotlib** **tikzfigure** for producing publication-quality figures
+with minimal boilerplate. Swap backends without rewriting your data — render the same canvas
+as a crisp PNG, an interactive Plotly chart, or camera-ready **TikZ** code for LaTeX.
 
 ## Install
 
-``` bash
+```bash
 pip install maxplotlibx
 ```
 
@@ -19,7 +20,11 @@ pip install maxplotlibx
 
 ### Quickstart
 
-``` python
+```{python}
+#| label: fig-showcase-1
+#| fig-width: 9
+#| fig-height: 6
+
 import numpy as np
 from maxplotlib import Canvas
 
@@ -32,23 +37,23 @@ ax.plot(x, y)
 
 Plot the figure with the default (matplotlib) backend:
 
-``` python
+```{python}
 canvas.show()
 ```
 
-![](README_files/figure-markdown_strict/cell-3-output-1.png)
-
 Alternatively, plot with the TikZ backend (not done yet):
 
-``` python
+```{python}
 canvas.show(backend="tikzfigure")
 ```
 
-![](README_files/figure-markdown_strict/cell-4-output-1.png)
-
 ### Layers
 
-``` python
+```{python}
+#| label: fig-showcase-2
+#| fig-width: 9
+#| fig-height: 6
+
 x = np.linspace(0, 2 * np.pi, 200)
 
 canvas, ax = Canvas.subplots(width="10cm", ratio=0.55)
@@ -70,16 +75,12 @@ ax.set_legend(True)
 
 Show layer 0 only, then layers 0 and 1, then everything:
 
-``` python
+```{python}
 canvas.show(layers=[0])
 ```
 
-![](README_files/figure-markdown_strict/cell-6-output-1.png)
-
 Show all layers:
 
-``` python
+```{python}
 canvas.show()
 ```
-
-![](README_files/figure-markdown_strict/cell-7-output-1.png)
