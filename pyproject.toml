@@ -18,7 +18,7 @@ dependencies = [
     "matplotlib",
     "pint",
     "plotly",
-    "tikzfigure[vis]>=0.2.0",
+    "tikzfigure[vis]>=0.2.1",
 ]
 [project.optional-dependencies]
 test = [
