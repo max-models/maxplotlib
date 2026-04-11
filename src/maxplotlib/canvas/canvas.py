@@ -851,8 +851,16 @@ class Canvas:
             ax = fig.subfigure_axis(
                 xlabel=line_plot._xlabel or "",
                 ylabel=line_plot._ylabel or "",
-                xlim=(line_plot._xmin, line_plot._xmax) if line_plot._xmin is not None else None,
-                ylim=(line_plot._ymin, line_plot._ymax) if line_plot._ymin is not None else None,
+                xlim=(
+                    (line_plot._xmin, line_plot._xmax)
+                    if line_plot._xmin is not None
+                    else None
+                ),
+                ylim=(
+                    (line_plot._ymin, line_plot._ymax)
+                    if line_plot._ymin is not None
+                    else None
+                ),
                 grid=line_plot._grid,
                 caption=line_plot._title or f"Subplot {col+1}",
                 width=0.45,

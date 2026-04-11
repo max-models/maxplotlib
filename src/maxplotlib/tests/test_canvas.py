@@ -5,6 +5,7 @@ def test():
 def test_canvas_plot_tikzfigure_horizontal_subplots():
     """Test that Canvas.plot_tikzfigure() works with horizontal (1×n) layouts."""
     import numpy as np
+
     from maxplotlib import Canvas
 
     # Create a 1×2 canvas
@@ -33,6 +34,7 @@ def test_canvas_plot_tikzfigure_horizontal_subplots():
 def test_canvas_plot_tikzfigure_three_subplots():
     """Test 1×3 layout with tikzfigure backend."""
     import numpy as np
+
     from maxplotlib import Canvas
 
     x = np.linspace(0, 2 * np.pi, 50)
@@ -57,8 +59,9 @@ def test_canvas_plot_tikzfigure_three_subplots():
 def test_canvas_plot_tikzfigure_vertical_not_supported():
     """Test that vertical layouts raise NotImplementedError."""
     import numpy as np
-    from maxplotlib import Canvas
     import pytest
+
+    from maxplotlib import Canvas
 
     x = np.linspace(0, 2 * np.pi, 50)
     # Create 2×1 layout (nrows=2)
