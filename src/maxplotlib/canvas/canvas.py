@@ -736,7 +736,8 @@ class Canvas:
         elif backend == "tikzfigure":
             fig = self.plot_tikzfigure(savefig=False, verbose=verbose)
             # TikzFigure handles all rendering (single or multi-subplot)
-            fig.show()
+            fig.show(transparent=False)
+            return fig
         else:
             raise ValueError("Invalid backend")
 
@@ -864,14 +865,15 @@ class Canvas:
                     x = (line_data["x"] + line_plot._xshift) * line_plot._xscale
                     y = (line_data["y"] + line_plot._yshift) * line_plot._yscale
                     kwargs = line_data.get("kwargs", {})
-
+                    if verbose:
+                        print(f"Line {kwargs = }")
                     # Add plot to subfigure axis
                     ax.add_plot(
                         x=x,
                         y=y,
                         # label=kwargs.get("label", ""),
-                        color=kwargs.get("color"),
-                        line_width=kwargs.get("linewidth"),
+                        color=kwargs.get("color", "black"),
+                        line_width=kwargs.get("linewidth", 1.0),
                     )
 
             # Add legend if requested
