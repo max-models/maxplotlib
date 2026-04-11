@@ -735,7 +735,9 @@ class Canvas:
             self.plot_plotly(savefig=False)
         elif backend == "tikzfigure":
             fig = self.plot_tikzfigure(savefig=False, verbose=verbose)
-            fig.show()
+            # TikzFigure handles all rendering (single or multi-subplot)
+            fig.show(transparent=False)
+            return fig
         else:
             raise ValueError("Invalid backend")
 
@@ -807,19 +809,86 @@ class Canvas:
 
     def plot_tikzfigure(
         self,
-        savefig: str | None = None,
+        savefig: bool = False,
         verbose: bool = False,
     ) -> TikzFigure:
-        if len(self._subplot_dict) > 1:
+        """
+        Generate a TikZ figure from subplots.
+
+        For now, returns the first subplot's TikzFigure.
+        Full multi-subplot support requires TikzFigure's subfigure_axis API.
+
+        Parameters:
+        verbose (bool): If True, print debug information.
+
+        Returns:
+        TikzFigure: Figure object that can be shown, saved, or compiled.
+        """
+        if verbose:
+            print(f"Plotting tikzfigure with {len(self._subplot_dict)} subplot(s)")
+
+        # Check for unsupported layouts
+        if self.nrows > 1:
             raise NotImplementedError(
-                "Only one subplot is supported for tikzfigure backend."
+                "Vertical/grid layouts (nrows > 1) are not yet supported for tikzfigure backend. "
+                "Use horizontal layouts (1×n) only."
             )
+
+        # Validate that at least one subplot exists
+        if len(self._subplot_dict) == 0:
+            raise ValueError(
+                "No subplots to plot. Call add_subplot() or Canvas.subplots() first."
+            )
+
+        fig = TikzFigure()
+
+        # Add each subplot as a subfigure axis
         for (row, col), line_plot in self._subplot_dict.items():
             if verbose:
                 print(f"Plotting subplot at row {row}, col {col}")
-                print(f"{line_plot = }")
-            tikz_subplot = line_plot.plot_tikzfigure(verbose=verbose)
-        return tikz_subplot
+
+            # Create subfigure axis with subplot metadata
+            ax = fig.subfigure_axis(
+                xlabel=line_plot._xlabel or "",
+                ylabel=line_plot._ylabel or "",
+                xlim=(
+                    (line_plot._xmin, line_plot._xmax)
+                    if line_plot._xmin is not None
+                    else None
+                ),
+                ylim=(
+                    (line_plot._ymin, line_plot._ymax)
+                    if line_plot._ymin is not None
+                    else None
+                ),
+                grid=line_plot._grid,
+                caption=line_plot._title or f"Subplot {col+1}",
+                width=0.45,
+            )
+
+            # Add each plot line to the subfigure
+            for line_data in line_plot.line_data:
+                if line_data.get("plot_type") == "plot":
+                    # Extract and transform x, y data
+                    x = (line_data["x"] + line_plot._xshift) * line_plot._xscale
+                    y = (line_data["y"] + line_plot._yshift) * line_plot._yscale
+                    kwargs = line_data.get("kwargs", {})
+                    if verbose:
+                        print(f"Line {kwargs = }")
+                    # Add plot to subfigure axis
+                    ax.add_plot(
+                        x=x,
+                        y=y,
+                        # label=kwargs.get("label", ""),
+                        color=kwargs.get("color", "black"),
+                        line_width=kwargs.get("linewidth", 1.0),
+                    )
+
+            # Add legend if requested
+            if line_plot._legend and len(line_plot.line_data) > 0:
+                ax.set_legend(position="north east")
+
+        return fig
 
     def plot_plotly(self, show=True, savefig=None, usetex=False):
         """
