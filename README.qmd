@@ -41,11 +41,35 @@ Plot the figure with the default (matplotlib) backend:
 canvas.show()
 ```
 
-Alternatively, plot with the TikZ backend (not done yet):
+Alternatively, plot with the TikZ backend:
 
 ```{python}
 canvas.show(backend="tikzfigure")
 ```
+
+### Horizontal Subplots with TikZ Backend
+
+The tikzfigure backend supports creating side-by-side subplots (1×n layouts):
+
+```{python}
+#| label: fig-showcase-subplots
+#| fig-width: 9
+#| fig-height: 6
+
+x = np.linspace(0, 2 * np.pi, 200)
+canvas, (ax1, ax2) = Canvas.subplots(ncols=2, width="10cm", ratio=0.3)
+
+ax1.plot(x, np.sin(x), color="royalblue")
+ax1.set_title("sin(x)")
+
+ax2.plot(x, np.cos(x), color="tomato")
+ax2.set_title("cos(x)")
+
+canvas.suptitle("Trigonometric Functions")
+canvas.show(backend="tikzfigure")  # Generates LaTeX subfigures
+```
+
+**Note:** Only horizontal layouts (1×n) are currently supported with the tikzfigure backend. Vertical/grid layouts will raise `NotImplementedError`. See the tutorials for more examples.
 
 ### Layers
 
