@@ -5,7 +5,6 @@ import numpy as np
 
 
 class Color:
-
     def _parse_color(self, color_spec):
         """
         Internal method to parse the color specification and convert it to an RGB tuple.

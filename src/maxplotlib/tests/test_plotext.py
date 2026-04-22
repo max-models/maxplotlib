@@ -66,7 +66,9 @@ def test_canvas_plot_plotext_supports_fill_between_curves_and_annotations():
     x = np.linspace(0, 4, 25)
     canvas, ax = Canvas.subplots()
     ax.fill_between(x, np.sin(x) + 1.5, np.cos(x) + 0.5, color="cyan", label="band")
-    ax.annotate("crossing", xy=(1.5, 1.0), xytext=(2.5, 2.1), arrowprops={"color": "yellow"})
+    ax.annotate(
+        "crossing", xy=(1.5, 1.0), xytext=(2.5, 2.1), arrowprops={"color": "yellow"}
+    )
     ax.set_title("Filled band")
     ax.set_legend(True)
 
@@ -80,7 +82,9 @@ def test_canvas_plot_plotext_supports_fill_between_curves_and_annotations():
 def test_canvas_plot_plotext_supports_matrix_plots_and_patches():
     canvas, ax = Canvas.subplots()
     ax.add_imshow(np.arange(9).reshape(3, 3))
-    ax.add_patch(mpatches.Rectangle((0.2, 0.2), 1.2, 0.8, fill=False, edgecolor="yellow"))
+    ax.add_patch(
+        mpatches.Rectangle((0.2, 0.2), 1.2, 0.8, fill=False, edgecolor="yellow")
+    )
     ax.add_patch(mpatches.Circle((1.8, 1.8), 0.4, fill=False, edgecolor="cyan"))
     ax.set_title("Matrix plot")
 

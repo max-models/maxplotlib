@@ -698,7 +698,10 @@ class LinePlot:
     def _plotext_patch_style(self, patch, kwargs):
         edgecolor = kwargs.get(
             "edgecolor",
-            kwargs.get("color", patch.get_edgecolor() if hasattr(patch, "get_edgecolor") else None),
+            kwargs.get(
+                "color",
+                patch.get_edgecolor() if hasattr(patch, "get_edgecolor") else None,
+            ),
         )
         facecolor = kwargs.get(
             "facecolor",
@@ -810,7 +813,11 @@ class LinePlot:
                 extend_y([self._transform_scalar_y(0)])
             elif plot_type == "fill_between":
                 extend_x(self._transform_x(line["x"]))
-                y1 = line["y1"] if np.isscalar(line["y1"]) else self._transform_y(line["y1"])
+                y1 = (
+                    line["y1"]
+                    if np.isscalar(line["y1"])
+                    else self._transform_y(line["y1"])
+                )
                 y2 = (
                     self._transform_scalar_y(line["y2"])
                     if np.isscalar(line["y2"])
@@ -920,7 +927,11 @@ class LinePlot:
         width = int(round(height * (x_span / (y_span * aspect)) * 2.0))
         title_hint = len(
             " | ".join(
-                [part for part in [self._title, getattr(self, "_caption", None)] if part]
+                [
+                    part
+                    for part in [self._title, getattr(self, "_caption", None)]
+                    if part
+                ]
             )
         )
         width = max(40, title_hint + 6, min(width, 80))
@@ -939,7 +950,10 @@ class LinePlot:
         return f"{prefix}{self._plotext_format_tick(vmin)}..{self._plotext_format_tick(vmax)}"
 
     def _plotext_add_legend(self, ax, entries, layers=None):
-        if self._xaxis_scale in {"log", "symlog"} or self._yaxis_scale in {"log", "symlog"}:
+        if self._xaxis_scale in {"log", "symlog"} or self._yaxis_scale in {
+            "log",
+            "symlog",
+        }:
             return
 
         unique_entries = []
@@ -1057,7 +1071,9 @@ class LinePlot:
                         color=kwargs.get("color"),
                     )
             elif plot_type == "annotate":
-                text_x, text_y = line["xytext"] if line["xytext"] is not None else line["xy"]
+                text_x, text_y = (
+                    line["xytext"] if line["xytext"] is not None else line["xy"]
+                )
                 arrowprops = kwargs.get("arrowprops")
                 text_x = self._plotext_native(self._transform_scalar_x(text_x))
                 text_y = self._plotext_native(self._transform_scalar_y(text_y))
@@ -1129,7 +1145,9 @@ class LinePlot:
                 )
 
         self._plotext_apply_aspect(ax, layers=layers)
-        title_parts = [part for part in [self._title, getattr(self, "_caption", None)] if part]
+        title_parts = [
+            part for part in [self._title, getattr(self, "_caption", None)] if part
+        ]
         if colorbar_notes:
             title_parts.extend(colorbar_notes)
         if title_parts:

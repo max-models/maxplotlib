@@ -683,7 +683,6 @@ class Canvas:
                 if self._plotted:
                     self._matplotlib_fig.savefig(full_filepath)
                 else:
-
                     fig, axs = self.plot(
                         backend="matplotlib",
                         savefig=True,
@@ -905,7 +904,7 @@ class Canvas:
                     else None
                 ),
                 grid=line_plot._grid,
-                caption=line_plot._title or f"Subplot {col+1}",
+                caption=line_plot._title or f"Subplot {col + 1}",
                 width=0.45,
             )
 
@@ -945,7 +944,11 @@ class Canvas:
         figure = create_plotext_figure(self.nrows, self.ncols)
 
         for row, col, subplot in self.iter_subplots():
-            ax = figure if (self.nrows, self.ncols) == (1, 1) else figure.subplot(row + 1, col + 1)
+            ax = (
+                figure
+                if (self.nrows, self.ncols) == (1, 1)
+                else figure.subplot(row + 1, col + 1)
+            )
             if isinstance(subplot, TikzFigure):
                 raise NotImplementedError(
                     "tikzfigure subplots cannot be rendered with the plotext backend."

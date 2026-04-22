@@ -2,7 +2,6 @@ import re
 
 
 class Linestyle:
-
     def _parse_style(self, style_spec):
         """
         Internal method to parse the style specification and convert it to a Matplotlib linestyle.
