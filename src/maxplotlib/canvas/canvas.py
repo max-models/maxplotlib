@@ -12,6 +12,7 @@ from maxplotlib.backends.matplotlib.utils import (
     setup_plotstyle,
     setup_tex_fonts,
 )
+from maxplotlib.backends.plotext import PlotextFigure, create_plotext_figure
 from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
 from maxplotlib.subfigure.line_plot import LinePlot
@@ -199,6 +200,7 @@ class Canvas:
         self._plotted = False
         self._matplotlib_fig = None
         self._matplotlib_axes = None
+        self._plotext_figure = None
         self._suptitle: str | None = None
         self._suptitle_kwargs: dict = {}
 
@@ -690,6 +692,33 @@ class Canvas:
                     fig.savefig(full_filepath)
                 if verbose:
                     print(f"Saved {full_filepath}")
+        elif backend == "plotext":
+            if layer_by_layer:
+                layers = []
+                for layer in self.layers:
+                    layers.append(layer)
+                    figure = self.plot(
+                        backend="plotext",
+                        savefig=False,
+                        layers=layers,
+                    )
+                    _fn = f"{filename_no_extension}_{layers}.{extension}"
+                    figure.savefig(_fn)
+                    print(f"Saved {_fn}")
+            else:
+                if layers is None:
+                    layers = self.layers
+                    full_filepath = filename
+                else:
+                    full_filepath = f"{filename_no_extension}_{layers}.{extension}"
+                figure = self.plot(
+                    backend="plotext",
+                    savefig=False,
+                    layers=layers,
+                )
+                figure.savefig(full_filepath)
+                if verbose:
+                    print(f"Saved {full_filepath}")
 
     def plot(
         self,
@@ -709,6 +738,12 @@ class Canvas:
             )
         elif backend == "plotly":
             return self.plot_plotly(savefig=savefig)
+        elif backend == "plotext":
+            return self.plot_plotext(
+                savefig=savefig,
+                layers=layers,
+                verbose=verbose,
+            )
         elif backend == "tikzfigure":
             return self.plot_tikzfigure(savefig=savefig)
         else:
@@ -733,6 +768,14 @@ class Canvas:
             # self._matplotlib_fig.show()
         elif backend == "plotly":
             self.plot_plotly(savefig=False)
+        elif backend == "plotext":
+            figure = self.plot_plotext(
+                savefig=False,
+                layers=layers,
+                verbose=verbose,
+            )
+            figure.show()
+            return figure
         elif backend == "tikzfigure":
             fig = self.plot_tikzfigure(savefig=False, verbose=verbose)
             # TikzFigure handles all rendering (single or multi-subplot)
@@ -889,6 +932,32 @@ class Canvas:
                 ax.set_legend(position="north east")
 
         return fig
+
+    def plot_plotext(
+        self,
+        savefig: bool = False,
+        layers: list | None = None,
+        verbose: bool = False,
+    ) -> PlotextFigure:
+        if verbose:
+            print("Generating plotext figure...")
+
+        figure = create_plotext_figure(self.nrows, self.ncols)
+
+        for row, col, subplot in self.iter_subplots():
+            ax = figure if (self.nrows, self.ncols) == (1, 1) else figure.subplot(row + 1, col + 1)
+            if isinstance(subplot, TikzFigure):
+                raise NotImplementedError(
+                    "tikzfigure subplots cannot be rendered with the plotext backend."
+                )
+            subplot.plot_plotext(ax, layers=layers)
+
+        wrapped = PlotextFigure(figure=figure, suptitle=self._suptitle)
+        if savefig and isinstance(savefig, str):
+            wrapped.savefig(savefig)
+
+        self._plotext_figure = wrapped
+        return wrapped
 
     def plot_plotly(self, show=True, savefig=None, usetex=False):
         """

@@ -1,3 +1,3 @@
 from typing import Literal
 
-Backends = Literal["matplotlib", "plotly", "tikzfigure"]
+Backends = Literal["matplotlib", "plotly", "plotext", "tikzfigure"]

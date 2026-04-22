@@ -1,13 +1,11 @@
-# Maxlotlib
-
-
 # Maxplotlib
 
-A clean, expressive wrapper around **Matplotlib** **tikzfigure** for
-producing publication-quality figures with minimal boilerplate. Swap
-backends without rewriting your data — render the same canvas as a crisp
-PNG, an interactive Plotly chart, or camera-ready **TikZ** code for
-LaTeX.
+A clean, expressive wrapper around **Matplotlib**, **Plotly**,
+**plotext**, and **tikzfigure** for producing publication-quality
+figures with minimal boilerplate. Swap backends without rewriting your
+data — render the same canvas as a crisp PNG, an interactive Plotly
+chart, a terminal-native plotext figure, or camera-ready **TikZ** code
+for LaTeX.
 
 ## Install
 
@@ -38,13 +36,44 @@ canvas.show()
 
 ![](README_files/figure-markdown_strict/cell-3-output-1.png)
 
-Alternatively, plot with the TikZ backend (not done yet):
+Render the same line graph directly in the terminal with the `plotext`
+backend:
+
+``` python
+terminal_fig = canvas.plot(backend="plotext")
+print(terminal_fig.build(keep_colors=False))
+```
+
+Or plot with the TikZ backend:
 
 ``` python
 canvas.show(backend="tikzfigure")
 ```
 
 ![](README_files/figure-markdown_strict/cell-4-output-1.png)
+
+### Terminal backend
+
+The `plotext` backend is designed for terminal-first workflows. It
+currently supports line plots, scatter plots, bars, filled regions,
+error bars, reference lines, text/annotations, labels/titles, log
+axes, layers, matrix-style `imshow()` rendering, common patches, and
+multi-subplot canvases.
+
+``` python
+x = np.linspace(1, 10, 40)
+
+canvas, ax = Canvas.subplots()
+ax.plot(x, np.sqrt(x), color="cyan", label="sqrt(x)")
+ax.errorbar(x[::8], np.sqrt(x[::8]), yerr=0.15, color="yellow", label="samples")
+ax.set_title("Terminal plot")
+ax.set_xlabel("x")
+ax.set_ylabel("y")
+ax.set_xscale("log")
+ax.set_legend(True)
+
+canvas.show(backend="plotext")
+```
 
 ### Layers
 

@@ -189,3 +189,11 @@ env*
 
 # VS code
 .vscode/*
+
+# Outputs
+docs/.astro/
+docs/node_modules/
+docs/superpowers/
+docs/tutorials/
+tutorials/*.txt
+tutorials/*.png
