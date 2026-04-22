@@ -21,3 +21,7 @@ documentation for details.
    tutorials/tutorial_04
    tutorials/tutorial_05
    tutorials/tutorial_06
+   tutorials/tutorial_07_tikz
+   tutorials/tutorial_08_plotly
+   tutorials/tutorial_09_plotext
+   tutorials/tutorial_tikzfigure_subplots
