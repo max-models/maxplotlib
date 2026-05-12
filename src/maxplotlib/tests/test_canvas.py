@@ -77,5 +77,198 @@ def test_canvas_plot_tikzfigure_vertical_not_supported():
     assert "nrows > 1" in str(exc_info.value)
 
 
+def test_canvas_matplotlib_gridspec_kw_affects_row_spacing():
+    """Test that hspace changes the vertical spacing between rows."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(0, 1, 5)
+
+    tight_canvas, tight_axes = Canvas.subplots(
+        nrows=2,
+        ncols=1,
+        width="10cm",
+        ratio=0.7,
+        gridspec_kw={"hspace": 0.02, "wspace": 0.08},
+    )
+    for ax in tight_axes:
+        ax.plot(x, x)
+    tight_fig, tight_matplotlib_axes = tight_canvas.plot()
+    tight_gap = (
+        tight_matplotlib_axes[0, 0].get_position().y0
+        - tight_matplotlib_axes[1, 0].get_position().y1
+    )
+
+    loose_canvas, loose_axes = Canvas.subplots(
+        nrows=2,
+        ncols=1,
+        width="10cm",
+        ratio=0.7,
+        gridspec_kw={"hspace": 0.5, "wspace": 0.08},
+    )
+    for ax in loose_axes:
+        ax.plot(x, x)
+    loose_fig, loose_matplotlib_axes = loose_canvas.plot()
+    loose_gap = (
+        loose_matplotlib_axes[0, 0].get_position().y0
+        - loose_matplotlib_axes[1, 0].get_position().y1
+    )
+
+    assert loose_gap > tight_gap
+    plt.close(tight_fig)
+    plt.close(loose_fig)
+
+
+def test_canvas_matplotlib_gridspec_kw_affects_2x2_line_spacing():
+    """Test that wspace/hspace change spacing for 2×2 line subplot grids."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(0, 1, 20)
+
+    tight_canvas, tight_axes = Canvas.subplots(
+        nrows=2,
+        ncols=2,
+        width="12cm",
+        ratio=0.7,
+        hspace=0.03,
+        wspace=0.03,
+    )
+    idx = 0
+    for row_axes in tight_axes:
+        for ax in row_axes:
+            ax.plot(x, (idx + 1) * x)
+            idx += 1
+    tight_fig, tight_matplotlib_axes = tight_canvas.plot(backend="matplotlib")
+    tight_hgap = (
+        tight_matplotlib_axes[0, 1].get_position().x0
+        - tight_matplotlib_axes[0, 0].get_position().x1
+    )
+    tight_vgap = (
+        tight_matplotlib_axes[0, 0].get_position().y0
+        - tight_matplotlib_axes[1, 0].get_position().y1
+    )
+
+    loose_canvas, loose_axes = Canvas.subplots(
+        nrows=2,
+        ncols=2,
+        width="12cm",
+        ratio=0.7,
+        hspace=0.45,
+        wspace=0.45,
+    )
+    idx = 0
+    for row_axes in loose_axes:
+        for ax in row_axes:
+            ax.plot(x, (idx + 1) * x)
+            idx += 1
+    loose_fig, loose_matplotlib_axes = loose_canvas.plot(backend="matplotlib")
+    loose_hgap = (
+        loose_matplotlib_axes[0, 1].get_position().x0
+        - loose_matplotlib_axes[0, 0].get_position().x1
+    )
+    loose_vgap = (
+        loose_matplotlib_axes[0, 0].get_position().y0
+        - loose_matplotlib_axes[1, 0].get_position().y1
+    )
+
+    assert loose_hgap > tight_hgap
+    assert loose_vgap > tight_vgap
+    plt.close(tight_fig)
+    plt.close(loose_fig)
+
+
+def test_canvas_matplotlib_gridspec_kw_affects_2x2_imshow_spacing():
+    """Test spacing control also works for 2×2 color (imshow) subplot grids."""
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    data = np.arange(100).reshape(10, 10)
+
+    tight_canvas, tight_axes = Canvas.subplots(
+        nrows=2,
+        ncols=2,
+        width="12cm",
+        ratio=0.8,
+        hspace=0.03,
+        wspace=0.03,
+    )
+    idx = 0
+    for row_axes in tight_axes:
+        for ax in row_axes:
+            ax.add_imshow(data + idx, cmap="viridis")
+            ax.set_title(f"Heatmap {idx + 1}")
+            idx += 1
+    tight_fig, tight_matplotlib_axes = tight_canvas.plot(backend="matplotlib")
+    tight_hgap = (
+        tight_matplotlib_axes[0, 1].get_position().x0
+        - tight_matplotlib_axes[0, 0].get_position().x1
+    )
+    tight_vgap = (
+        tight_matplotlib_axes[0, 0].get_position().y0
+        - tight_matplotlib_axes[1, 0].get_position().y1
+    )
+
+    loose_canvas, loose_axes = Canvas.subplots(
+        nrows=2,
+        ncols=2,
+        width="12cm",
+        ratio=0.8,
+        hspace=0.45,
+        wspace=0.45,
+    )
+    idx = 0
+    for row_axes in loose_axes:
+        for ax in row_axes:
+            ax.add_imshow(data + idx, cmap="viridis")
+            ax.set_title(f"Heatmap {idx + 1}")
+            idx += 1
+    loose_fig, loose_matplotlib_axes = loose_canvas.plot(backend="matplotlib")
+    loose_hgap = (
+        loose_matplotlib_axes[0, 1].get_position().x0
+        - loose_matplotlib_axes[0, 0].get_position().x1
+    )
+    loose_vgap = (
+        loose_matplotlib_axes[0, 0].get_position().y0
+        - loose_matplotlib_axes[1, 0].get_position().y1
+    )
+
+    assert loose_hgap > tight_hgap
+    assert loose_vgap > tight_vgap
+    plt.close(tight_fig)
+    plt.close(loose_fig)
+
+
+def test_canvas_spacing_and_gridspec_kw_are_mutually_exclusive():
+    import pytest
+
+    from maxplotlib import Canvas, SubplotSpacing
+
+    with pytest.raises(ValueError):
+        Canvas(
+            subplot_spacing=SubplotSpacing(wspace=0.2, hspace=0.2),
+            gridspec_kw={"wspace": 0.3, "hspace": 0.3},
+        )
+
+
+def test_canvas_subplots_spacing_args_and_explicit_spacing_are_mutually_exclusive():
+    import pytest
+
+    from maxplotlib import Canvas, SubplotSpacing
+
+    with pytest.raises(ValueError):
+        Canvas.subplots(
+            wspace=0.2,
+            hspace=0.2,
+            subplot_spacing=SubplotSpacing(wspace=0.3, hspace=0.3),
+        )
+
+
 if __name__ == "__main__":
     test()
