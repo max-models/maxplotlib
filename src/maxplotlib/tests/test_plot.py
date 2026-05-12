@@ -20,8 +20,12 @@ def test_python_example_nxm_line_subplots_spacing_changes():
         for j, ax in enumerate(row):
             ax.plot(x, np.sin((i + 1) * (j + 1) * x))
     tight_fig, tight_m_axes = tight_canvas.plot(backend="matplotlib")
-    tight_hgap = tight_m_axes[0, 1].get_position().x0 - tight_m_axes[0, 0].get_position().x1
-    tight_vgap = tight_m_axes[0, 0].get_position().y0 - tight_m_axes[1, 0].get_position().y1
+    tight_hgap = (
+        tight_m_axes[0, 1].get_position().x0 - tight_m_axes[0, 0].get_position().x1
+    )
+    tight_vgap = (
+        tight_m_axes[0, 0].get_position().y0 - tight_m_axes[1, 0].get_position().y1
+    )
 
     loose_canvas, loose_axes = Canvas.subplots(
         nrows=2,
@@ -35,8 +39,12 @@ def test_python_example_nxm_line_subplots_spacing_changes():
         for j, ax in enumerate(row):
             ax.plot(x, np.sin((i + 1) * (j + 1) * x))
     loose_fig, loose_m_axes = loose_canvas.plot(backend="matplotlib")
-    loose_hgap = loose_m_axes[0, 1].get_position().x0 - loose_m_axes[0, 0].get_position().x1
-    loose_vgap = loose_m_axes[0, 0].get_position().y0 - loose_m_axes[1, 0].get_position().y1
+    loose_hgap = (
+        loose_m_axes[0, 1].get_position().x0 - loose_m_axes[0, 0].get_position().x1
+    )
+    loose_vgap = (
+        loose_m_axes[0, 0].get_position().y0 - loose_m_axes[1, 0].get_position().y1
+    )
 
     assert loose_hgap > tight_hgap
     assert loose_vgap > tight_vgap
@@ -62,8 +70,12 @@ def test_python_example_nxm_color_subplots_spacing_changes():
             ax.add_imshow(base + idx, cmap="viridis")
             idx += 1
     tight_fig, tight_m_axes = tight_canvas.plot(backend="matplotlib")
-    tight_hgap = tight_m_axes[0, 1].get_position().x0 - tight_m_axes[0, 0].get_position().x1
-    tight_vgap = tight_m_axes[0, 0].get_position().y0 - tight_m_axes[1, 0].get_position().y1
+    tight_hgap = (
+        tight_m_axes[0, 1].get_position().x0 - tight_m_axes[0, 0].get_position().x1
+    )
+    tight_vgap = (
+        tight_m_axes[0, 0].get_position().y0 - tight_m_axes[1, 0].get_position().y1
+    )
 
     loose_canvas, loose_axes = Canvas.subplots(
         nrows=2,
@@ -79,8 +91,12 @@ def test_python_example_nxm_color_subplots_spacing_changes():
             ax.add_imshow(base + idx, cmap="viridis")
             idx += 1
     loose_fig, loose_m_axes = loose_canvas.plot(backend="matplotlib")
-    loose_hgap = loose_m_axes[0, 1].get_position().x0 - loose_m_axes[0, 0].get_position().x1
-    loose_vgap = loose_m_axes[0, 0].get_position().y0 - loose_m_axes[1, 0].get_position().y1
+    loose_hgap = (
+        loose_m_axes[0, 1].get_position().x0 - loose_m_axes[0, 0].get_position().x1
+    )
+    loose_vgap = (
+        loose_m_axes[0, 0].get_position().y0 - loose_m_axes[1, 0].get_position().y1
+    )
 
     assert loose_hgap > tight_hgap
     assert loose_vgap > tight_vgap

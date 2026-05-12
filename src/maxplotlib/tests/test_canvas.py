@@ -79,8 +79,8 @@ def test_canvas_plot_tikzfigure_vertical_not_supported():
 
 def test_canvas_matplotlib_gridspec_kw_affects_row_spacing():
     """Test that hspace changes the vertical spacing between rows."""
-    import numpy as np
     import matplotlib.pyplot as plt
+    import numpy as np
 
     from maxplotlib import Canvas
 
@@ -123,8 +123,8 @@ def test_canvas_matplotlib_gridspec_kw_affects_row_spacing():
 
 def test_canvas_matplotlib_gridspec_kw_affects_2x2_line_spacing():
     """Test that wspace/hspace change spacing for 2×2 line subplot grids."""
-    import numpy as np
     import matplotlib.pyplot as plt
+    import numpy as np
 
     from maxplotlib import Canvas
 
@@ -184,8 +184,8 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_line_spacing():
 
 def test_canvas_matplotlib_gridspec_kw_affects_2x2_imshow_spacing():
     """Test spacing control also works for 2×2 color (imshow) subplot grids."""
-    import numpy as np
     import matplotlib.pyplot as plt
+    import numpy as np
 
     from maxplotlib import Canvas
 
