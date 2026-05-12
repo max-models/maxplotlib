@@ -1,6 +1,7 @@
 import os
 import re
-from typing import Dict
+from dataclasses import dataclass
+from typing import Mapping
 
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
@@ -17,6 +18,17 @@ from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
 from maxplotlib.subfigure.line_plot import LinePlot
 from maxplotlib.utils.options import Backends
+
+
+@dataclass(frozen=True)
+class SubplotSpacing:
+    """Typed spacing configuration for subplot grids."""
+
+    wspace: float = 0.08
+    hspace: float = 0.1
+
+    def to_gridspec_kw(self) -> dict[str, float]:
+        return {"wspace": self.wspace, "hspace": self.hspace}
 
 
 def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
@@ -167,7 +179,8 @@ class Canvas:
         dpi: int = 300,
         width: str = "5cm",
         ratio: str = "golden",  # TODO Add literal
-        gridspec_kw: Dict = {"wspace": 0.08, "hspace": 0.1},
+        subplot_spacing: SubplotSpacing | None = None,
+        gridspec_kw: Mapping[str, float] | None = None,
     ):
         """
         Initialize the Canvas class for multiple subplots.
@@ -183,7 +196,10 @@ class Canvas:
         dpi (int): DPI for the figure. Default is 300.
         width (str): Width of the figure. Default is "17cm".
         ratio (str): Aspect ratio. Default is "golden".
-        gridspec_kw (dict): Gridspec keyword arguments. Default is {"wspace": 0.08, "hspace": 0.1}.
+        subplot_spacing (SubplotSpacing): Typed subplot spacing.
+            Default is SubplotSpacing(wspace=0.08, hspace=0.1).
+        gridspec_kw (Mapping[str, float]): Optional matplotlib gridspec kwargs.
+            Kept for compatibility with existing code.
         """
 
         self._nrows = nrows
@@ -196,7 +212,14 @@ class Canvas:
         self._dpi = dpi
         self._width = width
         self._ratio = ratio
-        self._gridspec_kw = gridspec_kw
+        if subplot_spacing is not None and gridspec_kw is not None:
+            raise ValueError("Pass either subplot_spacing or gridspec_kw, not both.")
+        if subplot_spacing is None and gridspec_kw is None:
+            subplot_spacing = SubplotSpacing()
+        if subplot_spacing is not None:
+            self._gridspec_kw = subplot_spacing.to_gridspec_kw()
+        else:
+            self._gridspec_kw = dict(gridspec_kw)
         self._plotted = False
         self._matplotlib_fig = None
         self._matplotlib_axes = None
@@ -221,6 +244,8 @@ class Canvas:
         nrows: int = 1,
         ncols: int = 1,
         squeeze: bool = True,
+        wspace: float | None = None,
+        hspace: float | None = None,
         **canvas_kwargs,
     ):
         """
@@ -231,6 +256,8 @@ class Canvas:
         nrows, ncols (int): Grid dimensions.
         squeeze (bool): If True, return a single subplot instead of a 1-element
             list when the grid is 1×1 or when one dimension is 1.
+        wspace, hspace (float): Convenience subplot spacing arguments.
+            These map to matplotlib gridspec spacing values.
         **canvas_kwargs: Forwarded to the Canvas constructor.
 
         Returns:
@@ -243,6 +270,19 @@ class Canvas:
         >>> canvas, (ax1, ax2) = Canvas.subplots(ncols=2)
         >>> canvas, axes = Canvas.subplots(nrows=2, ncols=2)  # axes[row][col]
         """
+        spacing_given = wspace is not None or hspace is not None
+        if spacing_given and (
+            "subplot_spacing" in canvas_kwargs or "gridspec_kw" in canvas_kwargs
+        ):
+            raise ValueError(
+                "Use either wspace/hspace or subplot_spacing/gridspec_kw, not both."
+            )
+        if spacing_given:
+            canvas_kwargs["subplot_spacing"] = SubplotSpacing(
+                wspace=0.08 if wspace is None else wspace,
+                hspace=0.1 if hspace is None else hspace,
+            )
+
         canvas = cls(nrows=nrows, ncols=ncols, **canvas_kwargs)
         axes = [
             [canvas.add_subplot(row=r, col=c) for c in range(ncols)]
@@ -829,6 +869,7 @@ class Canvas:
             figsize=(fig_width, fig_height),
             squeeze=False,
             dpi=self.dpi,
+            gridspec_kw=self._gridspec_kw,
         )
 
         for (row, col), subplot in self._subplot_dict.items():

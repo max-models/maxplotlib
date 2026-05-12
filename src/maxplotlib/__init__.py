@@ -1,3 +1,3 @@
-from maxplotlib.canvas.canvas import Canvas
+from maxplotlib.canvas.canvas import Canvas, SubplotSpacing
 
-__all__ = ["Canvas"]
+__all__ = ["Canvas", "SubplotSpacing"]
