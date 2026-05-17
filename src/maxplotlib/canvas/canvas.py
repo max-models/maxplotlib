@@ -31,6 +31,13 @@ class SubplotSpacing:
         return {"wspace": self.wspace, "hspace": self.hspace}
 
 
+def _parse_bool_env_var(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
     """
     Plot all nodes and paths on the provided axis using Matplotlib.
@@ -179,6 +186,7 @@ class Canvas:
         dpi: int = 300,
         width: str = "5cm",
         ratio: str = "golden",  # TODO Add literal
+        usetex: bool | None = None,
         subplot_spacing: SubplotSpacing | None = None,
         gridspec_kw: Mapping[str, float] | None = None,
     ):
@@ -196,6 +204,8 @@ class Canvas:
         dpi (int): DPI for the figure. Default is 300.
         width (str): Width of the figure. Default is "17cm".
         ratio (str): Aspect ratio. Default is "golden".
+        usetex (bool | None): Default text.usetex behavior for this canvas.
+            If None, read from MAXPLOTLIB_USETEX environment variable.
         subplot_spacing (SubplotSpacing): Typed subplot spacing.
             Default is SubplotSpacing(wspace=0.08, hspace=0.1).
         gridspec_kw (Mapping[str, float]): Optional matplotlib gridspec kwargs.
@@ -212,6 +222,11 @@ class Canvas:
         self._dpi = dpi
         self._width = width
         self._ratio = ratio
+        self._usetex = (
+            _parse_bool_env_var("MAXPLOTLIB_USETEX", default=False)
+            if usetex is None
+            else usetex
+        )
         if subplot_spacing is not None and gridspec_kw is not None:
             raise ValueError("Pass either subplot_spacing or gridspec_kw, not both.")
         if subplot_spacing is None and gridspec_kw is None:
@@ -764,8 +779,11 @@ class Canvas:
         backend: Backends = "matplotlib",
         savefig=False,
         layers=None,
+        usetex: bool | None = None,
         verbose: bool = False,
     ):
+        resolved_usetex = self._usetex if usetex is None else usetex
+
         if verbose:
             print(f"Plotting figure using backend: {backend}")
 
@@ -773,10 +791,15 @@ class Canvas:
             return self.plot_matplotlib(
                 savefig=savefig,
                 layers=layers,
+                usetex=resolved_usetex,
                 verbose=verbose,
             )
         elif backend == "plotly":
-            return self.plot_plotly(savefig=savefig)
+            return self.plot_plotly(
+                savefig=savefig,
+                usetex=resolved_usetex,
+                verbose=verbose,
+            )
         elif backend == "plotext":
             return self.plot_plotext(
                 savefig=savefig,
@@ -784,7 +807,7 @@ class Canvas:
                 verbose=verbose,
             )
         elif backend == "tikzfigure":
-            return self.plot_tikzfigure(savefig=savefig)
+            return self.plot_tikzfigure(savefig=savefig, verbose=verbose)
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
@@ -792,6 +815,7 @@ class Canvas:
         self,
         backend: Backends = "matplotlib",
         layers: list | None = None,
+        usetex: bool | None = None,
         verbose: bool = False,
     ):
         if verbose:
@@ -802,11 +826,13 @@ class Canvas:
                 backend="matplotlib",
                 savefig=False,
                 layers=layers,
+                usetex=usetex,
                 verbose=verbose,
             )
             # self._matplotlib_fig.show()
         elif backend == "plotly":
-            self.plot_plotly(savefig=False)
+            resolved_usetex = self._usetex if usetex is None else usetex
+            self.plot_plotly(savefig=False, usetex=resolved_usetex)
         elif backend == "plotext":
             figure = self.plot_plotext(
                 savefig=False,
@@ -827,7 +853,7 @@ class Canvas:
         self,
         savefig: bool = False,
         layers: list | None = None,
-        usetex: bool = False,
+        usetex: bool | None = None,
         verbose: bool = False,
     ):
         """
@@ -839,7 +865,8 @@ class Canvas:
         if verbose:
             print("Generating Matplotlib figure...")
 
-        tex_fonts = setup_tex_fonts(fontsize=self.fontsize, usetex=usetex)
+        resolved_usetex = self._usetex if usetex is None else usetex
+        tex_fonts = setup_tex_fonts(fontsize=self.fontsize, usetex=resolved_usetex)
 
         setup_plotstyle(
             tex_fonts=tex_fonts,
@@ -1003,18 +1030,28 @@ class Canvas:
         self._plotext_figure = wrapped
         return wrapped
 
-    def plot_plotly(self, show=True, savefig=None, usetex=False):
+    def plot_plotly(
+        self,
+        show=True,
+        savefig=None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+    ):
         """
         Generate and optionally display the subplots using Plotly.
 
         Parameters:
         show (bool): Whether to display the plot.
         savefig (str, optional): Filename to save the figure if provided.
+        verbose (bool): Whether to print verbose output.
+
         """
+
+        resolved_usetex = self._usetex if usetex is None else usetex
 
         setup_tex_fonts(
             fontsize=self.fontsize,
-            usetex=usetex,
+            usetex=resolved_usetex,
         )  # adjust or redefine for Plotly if needed
 
         # Set default width and height if not specified
@@ -1105,6 +1142,10 @@ class Canvas:
     @property
     def figsize(self):
         return self._figsize
+
+    @property
+    def usetex(self):
+        return self._usetex
 
     @property
     def subplot_matrix(self):
