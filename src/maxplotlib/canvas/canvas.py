@@ -1030,7 +1030,13 @@ class Canvas:
         self._plotext_figure = wrapped
         return wrapped
 
-    def plot_plotly(self, show=True, savefig=None, usetex: bool | None = None):
+    def plot_plotly(
+        self,
+        show=True,
+        savefig=None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+    ):
         """
         Generate and optionally display the subplots using Plotly.
 
