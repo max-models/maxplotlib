@@ -270,5 +270,48 @@ def test_canvas_subplots_spacing_args_and_explicit_spacing_are_mutually_exclusiv
         )
 
 
+def test_canvas_usetex_reads_environment_default(monkeypatch):
+    from maxplotlib import Canvas
+
+    monkeypatch.setenv("MAXPLOTLIB_USETEX", "true")
+    canvas = Canvas()
+    assert canvas.usetex is True
+
+
+def test_canvas_usetex_constructor_overrides_environment(monkeypatch):
+    from maxplotlib import Canvas
+
+    monkeypatch.setenv("MAXPLOTLIB_USETEX", "true")
+    canvas = Canvas(usetex=False)
+    assert canvas.usetex is False
+
+
+def test_canvas_plot_usetex_precedence(monkeypatch):
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+    import maxplotlib.canvas.canvas as canvas_module
+
+    captured: list[bool] = []
+
+    def fake_setup_tex_fonts(fontsize=14, usetex=False):
+        captured.append(usetex)
+        return {}
+
+    monkeypatch.setattr(canvas_module, "setup_tex_fonts", fake_setup_tex_fonts)
+
+    canvas = Canvas(usetex=True)
+    subplot = canvas.add_subplot()
+    subplot.plot([0, 1], [0, 1])
+
+    fig, _ = canvas.plot_matplotlib()
+    plt.close(fig)
+
+    fig, _ = canvas.plot_matplotlib(usetex=False)
+    plt.close(fig)
+
+    assert captured == [True, False]
+
+
 if __name__ == "__main__":
     test()
