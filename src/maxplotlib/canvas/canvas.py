@@ -764,6 +764,7 @@ class Canvas:
         backend: Backends = "matplotlib",
         savefig=False,
         layers=None,
+        usetex: bool = False,
         verbose: bool = False,
     ):
         if verbose:
@@ -773,10 +774,15 @@ class Canvas:
             return self.plot_matplotlib(
                 savefig=savefig,
                 layers=layers,
+                usetex=usetex,
                 verbose=verbose,
             )
         elif backend == "plotly":
-            return self.plot_plotly(savefig=savefig)
+            return self.plot_plotly(
+                savefig=savefig,
+                usetex=usetex,
+                verbose=verbose,
+            )
         elif backend == "plotext":
             return self.plot_plotext(
                 savefig=savefig,
@@ -784,7 +790,7 @@ class Canvas:
                 verbose=verbose,
             )
         elif backend == "tikzfigure":
-            return self.plot_tikzfigure(savefig=savefig)
+            return self.plot_tikzfigure(savefig=savefig, verbose=verbose)
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
