@@ -289,8 +289,8 @@ def test_canvas_usetex_constructor_overrides_environment(monkeypatch):
 def test_canvas_plot_usetex_precedence(monkeypatch):
     import matplotlib.pyplot as plt
 
-    from maxplotlib import Canvas
     import maxplotlib.canvas.canvas as canvas_module
+    from maxplotlib import Canvas
 
     captured: list[bool] = []
 

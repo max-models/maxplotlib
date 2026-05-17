@@ -11,7 +11,7 @@ on:
       - devel
 
 jobs:
-  static-analysis:
+  cloc:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout the code
@@ -24,12 +24,33 @@ jobs:
           ./cloc --version
           ./cloc $(git ls-files)
 
+  black:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
       - name: Code formatting with black
         run: |
-          pip install black
           pip install "black[jupyter]"
           black --check src/
           black --check tutorials/
+
+  isort:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
 
       - name: Code formatting with isort
         run: |
@@ -37,25 +58,69 @@ jobs:
           isort --check src/
           isort --check tutorials/
 
-      - name: Code formatting with prospector
+  mypy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Type check with mypy
         continue-on-error: true
         run: |
           pip install mypy
           mypy src/
 
-      - name: Code formatting with prospector
+  prospector:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Static analysis with prospector
         continue-on-error: true
         run: |
           pip install prospector
           prospector src/
-      
-      - name: Code formatting with ruff
+
+  ruff:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Lint with ruff
         continue-on-error: true
         run: |
           pip install ruff
           ruff check src/
 
-      - name: Code formatting with pylint
+  pylint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Lint with pylint
         continue-on-error: true
         run: |
           pip install pylint
