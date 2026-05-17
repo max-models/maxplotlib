@@ -1043,6 +1043,8 @@ class Canvas:
         Parameters:
         show (bool): Whether to display the plot.
         savefig (str, optional): Filename to save the figure if provided.
+        verbose (bool): Whether to print verbose output.
+
         """
 
         resolved_usetex = self._usetex if usetex is None else usetex
