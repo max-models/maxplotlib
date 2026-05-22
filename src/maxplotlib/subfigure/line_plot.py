@@ -691,11 +691,15 @@ class LinePlot:
                 kwargs = line["kwargs"]
                 x = tx(line["x"])
                 if np.isscalar(line["y1"]):
-                    y1 = np.full_like(np.asarray(x, dtype=float), float(tys(line["y1"])))
+                    y1 = np.full_like(
+                        np.asarray(x, dtype=float), float(tys(line["y1"]))
+                    )
                 else:
                     y1 = ty(line["y1"])
                 if np.isscalar(line["y2"]):
-                    y2 = np.full_like(np.asarray(x, dtype=float), float(tys(line["y2"])))
+                    y2 = np.full_like(
+                        np.asarray(x, dtype=float), float(tys(line["y2"]))
+                    )
                 else:
                     y2 = ty(line["y2"])
 
@@ -732,7 +736,9 @@ class LinePlot:
                     showlegend=bool(kwargs.get("label")) and bool(self._legend),
                     line=dict(
                         color=plotly_color(kwargs.get("color", None)),
-                        dash=linestyle_map.get(kwargs.get("linestyle", "solid"), "solid"),
+                        dash=linestyle_map.get(
+                            kwargs.get("linestyle", "solid"), "solid"
+                        ),
                         width=kwargs.get("linewidth", None),
                     ),
                     marker=(
@@ -867,7 +873,9 @@ class LinePlot:
                 if last_heatmap_idx is not None:
                     label = line.get("label", "") or line["kwargs"].get("label", "")
                     if label:
-                        traces[last_heatmap_idx].update(colorbar=dict(title=dict(text=label)))
+                        traces[last_heatmap_idx].update(
+                            colorbar=dict(title=dict(text=label))
+                        )
             elif plot_type == "patch":
                 kwargs = line["kwargs"]
                 patch = line["patch"]
@@ -879,22 +887,28 @@ class LinePlot:
                 def _patch_line_color():
                     return plotly_color(
                         kwargs.get(
-                        "edgecolor",
-                        kwargs.get(
-                            "color",
-                            patch.get_edgecolor()
-                            if hasattr(patch, "get_edgecolor")
-                            else "black",
-                        ),
-                    )
+                            "edgecolor",
+                            kwargs.get(
+                                "color",
+                                (
+                                    patch.get_edgecolor()
+                                    if hasattr(patch, "get_edgecolor")
+                                    else "black"
+                                ),
+                            ),
+                        )
                     )
 
                 def _patch_fill_color():
                     return plotly_color(
                         kwargs.get(
-                        "facecolor",
-                        patch.get_facecolor() if hasattr(patch, "get_facecolor") else None,
-                    )
+                            "facecolor",
+                            (
+                                patch.get_facecolor()
+                                if hasattr(patch, "get_facecolor")
+                                else None
+                            ),
+                        )
                     )
 
                 patch_label = kwargs.get("label")

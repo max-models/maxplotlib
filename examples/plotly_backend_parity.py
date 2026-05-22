@@ -19,9 +19,7 @@ def main() -> None:
         marker="o",
         label="samples ± err",
     )
-    canvas.fill_between(
-        x, y - 0.1, y + 0.1, color="steelblue", alpha=0.2, label="band"
-    )
+    canvas.fill_between(x, y - 0.1, y + 0.1, color="steelblue", alpha=0.2, label="band")
     canvas.vlines([2, 5, 8], ymin=0, ymax=3.5, color="gray", linestyle="dashed")
     canvas.text(7.2, 2.8, "note", color="purple")
     canvas.annotate(

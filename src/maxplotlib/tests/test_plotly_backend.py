@@ -23,7 +23,9 @@ def test_plotly_backend_supports_common_primitives():
     assert fig is not None
     assert len(fig.data) >= 4  # line, scatter, errorbar, fill_between
     assert len(getattr(fig.layout, "shapes", []) or []) >= 2  # axhline + axvline
-    assert len(getattr(fig.layout, "annotations", []) or []) >= 2  # subplot title + text/annotate
+    assert (
+        len(getattr(fig.layout, "annotations", []) or []) >= 2
+    )  # subplot title + text/annotate
 
 
 def test_plotly_backend_respects_layers():
@@ -48,9 +50,13 @@ def test_plotly_backend_supports_common_patches_and_symlog():
 
     canvas, ax = Canvas.subplots()
     ax.add_patch(
-        mpatches.Rectangle((0.2, 0.2), 1.3, 0.7, fill=False, edgecolor="yellow", label="r")
+        mpatches.Rectangle(
+            (0.2, 0.2), 1.3, 0.7, fill=False, edgecolor="yellow", label="r"
+        )
     )
-    ax.add_patch(mpatches.Circle((2.2, 1.6), 0.45, fill=False, edgecolor="cyan", label="c"))
+    ax.add_patch(
+        mpatches.Circle((2.2, 1.6), 0.45, fill=False, edgecolor="cyan", label="c")
+    )
     ax.add_patch(
         mpatches.Polygon(
             [[3.0, 0.5], [3.8, 1.2], [3.4, 2.0]],
