@@ -19,7 +19,7 @@ dependencies = [
     "pint",
     "plotly",
     "plotext",
-    "tikzfigure[vis]>=0.2.1",
+    "tikzfigure[vis]>=0.3.0",
 ]
 [project.optional-dependencies]
 test = [
