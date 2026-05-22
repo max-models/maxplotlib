@@ -75,6 +75,15 @@ ax.set_legend(True)
 canvas.show(backend="plotext")
 ```
 
+## Examples
+
+Runnable example scripts live in `examples/`:
+
+``` bash
+python examples/plotly_backend_basic.py
+python examples/plotly_backend_parity.py
+```
+
 ### Layers
 
 ``` python

@@ -565,9 +565,14 @@ class LinePlot:
             print(tikz_figure.generate_tikz())
         return tikz_figure
 
-    def plot_plotly(self):
+    def plot_plotly(self, layers=None):
         """
-        Plot all lines using Plotly and return a list of traces for each line.
+        Plot all lines using Plotly.
+
+        Returns a tuple of (traces, shapes, annotations) where:
+        - traces are plotly graph objects to add with fig.add_trace()
+        - shapes are layout shape dicts to add with fig.add_shape()
+        - annotations are layout annotation dicts to add with fig.add_annotation()
         """
         linestyle_map = {
             "solid": "solid",
@@ -576,48 +581,431 @@ class LinePlot:
             "dashdot": "dashdot",
         }
 
-        traces = []
-        for line in self.line_data:
+        marker_map = {
+            "o": "circle",
+            ".": "circle",
+            "s": "square",
+            "^": "triangle-up",
+            "v": "triangle-down",
+            "<": "triangle-left",
+            ">": "triangle-right",
+            "x": "x",
+            "+": "cross",
+            "*": "star",
+            "D": "diamond",
+        }
+
+        traces: list[go.BaseTraceType] = []
+        shapes: list[dict] = []
+        annotations: list[dict] = []
+        last_heatmap_idx: int | None = None
+
+        def tx(values):
+            return self._transform_x(values)
+
+        def ty(values):
+            return self._transform_y(values)
+
+        def txs(value):
+            return self._transform_scalar_x(value)
+
+        def tys(value):
+            return self._transform_scalar_y(value)
+
+        def plotly_color(value):
+            if value is None:
+                return None
+            if isinstance(value, np.generic):
+                value = value.item()
+            if isinstance(value, (list, tuple, np.ndarray)):
+                arr = np.asarray(value).astype(float).reshape(-1)
+                if arr.size in (3, 4):
+                    rgb = (arr[:3] * 255.0) if np.all(arr[:3] <= 1.0) else arr[:3]
+                    r, g, b = [int(round(float(x))) for x in rgb]
+                    if arr.size == 4:
+                        a = float(arr[3])
+                        if a > 1.0:
+                            a = a / 255.0
+                        return f"rgba({r},{g},{b},{a})"
+                    return f"rgb({r},{g},{b})"
+            return value
+
+        for line in self._iter_layer_lines(layers=layers):
             plot_type = line["plot_type"]
             if plot_type == "plot":
+                kwargs = line["kwargs"]
+                marker = kwargs.get("marker")
+                mode = "lines+markers" if marker is not None else "lines"
                 trace = go.Scatter(
-                    x=(line["x"] + self._xshift) * self._xscale,
-                    y=(line["y"] + self._yshift) * self._yscale,
-                    mode="lines+markers" if "marker" in line["kwargs"] else "lines",
-                    name=line["kwargs"].get("label", ""),
+                    x=tx(line["x"]),
+                    y=ty(line["y"]),
+                    mode=mode,
+                    name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
                     line=dict(
-                        color=line["kwargs"].get("color", None),
+                        color=plotly_color(kwargs.get("color", None)),
                         dash=linestyle_map.get(
-                            line["kwargs"].get("linestyle", "solid"),
+                            kwargs.get("linestyle", "solid"),
                             "solid",
                         ),
+                        width=kwargs.get("linewidth", None),
+                    ),
+                    marker=(
+                        dict(
+                            color=plotly_color(kwargs.get("color", None)),
+                            symbol=marker_map.get(marker, "circle"),
+                            size=kwargs.get("markersize", None),
+                        )
+                        if marker is not None
+                        else None
                     ),
                 )
                 traces.append(trace)
             elif plot_type == "scatter":
+                kwargs = line["kwargs"]
+                marker = kwargs.get("marker", "circle")
                 trace = go.Scatter(
-                    x=(line["x"] + self._xshift) * self._xscale,
-                    y=(line["y"] + self._yshift) * self._yscale,
+                    x=tx(line["x"]),
+                    y=ty(line["y"]),
                     mode="markers",
-                    name=line["kwargs"].get("label", ""),
-                    marker=dict(color=line["kwargs"].get("color", None)),
+                    name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    marker=dict(
+                        color=plotly_color(kwargs.get("color", None)),
+                        symbol=marker_map.get(marker, marker),
+                        size=kwargs.get("s", None),
+                    ),
                 )
                 traces.append(trace)
             elif plot_type == "bar":
+                kwargs = line["kwargs"]
                 trace = go.Bar(
-                    x=(line["x"] + self._xshift) * self._xscale,
-                    y=line["height"] * self._yscale,
-                    name=line["kwargs"].get("label", ""),
-                    marker_color=line["kwargs"].get("color", None),
+                    x=tx(line["x"]),
+                    y=np.asarray(line["height"]) * self._yscale,
+                    name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    marker_color=plotly_color(kwargs.get("color", None)),
                 )
                 traces.append(trace)
-            elif plot_type in ("axhline", "axvline"):
-                pass  # Rendered as shape annotations; no trace needed
+            elif plot_type == "fill_between":
+                kwargs = line["kwargs"]
+                x = tx(line["x"])
+                if np.isscalar(line["y1"]):
+                    y1 = np.full_like(
+                        np.asarray(x, dtype=float), float(tys(line["y1"]))
+                    )
+                else:
+                    y1 = ty(line["y1"])
+                if np.isscalar(line["y2"]):
+                    y2 = np.full_like(
+                        np.asarray(x, dtype=float), float(tys(line["y2"]))
+                    )
+                else:
+                    y2 = ty(line["y2"])
 
-        return traces
+                color = plotly_color(kwargs.get("color", kwargs.get("facecolor", None)))
+                alpha = kwargs.get("alpha", 0.3)
+                fill_trace = go.Scatter(
+                    x=np.concatenate([x, x[::-1]]),
+                    y=np.concatenate([y1, y2[::-1]]),
+                    fill="toself",
+                    fillcolor=color,
+                    opacity=alpha,
+                    line=dict(color="rgba(0,0,0,0)"),
+                    name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                )
+                traces.append(fill_trace)
+            elif plot_type == "errorbar":
+                kwargs = line["kwargs"]
+                marker = kwargs.get("marker")
+                mode = "lines+markers" if marker is not None else "lines"
+                x_vals = tx(line["x"])
+                y_vals = ty(line["y"])
+                yerr = line.get("yerr")
+                xerr = line.get("xerr")
+                if yerr is not None and np.isscalar(yerr):
+                    yerr = np.full(len(x_vals), float(yerr))
+                if xerr is not None and np.isscalar(xerr):
+                    xerr = np.full(len(x_vals), float(xerr))
+                trace = go.Scatter(
+                    x=x_vals,
+                    y=y_vals,
+                    mode=mode,
+                    name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    line=dict(
+                        color=plotly_color(kwargs.get("color", None)),
+                        dash=linestyle_map.get(
+                            kwargs.get("linestyle", "solid"), "solid"
+                        ),
+                        width=kwargs.get("linewidth", None),
+                    ),
+                    marker=(
+                        dict(
+                            color=plotly_color(kwargs.get("color", None)),
+                            symbol=marker_map.get(marker, "circle"),
+                            size=kwargs.get("markersize", None),
+                        )
+                        if marker is not None
+                        else None
+                    ),
+                    error_y=(
+                        dict(type="data", array=yerr, visible=True)
+                        if yerr is not None
+                        else None
+                    ),
+                    error_x=(
+                        dict(type="data", array=xerr, visible=True)
+                        if xerr is not None
+                        else None
+                    ),
+                )
+                traces.append(trace)
+            elif plot_type in ("axhline", "axvline", "hlines", "vlines"):
+                kwargs = line["kwargs"]
+                color = plotly_color(kwargs.get("color", kwargs.get("colors", "black")))
+                dash = linestyle_map.get(kwargs.get("linestyle", "solid"), "solid")
+                width = kwargs.get("linewidth", 1)
+                if plot_type == "axhline":
+                    shapes.append(
+                        dict(
+                            type="line",
+                            x0=0,
+                            x1=1,
+                            xref="paper",
+                            y0=tys(line["y"]),
+                            y1=tys(line["y"]),
+                            line=dict(color=color, dash=dash, width=width),
+                        )
+                    )
+                elif plot_type == "axvline":
+                    shapes.append(
+                        dict(
+                            type="line",
+                            y0=0,
+                            y1=1,
+                            yref="paper",
+                            x0=txs(line["x"]),
+                            x1=txs(line["x"]),
+                            line=dict(color=color, dash=dash, width=width),
+                        )
+                    )
+                elif plot_type == "hlines":
+                    y_vals = np.atleast_1d(line["y"])
+                    xmins = np.atleast_1d(line["xmin"])
+                    xmaxs = np.atleast_1d(line["xmax"])
+                    for y, xmin, xmax in zip(y_vals, xmins, xmaxs):
+                        shapes.append(
+                            dict(
+                                type="line",
+                                x0=txs(xmin),
+                                x1=txs(xmax),
+                                y0=tys(y),
+                                y1=tys(y),
+                                line=dict(color=color, dash=dash, width=width),
+                            )
+                        )
+                elif plot_type == "vlines":
+                    x_vals = np.atleast_1d(line["x"])
+                    ymins = np.atleast_1d(line["ymin"])
+                    ymaxs = np.atleast_1d(line["ymax"])
+                    for x, ymin, ymax in zip(x_vals, ymins, ymaxs):
+                        shapes.append(
+                            dict(
+                                type="line",
+                                x0=txs(x),
+                                x1=txs(x),
+                                y0=tys(ymin),
+                                y1=tys(ymax),
+                                line=dict(color=color, dash=dash, width=width),
+                            )
+                        )
+            elif plot_type in ("text", "annotate"):
+                kwargs = line["kwargs"]
+                if plot_type == "text":
+                    x = txs(float(line["x"]))
+                    y = tys(float(line["y"]))
+                    text = line["s"]
+                    annotations.append(
+                        dict(
+                            x=x,
+                            y=y,
+                            text=text,
+                            showarrow=False,
+                            font=dict(
+                                color=plotly_color(kwargs.get("color", None)),
+                                size=kwargs.get("fontsize", None),
+                            ),
+                        )
+                    )
+                else:
+                    x = txs(float(line["xy"][0]))
+                    y = tys(float(line["xy"][1]))
+                    ann = dict(
+                        x=x,
+                        y=y,
+                        text=line["text"],
+                        showarrow=True,
+                        arrowhead=2,
+                        ax=0,
+                        ay=-30,
+                        font=dict(
+                            color=plotly_color(kwargs.get("color", None)),
+                            size=kwargs.get("fontsize", None),
+                        ),
+                    )
+                    if line.get("xytext") is not None:
+                        tx_val = txs(float(line["xytext"][0]))
+                        ty_val = tys(float(line["xytext"][1]))
+                        ann.update(axref="x", ayref="y", ax=tx_val, ay=ty_val)
+                    annotations.append(ann)
+            elif plot_type == "imshow":
+                kwargs = line["kwargs"]
+                heatmap = go.Heatmap(
+                    z=line["data"],
+                    colorscale=kwargs.get("cmap", "Viridis"),
+                    showscale=True,
+                )
+                traces.append(heatmap)
+                last_heatmap_idx = len(traces) - 1
+            elif plot_type == "colorbar":
+                if last_heatmap_idx is not None:
+                    label = line.get("label", "") or line["kwargs"].get("label", "")
+                    if label:
+                        traces[last_heatmap_idx].update(
+                            colorbar=dict(title=dict(text=label))
+                        )
+            elif plot_type == "patch":
+                kwargs = line["kwargs"]
+                patch = line["patch"]
+                try:
+                    import matplotlib.patches as mpl_patches
+                except Exception:
+                    mpl_patches = None
+
+                def _patch_line_color():
+                    return plotly_color(
+                        kwargs.get(
+                            "edgecolor",
+                            kwargs.get(
+                                "color",
+                                (
+                                    patch.get_edgecolor()
+                                    if hasattr(patch, "get_edgecolor")
+                                    else "black"
+                                ),
+                            ),
+                        )
+                    )
+
+                def _patch_fill_color():
+                    return plotly_color(
+                        kwargs.get(
+                            "facecolor",
+                            (
+                                patch.get_facecolor()
+                                if hasattr(patch, "get_facecolor")
+                                else None
+                            ),
+                        )
+                    )
+
+                patch_label = kwargs.get("label")
+                if patch_label is None and hasattr(patch, "get_label"):
+                    raw = patch.get_label()
+                    if raw and not str(raw).startswith("_"):
+                        patch_label = str(raw)
+
+                if mpl_patches is not None and isinstance(patch, mpl_patches.Rectangle):
+                    x0 = txs(patch.get_x())
+                    y0 = tys(patch.get_y())
+                    x1 = txs(patch.get_x() + patch.get_width())
+                    y1 = tys(patch.get_y() + patch.get_height())
+                    shapes.append(
+                        dict(
+                            type="rect",
+                            x0=x0,
+                            y0=y0,
+                            x1=x1,
+                            y1=y1,
+                            line=dict(color=_patch_line_color()),
+                            fillcolor=_patch_fill_color(),
+                            opacity=kwargs.get("alpha", None),
+                        )
+                    )
+                elif mpl_patches is not None and isinstance(patch, mpl_patches.Circle):
+                    cx = txs(patch.center[0])
+                    cy = tys(patch.center[1])
+                    rx = abs(txs(patch.center[0] + patch.radius) - cx)
+                    ry = abs(tys(patch.center[1] + patch.radius) - cy)
+                    path = (
+                        f"M {cx - rx},{cy} "
+                        f"A {rx},{ry} 0 1,0 {cx + rx},{cy} "
+                        f"A {rx},{ry} 0 1,0 {cx - rx},{cy} Z"
+                    )
+                    shapes.append(
+                        dict(
+                            type="path",
+                            path=path,
+                            line=dict(color=_patch_line_color()),
+                            fillcolor=_patch_fill_color(),
+                            opacity=kwargs.get("alpha", None),
+                        )
+                    )
+                elif mpl_patches is not None and isinstance(patch, mpl_patches.Ellipse):
+                    cx = txs(patch.center[0])
+                    cy = tys(patch.center[1])
+                    rx = abs(txs(patch.center[0] + patch.width / 2.0) - cx)
+                    ry = abs(tys(patch.center[1] + patch.height / 2.0) - cy)
+                    # Ignore rotation for now; provides useful parity for tutorials.
+                    path = (
+                        f"M {cx - rx},{cy} "
+                        f"A {rx},{ry} 0 1,0 {cx + rx},{cy} "
+                        f"A {rx},{ry} 0 1,0 {cx - rx},{cy} Z"
+                    )
+                    shapes.append(
+                        dict(
+                            type="path",
+                            path=path,
+                            line=dict(color=_patch_line_color()),
+                            fillcolor=_patch_fill_color(),
+                            opacity=kwargs.get("alpha", None),
+                        )
+                    )
+                elif mpl_patches is not None and isinstance(patch, mpl_patches.Polygon):
+                    pts = patch.get_xy()
+                    if len(pts) >= 2:
+                        pts_t = [(txs(float(x)), tys(float(y))) for x, y in pts]
+                        path = "M " + " L ".join(f"{x},{y}" for x, y in pts_t) + " Z"
+                        shapes.append(
+                            dict(
+                                type="path",
+                                path=path,
+                                line=dict(color=_patch_line_color()),
+                                fillcolor=_patch_fill_color(),
+                                opacity=kwargs.get("alpha", None),
+                            )
+                        )
+
+                # Plotly shapes don't participate in legends; add a dummy trace.
+                if patch_label and bool(self._legend):
+                    traces.append(
+                        go.Scatter(
+                            x=[None],
+                            y=[None],
+                            mode="lines",
+                            name=patch_label,
+                            line=dict(color=_patch_line_color()),
+                            showlegend=True,
+                        )
+                    )
+
+        return traces, shapes, annotations
 
     def _iter_layer_lines(self, layers=None):
-        for layer_name, layer_lines in self.layered_line_data.items():
+        for layer_name in sorted(self.layered_line_data):
+            layer_lines = self.layered_line_data[layer_name]
             if layers and layer_name not in layers:
                 continue
             for line in layer_lines:
