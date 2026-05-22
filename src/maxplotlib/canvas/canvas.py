@@ -1193,10 +1193,11 @@ class Canvas:
 
             # Axis limits
             if line_plot._xmin is not None or line_plot._xmax is not None:
-                x_range = [
-                    line_plot._xmin if line_plot._xmin is not None else None,
-                    line_plot._xmax if line_plot._xmax is not None else None,
-                ]
+                x_range = [line_plot._xmin, line_plot._xmax]
+                if x_range[0] is not None:
+                    x_range[0] = line_plot._transform_scalar_x(x_range[0])
+                if x_range[1] is not None:
+                    x_range[1] = line_plot._transform_scalar_x(x_range[1])
                 if (
                     line_plot._xaxis_scale == "log"
                     and x_range[0] is not None
@@ -1211,10 +1212,11 @@ class Canvas:
                     col=col + 1,
                 )
             if line_plot._ymin is not None or line_plot._ymax is not None:
-                y_range = [
-                    line_plot._ymin if line_plot._ymin is not None else None,
-                    line_plot._ymax if line_plot._ymax is not None else None,
-                ]
+                y_range = [line_plot._ymin, line_plot._ymax]
+                if y_range[0] is not None:
+                    y_range[0] = line_plot._transform_scalar_y(y_range[0])
+                if y_range[1] is not None:
+                    y_range[1] = line_plot._transform_scalar_y(y_range[1])
                 if (
                     line_plot._yaxis_scale == "log"
                     and y_range[0] is not None
@@ -1231,17 +1233,19 @@ class Canvas:
 
             # Custom ticks (positions + optional labels)
             if line_plot._xticks is not None:
+                tickvals = [line_plot._transform_scalar_x(v) for v in line_plot._xticks]
                 fig.update_xaxes(
                     tickmode="array",
-                    tickvals=line_plot._xticks,
+                    tickvals=tickvals,
                     ticktext=line_plot._xticklabels,
                     row=row + 1,
                     col=col + 1,
                 )
             if line_plot._yticks is not None:
+                tickvals = [line_plot._transform_scalar_y(v) for v in line_plot._yticks]
                 fig.update_yaxes(
                     tickmode="array",
-                    tickvals=line_plot._yticks,
+                    tickvals=tickvals,
                     ticktext=line_plot._yticklabels,
                     row=row + 1,
                     col=col + 1,
@@ -1250,6 +1254,13 @@ class Canvas:
             # Aspect ratio
             if line_plot._aspect == "equal":
                 fig.update_yaxes(scaleanchor=xref, row=row + 1, col=col + 1)
+            elif isinstance(line_plot._aspect, (int, float)):
+                fig.update_yaxes(
+                    scaleanchor=xref,
+                    scaleratio=float(line_plot._aspect),
+                    row=row + 1,
+                    col=col + 1,
+                )
 
         # Update layout settings
         fig.update_layout(

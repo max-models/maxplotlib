@@ -600,6 +600,36 @@ class LinePlot:
         annotations: list[dict] = []
         last_heatmap_idx: int | None = None
 
+        def tx(values):
+            return self._transform_x(values)
+
+        def ty(values):
+            return self._transform_y(values)
+
+        def txs(value):
+            return self._transform_scalar_x(value)
+
+        def tys(value):
+            return self._transform_scalar_y(value)
+
+        def plotly_color(value):
+            if value is None:
+                return None
+            if isinstance(value, np.generic):
+                value = value.item()
+            if isinstance(value, (list, tuple, np.ndarray)):
+                arr = np.asarray(value).astype(float).reshape(-1)
+                if arr.size in (3, 4):
+                    rgb = (arr[:3] * 255.0) if np.all(arr[:3] <= 1.0) else arr[:3]
+                    r, g, b = [int(round(float(x))) for x in rgb]
+                    if arr.size == 4:
+                        a = float(arr[3])
+                        if a > 1.0:
+                            a = a / 255.0
+                        return f"rgba({r},{g},{b},{a})"
+                    return f"rgb({r},{g},{b})"
+            return value
+
         for line in self._iter_layer_lines(layers=layers):
             plot_type = line["plot_type"]
             if plot_type == "plot":
@@ -607,12 +637,13 @@ class LinePlot:
                 marker = kwargs.get("marker")
                 mode = "lines+markers" if marker is not None else "lines"
                 trace = go.Scatter(
-                    x=(line["x"] + self._xshift) * self._xscale,
-                    y=(line["y"] + self._yshift) * self._yscale,
+                    x=tx(line["x"]),
+                    y=ty(line["y"]),
                     mode=mode,
                     name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
                     line=dict(
-                        color=kwargs.get("color", None),
+                        color=plotly_color(kwargs.get("color", None)),
                         dash=linestyle_map.get(
                             kwargs.get("linestyle", "solid"),
                             "solid",
@@ -621,7 +652,7 @@ class LinePlot:
                     ),
                     marker=(
                         dict(
-                            color=kwargs.get("color", None),
+                            color=plotly_color(kwargs.get("color", None)),
                             symbol=marker_map.get(marker, "circle"),
                             size=kwargs.get("markersize", None),
                         )
@@ -634,12 +665,13 @@ class LinePlot:
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker", "circle")
                 trace = go.Scatter(
-                    x=(line["x"] + self._xshift) * self._xscale,
-                    y=(line["y"] + self._yshift) * self._yscale,
+                    x=tx(line["x"]),
+                    y=ty(line["y"]),
                     mode="markers",
                     name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
                     marker=dict(
-                        color=kwargs.get("color", None),
+                        color=plotly_color(kwargs.get("color", None)),
                         symbol=marker_map.get(marker, marker),
                         size=kwargs.get("s", None),
                     ),
@@ -648,25 +680,26 @@ class LinePlot:
             elif plot_type == "bar":
                 kwargs = line["kwargs"]
                 trace = go.Bar(
-                    x=(line["x"] + self._xshift) * self._xscale,
-                    y=line["height"] * self._yscale,
+                    x=tx(line["x"]),
+                    y=np.asarray(line["height"]) * self._yscale,
                     name=kwargs.get("label", ""),
-                    marker_color=kwargs.get("color", None),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    marker_color=plotly_color(kwargs.get("color", None)),
                 )
                 traces.append(trace)
             elif plot_type == "fill_between":
                 kwargs = line["kwargs"]
-                x = (line["x"] + self._xshift) * self._xscale
+                x = tx(line["x"])
                 if np.isscalar(line["y1"]):
-                    y1 = np.full_like(np.asarray(x, dtype=float), float(line["y1"]))
+                    y1 = np.full_like(np.asarray(x, dtype=float), float(tys(line["y1"])))
                 else:
-                    y1 = (line["y1"] + self._yshift) * self._yscale
+                    y1 = ty(line["y1"])
                 if np.isscalar(line["y2"]):
-                    y2 = np.full_like(np.asarray(x, dtype=float), float(line["y2"]))
+                    y2 = np.full_like(np.asarray(x, dtype=float), float(tys(line["y2"])))
                 else:
-                    y2 = (line["y2"] + self._yshift) * self._yscale
+                    y2 = ty(line["y2"])
 
-                color = kwargs.get("color", kwargs.get("facecolor", None))
+                color = plotly_color(kwargs.get("color", kwargs.get("facecolor", None)))
                 alpha = kwargs.get("alpha", 0.3)
                 fill_trace = go.Scatter(
                     x=np.concatenate([x, x[::-1]]),
@@ -676,15 +709,15 @@ class LinePlot:
                     opacity=alpha,
                     line=dict(color="rgba(0,0,0,0)"),
                     name=kwargs.get("label", ""),
-                    showlegend=bool(kwargs.get("label")),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
                 )
                 traces.append(fill_trace)
             elif plot_type == "errorbar":
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker")
                 mode = "lines+markers" if marker is not None else "lines"
-                x_vals = (line["x"] + self._xshift) * self._xscale
-                y_vals = (line["y"] + self._yshift) * self._yscale
+                x_vals = tx(line["x"])
+                y_vals = ty(line["y"])
                 yerr = line.get("yerr")
                 xerr = line.get("xerr")
                 if yerr is not None and np.isscalar(yerr):
@@ -696,14 +729,15 @@ class LinePlot:
                     y=y_vals,
                     mode=mode,
                     name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
                     line=dict(
-                        color=kwargs.get("color", None),
+                        color=plotly_color(kwargs.get("color", None)),
                         dash=linestyle_map.get(kwargs.get("linestyle", "solid"), "solid"),
                         width=kwargs.get("linewidth", None),
                     ),
                     marker=(
                         dict(
-                            color=kwargs.get("color", None),
+                            color=plotly_color(kwargs.get("color", None)),
                             symbol=marker_map.get(marker, "circle"),
                             size=kwargs.get("markersize", None),
                         )
@@ -724,7 +758,7 @@ class LinePlot:
                 traces.append(trace)
             elif plot_type in ("axhline", "axvline", "hlines", "vlines"):
                 kwargs = line["kwargs"]
-                color = kwargs.get("color", kwargs.get("colors", "black"))
+                color = plotly_color(kwargs.get("color", kwargs.get("colors", "black")))
                 dash = linestyle_map.get(kwargs.get("linestyle", "solid"), "solid")
                 width = kwargs.get("linewidth", 1)
                 if plot_type == "axhline":
@@ -734,8 +768,8 @@ class LinePlot:
                             x0=0,
                             x1=1,
                             xref="paper",
-                            y0=(line["y"] + self._yshift) * self._yscale,
-                            y1=(line["y"] + self._yshift) * self._yscale,
+                            y0=tys(line["y"]),
+                            y1=tys(line["y"]),
                             line=dict(color=color, dash=dash, width=width),
                         )
                     )
@@ -746,8 +780,8 @@ class LinePlot:
                             y0=0,
                             y1=1,
                             yref="paper",
-                            x0=(line["x"] + self._xshift) * self._xscale,
-                            x1=(line["x"] + self._xshift) * self._xscale,
+                            x0=txs(line["x"]),
+                            x1=txs(line["x"]),
                             line=dict(color=color, dash=dash, width=width),
                         )
                     )
@@ -759,10 +793,10 @@ class LinePlot:
                         shapes.append(
                             dict(
                                 type="line",
-                                x0=(xmin + self._xshift) * self._xscale,
-                                x1=(xmax + self._xshift) * self._xscale,
-                                y0=(y + self._yshift) * self._yscale,
-                                y1=(y + self._yshift) * self._yscale,
+                                x0=txs(xmin),
+                                x1=txs(xmax),
+                                y0=tys(y),
+                                y1=tys(y),
                                 line=dict(color=color, dash=dash, width=width),
                             )
                         )
@@ -774,18 +808,18 @@ class LinePlot:
                         shapes.append(
                             dict(
                                 type="line",
-                                x0=(x + self._xshift) * self._xscale,
-                                x1=(x + self._xshift) * self._xscale,
-                                y0=(ymin + self._yshift) * self._yscale,
-                                y1=(ymax + self._yshift) * self._yscale,
+                                x0=txs(x),
+                                x1=txs(x),
+                                y0=tys(ymin),
+                                y1=tys(ymax),
                                 line=dict(color=color, dash=dash, width=width),
                             )
                         )
             elif plot_type in ("text", "annotate"):
                 kwargs = line["kwargs"]
                 if plot_type == "text":
-                    x = (float(line["x"]) + self._xshift) * self._xscale
-                    y = (float(line["y"]) + self._yshift) * self._yscale
+                    x = txs(float(line["x"]))
+                    y = tys(float(line["y"]))
                     text = line["s"]
                     annotations.append(
                         dict(
@@ -794,14 +828,14 @@ class LinePlot:
                             text=text,
                             showarrow=False,
                             font=dict(
-                                color=kwargs.get("color", None),
+                                color=plotly_color(kwargs.get("color", None)),
                                 size=kwargs.get("fontsize", None),
                             ),
                         )
                     )
                 else:
-                    x = (float(line["xy"][0]) + self._xshift) * self._xscale
-                    y = (float(line["xy"][1]) + self._yshift) * self._yscale
+                    x = txs(float(line["xy"][0]))
+                    y = tys(float(line["xy"][1]))
                     ann = dict(
                         x=x,
                         y=y,
@@ -811,14 +845,14 @@ class LinePlot:
                         ax=0,
                         ay=-30,
                         font=dict(
-                            color=kwargs.get("color", None),
+                            color=plotly_color(kwargs.get("color", None)),
                             size=kwargs.get("fontsize", None),
                         ),
                     )
                     if line.get("xytext") is not None:
-                        tx = (float(line["xytext"][0]) + self._xshift) * self._xscale
-                        ty = (float(line["xytext"][1]) + self._yshift) * self._yscale
-                        ann.update(axref="x", ayref="y", ax=tx, ay=ty)
+                        tx_val = txs(float(line["xytext"][0]))
+                        ty_val = tys(float(line["xytext"][1]))
+                        ann.update(axref="x", ayref="y", ax=tx_val, ay=ty_val)
                     annotations.append(ann)
             elif plot_type == "imshow":
                 kwargs = line["kwargs"]
@@ -842,11 +876,38 @@ class LinePlot:
                 except Exception:
                     mpl_patches = None
 
+                def _patch_line_color():
+                    return plotly_color(
+                        kwargs.get(
+                        "edgecolor",
+                        kwargs.get(
+                            "color",
+                            patch.get_edgecolor()
+                            if hasattr(patch, "get_edgecolor")
+                            else "black",
+                        ),
+                    )
+                    )
+
+                def _patch_fill_color():
+                    return plotly_color(
+                        kwargs.get(
+                        "facecolor",
+                        patch.get_facecolor() if hasattr(patch, "get_facecolor") else None,
+                    )
+                    )
+
+                patch_label = kwargs.get("label")
+                if patch_label is None and hasattr(patch, "get_label"):
+                    raw = patch.get_label()
+                    if raw and not str(raw).startswith("_"):
+                        patch_label = str(raw)
+
                 if mpl_patches is not None and isinstance(patch, mpl_patches.Rectangle):
-                    x0 = (patch.get_x() + self._xshift) * self._xscale
-                    y0 = (patch.get_y() + self._yshift) * self._yscale
-                    x1 = (patch.get_x() + patch.get_width() + self._xshift) * self._xscale
-                    y1 = (patch.get_y() + patch.get_height() + self._yshift) * self._yscale
+                    x0 = txs(patch.get_x())
+                    y0 = tys(patch.get_y())
+                    x1 = txs(patch.get_x() + patch.get_width())
+                    y1 = tys(patch.get_y() + patch.get_height())
                     shapes.append(
                         dict(
                             type="rect",
@@ -854,25 +915,75 @@ class LinePlot:
                             y0=y0,
                             x1=x1,
                             y1=y1,
-                            line=dict(color=kwargs.get("edgecolor", kwargs.get("color", "black"))),
-                            fillcolor=kwargs.get("facecolor", None),
+                            line=dict(color=_patch_line_color()),
+                            fillcolor=_patch_fill_color(),
                             opacity=kwargs.get("alpha", None),
                         )
                     )
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Circle):
-                    cx = (patch.center[0] + self._xshift) * self._xscale
-                    cy = (patch.center[1] + self._yshift) * self._yscale
-                    r = patch.radius
+                    cx = txs(patch.center[0])
+                    cy = tys(patch.center[1])
+                    rx = abs(txs(patch.center[0] + patch.radius) - cx)
+                    ry = abs(tys(patch.center[1] + patch.radius) - cy)
+                    path = (
+                        f"M {cx - rx},{cy} "
+                        f"A {rx},{ry} 0 1,0 {cx + rx},{cy} "
+                        f"A {rx},{ry} 0 1,0 {cx - rx},{cy} Z"
+                    )
                     shapes.append(
                         dict(
-                            type="circle",
-                            x0=cx - r,
-                            y0=cy - r,
-                            x1=cx + r,
-                            y1=cy + r,
-                            line=dict(color=kwargs.get("edgecolor", kwargs.get("color", "black"))),
-                            fillcolor=kwargs.get("facecolor", None),
+                            type="path",
+                            path=path,
+                            line=dict(color=_patch_line_color()),
+                            fillcolor=_patch_fill_color(),
                             opacity=kwargs.get("alpha", None),
+                        )
+                    )
+                elif mpl_patches is not None and isinstance(patch, mpl_patches.Ellipse):
+                    cx = txs(patch.center[0])
+                    cy = tys(patch.center[1])
+                    rx = abs(txs(patch.center[0] + patch.width / 2.0) - cx)
+                    ry = abs(tys(patch.center[1] + patch.height / 2.0) - cy)
+                    # Ignore rotation for now; provides useful parity for tutorials.
+                    path = (
+                        f"M {cx - rx},{cy} "
+                        f"A {rx},{ry} 0 1,0 {cx + rx},{cy} "
+                        f"A {rx},{ry} 0 1,0 {cx - rx},{cy} Z"
+                    )
+                    shapes.append(
+                        dict(
+                            type="path",
+                            path=path,
+                            line=dict(color=_patch_line_color()),
+                            fillcolor=_patch_fill_color(),
+                            opacity=kwargs.get("alpha", None),
+                        )
+                    )
+                elif mpl_patches is not None and isinstance(patch, mpl_patches.Polygon):
+                    pts = patch.get_xy()
+                    if len(pts) >= 2:
+                        pts_t = [(txs(float(x)), tys(float(y))) for x, y in pts]
+                        path = "M " + " L ".join(f"{x},{y}" for x, y in pts_t) + " Z"
+                        shapes.append(
+                            dict(
+                                type="path",
+                                path=path,
+                                line=dict(color=_patch_line_color()),
+                                fillcolor=_patch_fill_color(),
+                                opacity=kwargs.get("alpha", None),
+                            )
+                        )
+
+                # Plotly shapes don't participate in legends; add a dummy trace.
+                if patch_label and bool(self._legend):
+                    traces.append(
+                        go.Scatter(
+                            x=[None],
+                            y=[None],
+                            mode="lines",
+                            name=patch_label,
+                            line=dict(color=_patch_line_color()),
+                            showlegend=True,
                         )
                     )
 
