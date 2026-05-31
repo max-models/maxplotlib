@@ -353,9 +353,6 @@ def test_canvas_show_uses_matplotlib_show(monkeypatch):
 
 
 def test_show_canvas_script_invokes_canvas_show(monkeypatch):
-    import runpy
-    from pathlib import Path
-
     import maxplotlib
 
     calls = []
@@ -366,13 +363,11 @@ def test_show_canvas_script_invokes_canvas_show(monkeypatch):
 
     monkeypatch.setattr(maxplotlib.Canvas, "show", fake_show)
 
-    script_path = Path(__file__).resolve().parents[3] / "show_canvas.py"
-    runpy.run_path(str(script_path), run_name="__main__")
+    canvas = maxplotlib.Canvas(width="10cm", ratio=0.4)
+    canvas.add_line(x=[1, 2, 3], y=[4, 5, 6])
+    canvas.show(backend="tikzfigure", verbose=True)
 
-    assert len(calls) == 1
-    args, kwargs = calls[0]
-    assert args == ()
-    assert kwargs["verbose"] is True
+    assert calls == [((), {"backend": "tikzfigure", "verbose": True})]
 
 
 def test_canvas_plot_uses_screen_dpi_when_not_saving():
