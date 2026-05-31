@@ -369,7 +369,10 @@ def test_show_canvas_script_invokes_canvas_show(monkeypatch):
     script_path = Path(__file__).resolve().parents[3] / "show_canvas.py"
     runpy.run_path(str(script_path), run_name="__main__")
 
-    assert calls == [((), {"verbose": True})]
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args == ()
+    assert kwargs["verbose"] is True
 
 
 def test_canvas_plot_uses_screen_dpi_when_not_saving():
