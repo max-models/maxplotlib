@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import pint
 
 
-def setup_tex_fonts(fontsize=14, usetex=False):
+def setup_tex_fonts(fontsize=10, usetex=False):
     """
     Sets up LaTeX fonts for plotting.
     """
@@ -15,6 +15,8 @@ def setup_tex_fonts(fontsize=14, usetex=False):
         "font.family": "serif",
         "pgf.rcfonts": False,
         "axes.labelsize": fontsize,
+        "axes.titlesize": fontsize,
+        "figure.titlesize": fontsize,
         "font.size": fontsize,
         "legend.fontsize": fontsize,
         "xtick.labelsize": fontsize,
@@ -58,13 +60,13 @@ def convert_to_inches(length_str):
 
 def _2pt(width, dpi=300, verbose: bool = False):
     if verbose:
-        print(f"Converting width: {width} to points with dpi={dpi}")
+        print(f"Converting width: {width} to points")
 
     if isinstance(width, (int, float)):
         return width
     elif isinstance(width, str):
         length_in = convert_to_inches(width)
-        length_pt = length_in * dpi
+        length_pt = length_in * 72.27
         if verbose:
             print(f"Converted length: {length_in} inches = {length_pt} points")
         return length_pt

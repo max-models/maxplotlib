@@ -56,6 +56,23 @@ def test_canvas_plot_tikzfigure_three_subplots():
         assert "\\subfigure" in result or "subfigure" in result
 
 
+def test_canvas_plot_tikzfigure_respects_width_and_ratio():
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(0, 1, 5)
+    canvas, ax = Canvas.subplots(width="10cm", ratio=2)
+    ax.plot(x, x**2, color="black")
+    ax.set_title("Parabola")
+
+    tikz = canvas.plot_tikzfigure().generate_tikz()
+
+    assert "width=10cm" in tikz
+    assert "height=20cm" in tikz
+    assert "title=Parabola" in tikz
+
+
 def test_canvas_plot_tikzfigure_vertical_not_supported():
     """Test that vertical layouts raise NotImplementedError."""
     import numpy as np
@@ -294,7 +311,7 @@ def test_canvas_plot_usetex_precedence(monkeypatch):
 
     captured: list[bool] = []
 
-    def fake_setup_tex_fonts(fontsize=14, usetex=False):
+    def fake_setup_tex_fonts(fontsize=10, usetex=False):
         captured.append(usetex)
         return {}
 
@@ -311,6 +328,145 @@ def test_canvas_plot_usetex_precedence(monkeypatch):
     plt.close(fig)
 
     assert captured == [True, False]
+
+
+def test_canvas_show_uses_matplotlib_show(monkeypatch):
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    calls = []
+
+    monkeypatch.setattr(
+        plt, "show", lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+
+    canvas = Canvas()
+    subplot = canvas.add_subplot()
+    subplot.plot([0, 1], [0, 1])
+
+    fig, axes = canvas.show()
+
+    assert calls == [((), {})]
+    assert fig is not None
+    assert axes is not None
+
+
+def test_show_canvas_script_invokes_canvas_show(monkeypatch):
+    import runpy
+    from pathlib import Path
+
+    import maxplotlib
+
+    calls = []
+
+    def fake_show(self, *args, **kwargs):
+        calls.append((args, kwargs))
+        return object(), object()
+
+    monkeypatch.setattr(maxplotlib.Canvas, "show", fake_show)
+
+    script_path = Path(__file__).resolve().parents[3] / "show_canvas.py"
+    runpy.run_path(str(script_path), run_name="__main__")
+
+    assert calls == [((), {"verbose": True})]
+
+
+def test_canvas_plot_uses_screen_dpi_when_not_saving():
+    import matplotlib.pyplot as plt
+    import pytest
+
+    from maxplotlib import Canvas
+
+    default_fig = plt.figure()
+    default_dpi = default_fig.dpi
+    plt.close(default_fig)
+
+    canvas = Canvas(dpi=300)
+    subplot = canvas.add_subplot()
+    subplot.plot([0, 1], [0, 1])
+
+    fig, _ = canvas.plot()
+
+    assert fig.dpi == pytest.approx(default_dpi)
+
+
+def test_canvas_without_explicit_size_uses_matplotlib_defaults():
+    import matplotlib.pyplot as plt
+    import pytest
+
+    from maxplotlib import Canvas
+
+    default_fig = plt.figure()
+    default_size = default_fig.get_size_inches().copy()
+    default_dpi = default_fig.dpi
+    plt.close(default_fig)
+
+    canvas = Canvas()
+    subplot = canvas.add_subplot()
+    subplot.plot([0, 1], [0, 1])
+
+    fig, _ = canvas.plot()
+
+    assert fig.get_size_inches()[0] == pytest.approx(default_size[0])
+    assert fig.get_size_inches()[1] == pytest.approx(default_size[1])
+    assert fig.dpi == pytest.approx(default_dpi)
+
+
+def test_canvas_savefig_uses_configured_export_dpi(monkeypatch, tmp_path):
+    from matplotlib.figure import Figure
+
+    from maxplotlib import Canvas
+
+    savefig_calls = []
+    original_savefig = Figure.savefig
+
+    def wrapped_savefig(self, *args, **kwargs):
+        savefig_calls.append(kwargs.get("dpi"))
+        return original_savefig(self, *args, **kwargs)
+
+    monkeypatch.setattr(Figure, "savefig", wrapped_savefig)
+
+    canvas = Canvas(dpi=300)
+    subplot = canvas.add_subplot()
+    subplot.plot([0, 1], [0, 1])
+    canvas.plot()
+    canvas.savefig(tmp_path / "figure.png")
+
+    assert savefig_calls[-1] == 300
+
+
+def test_canvas_width_in_centimeters_is_preserved():
+    import pytest
+
+    from maxplotlib import Canvas
+
+    canvas, _ = Canvas.subplots(width="7cm")
+    fig, _ = canvas.plot()
+
+    assert fig.get_size_inches()[0] == pytest.approx(7 / 2.54, abs=0.01)
+
+
+def test_canvas_fontsize_controls_axes_text():
+    import pytest
+
+    from maxplotlib import Canvas
+
+    canvas = Canvas(fontsize=10)
+    canvas.add_subplot()
+    canvas.set_title("Title")
+    canvas.set_xlabel("X")
+    canvas.set_ylabel("Y")
+    canvas.suptitle("Figure title")
+
+    fig, axes = canvas.plot()
+
+    ax = axes[0, 0]
+    assert ax.title.get_fontsize() == pytest.approx(10)
+    assert ax.xaxis.label.get_fontsize() == pytest.approx(10)
+    assert ax.yaxis.label.get_fontsize() == pytest.approx(10)
+    assert fig._suptitle is not None
+    assert fig._suptitle.get_fontsize() == pytest.approx(10)
 
 
 if __name__ == "__main__":

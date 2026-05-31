@@ -155,7 +155,7 @@ def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
                 node.x,
                 node.y,
                 node.content,
-                fontsize=10,
+                fontsize=self._fontsize,
                 ha="center",
                 va="center",
                 wrap=True,
@@ -183,9 +183,9 @@ class Canvas:
         caption: str | None = None,
         description: str | None = None,
         label: str | None = None,
-        fontsize: int = 14,
-        dpi: int = 300,
-        width: str = "5cm",
+        fontsize: int = 10,
+        dpi: int | None = None,
+        width: str | None = None,
         ratio: str = "golden",  # TODO Add literal
         usetex: bool | None = None,
         subplot_spacing: SubplotSpacing | None = None,
@@ -201,9 +201,9 @@ class Canvas:
         caption (str): Caption for the figure.
         description (str): Description for the figure.
         label (str): Label for the figure.
-        fontsize (int): Font size. Default is 14.
-        dpi (int): DPI for the figure. Default is 300.
-        width (str): Width of the figure. Default is "17cm".
+        fontsize (int): Font size. Default is 10.
+        dpi (int | None): Optional export/render DPI override.
+        width (str | None): Optional figure width, e.g. "7cm".
         ratio (str): Aspect ratio. Default is "golden".
         usetex (bool | None): Default text.usetex behavior for this canvas.
             If None, read from MAXPLOTLIB_USETEX environment variable.
@@ -762,7 +762,8 @@ class Canvas:
                         layers=layers,
                     )
                     _fn = f"{filename_no_extension}_{layers}.{extension}"
-                    fig.savefig(_fn)
+                    savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
+                    fig.savefig(_fn, **savefig_kwargs)
                     print(f"Saved {_fn}")
             else:
                 if layers is None:
@@ -772,14 +773,16 @@ class Canvas:
                     full_filepath = f"{filename_no_extension}_{layers}.{extension}"
 
                 if self._plotted:
-                    self._matplotlib_fig.savefig(full_filepath)
+                    savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
+                    self._matplotlib_fig.savefig(full_filepath, **savefig_kwargs)
                 else:
                     fig, axs = self.plot(
                         backend="matplotlib",
                         savefig=True,
                         layers=layers,
                     )
-                    fig.savefig(full_filepath)
+                    savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
+                    fig.savefig(full_filepath, **savefig_kwargs)
                 if verbose:
                     print(f"Saved {full_filepath}")
         elif backend == "plotext":
@@ -841,8 +844,8 @@ class Canvas:
     def plot(
         self,
         backend: Backends = "matplotlib",
-        savefig=False,
-        layers=None,
+        savefig: bool = False,
+        layers: list | None = None,
         usetex: bool | None = None,
         verbose: bool = False,
     ):
@@ -884,17 +887,22 @@ class Canvas:
         verbose: bool = False,
     ):
         if verbose:
-            print(f"Showing figure using backend: {backend}")
+            print(f"Showing canvas using backend: {backend}")
 
         if backend == "matplotlib":
-            self.plot(
+            if verbose:
+                print("Generating Matplotlib figure for display...")
+            fig, axes = self.plot(
                 backend="matplotlib",
                 savefig=False,
                 layers=layers,
                 usetex=usetex,
                 verbose=verbose,
             )
-            # self._matplotlib_fig.show()
+            if verbose:
+                print("Displaying Matplotlib figure...")
+            plt.show()
+            return fig, axes
         elif backend == "plotly":
             resolved_usetex = self._usetex if usetex is None else usetex
             fig = self.plot_plotly(
@@ -936,6 +944,7 @@ class Canvas:
 
         resolved_usetex = self._usetex if usetex is None else usetex
         tex_fonts = setup_tex_fonts(fontsize=self.fontsize, usetex=resolved_usetex)
+        render_dpi = self.dpi if savefig else None
 
         setup_plotstyle(
             tex_fonts=tex_fonts,
@@ -947,26 +956,39 @@ class Canvas:
         if verbose:
             print("Plot style set up.")
             print(f"{self._figsize = } {self._width = } {self._ratio = }")
+        subplot_kwargs = {
+            "squeeze": False,
+            "gridspec_kw": self._gridspec_kw,
+        }
         if self._figsize is not None:
-            fig_width, fig_height = self._figsize
-        else:
+            subplot_kwargs["figsize"] = self._figsize
+        elif self._width is not None:
             fig_width, fig_height = set_size(
                 width=self._width,
                 ratio=self._ratio,
-                dpi=self.dpi,
+                dpi=render_dpi,
                 verbose=verbose,
             )
+            subplot_kwargs["figsize"] = (fig_width, fig_height)
         if verbose:
-            print(f"Figure size: {fig_width} x {fig_height} points")
+            if "figsize" in subplot_kwargs:
+                fig_width, fig_height = subplot_kwargs["figsize"]
+                print(f"Figure size: {fig_width} x {fig_height} inches")
+            else:
+                print("Figure size: Matplotlib default")
+            print(f"Render DPI override: {render_dpi} (export DPI: {self.dpi})")
+
+        if render_dpi is not None:
+            subplot_kwargs["dpi"] = render_dpi
 
         fig, axes = plt.subplots(
             self.nrows,
             self.ncols,
-            figsize=(fig_width, fig_height),
-            squeeze=False,
-            dpi=self.dpi,
-            gridspec_kw=self._gridspec_kw,
+            **subplot_kwargs,
         )
+
+        if verbose:
+            print(f"Created Matplotlib figure and axes with shape {axes.shape}")
 
         for (row, col), subplot in self._subplot_dict.items():
             ax = axes[row][col]
@@ -977,8 +999,16 @@ class Canvas:
             # ax.set_title(f"Subplot ({row}, {col})")
             ax.grid()
 
+        if verbose:
+            print("Finished plotting subplots.")
+
         if self._suptitle:
-            fig.suptitle(self._suptitle, **self._suptitle_kwargs)
+            suptitle_kwargs = dict(self._suptitle_kwargs)
+            suptitle_kwargs.setdefault("fontsize", self.fontsize)
+            fig.suptitle(self._suptitle, **suptitle_kwargs)
+
+        if verbose:
+            print("Set suptitle.")
 
         # Set caption, labels, etc., if needed
         self._plotted = True
@@ -1019,6 +1049,7 @@ class Canvas:
                 "No subplots to plot. Call add_subplot() or Canvas.subplots() first."
             )
 
+        axis_width, axis_height = self._get_tikzfigure_axis_dimensions()
         fig = TikzFigure()
 
         # Add each subplot as a subfigure axis
@@ -1041,8 +1072,10 @@ class Canvas:
                     else None
                 ),
                 grid=line_plot._grid,
-                caption=line_plot._title or f"Subplot {col + 1}",
+                title=line_plot._title or f"Subplot {col + 1}",
                 width=0.45,
+                axis_width=axis_width,
+                height=axis_height,
             )
 
             # Add each plot line to the subfigure
@@ -1068,6 +1101,28 @@ class Canvas:
                 ax.set_legend(position="north east")
 
         return fig
+
+    def _get_tikzfigure_axis_dimensions(self) -> tuple[str | None, str | None]:
+        if self._width is None:
+            return None, None
+
+        total_width_in, total_height_in = set_size(
+            width=self._width,
+            ratio=self._ratio,
+            dpi=self._dpi if self._dpi is not None else 300,
+        )
+        total_width_cm = total_width_in * 2.54
+        total_height_cm = total_height_in * 2.54
+        horizontal_sep_cm = getattr(TikzFigure, "GROUPPLOT_HORIZONTAL_SEP_CM", 1.5)
+        available_width_cm = total_width_cm - horizontal_sep_cm * (self.ncols - 1)
+        if available_width_cm <= 0:
+            raise ValueError(
+                f'Canvas width "{self._width}" is too small for {self.ncols} '
+                "tikzfigure subplot(s)."
+            )
+
+        axis_width_cm = available_width_cm / self.ncols
+        return f"{axis_width_cm:.6g}cm", f"{total_height_cm:.6g}cm"
 
     def plot_plotext(
         self,
@@ -1124,15 +1179,6 @@ class Canvas:
             usetex=resolved_usetex,
         )  # adjust or redefine for Plotly if needed
 
-        # Set default width and height if not specified
-        if self._figsize is not None:
-            fig_width, fig_height = self._figsize
-        else:
-            fig_width, fig_height = set_size(
-                width=self._width,
-                ratio=self._ratio,
-            )
-        # print(self._width, fig_width, fig_height)
         # Create subplot titles in row-major order (Plotly expects rows*cols entries)
         subplot_titles = [""] * (self.nrows * self.ncols)
         for (row, col), sp in self._subplot_dict.items():
