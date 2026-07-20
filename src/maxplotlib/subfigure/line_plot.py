@@ -599,6 +599,12 @@ class LinePlot:
         shapes: list[dict] = []
         annotations: list[dict] = []
         last_heatmap_idx: int | None = None
+        # Plotly shapes (unlike traces) don't participate in axis autorange,
+        # so patches would otherwise be clipped or invisible unless the caller
+        # sets explicit axis limits. Track each patch's bounding box here and
+        # add one invisible marker trace at the end so autorange sees them.
+        patch_bounds_x: list[float] = []
+        patch_bounds_y: list[float] = []
 
         def tx(values):
             return self._transform_x(values)
@@ -917,6 +923,29 @@ class LinePlot:
                     if raw and not str(raw).startswith("_"):
                         patch_label = str(raw)
 
+                hovertext = kwargs.get("hovertext")
+
+                def _add_hover_trace(x_pts, y_pts, hovertext=hovertext):
+                    # Plotly shapes can't show hover info themselves, so an
+                    # invisible filled polygon trace is overlaid on top of
+                    # the shape's outline to make the whole area hoverable.
+                    if hovertext is None:
+                        return
+                    traces.append(
+                        go.Scatter(
+                            x=list(x_pts) + [x_pts[0]],
+                            y=list(y_pts) + [y_pts[0]],
+                            mode="lines",
+                            fill="toself",
+                            fillcolor="rgba(0,0,0,0)",
+                            line=dict(width=0),
+                            hoveron="fills",
+                            hoverinfo="text",
+                            hovertext=hovertext,
+                            showlegend=False,
+                        )
+                    )
+
                 if mpl_patches is not None and isinstance(patch, mpl_patches.Rectangle):
                     x0 = txs(patch.get_x())
                     y0 = tys(patch.get_y())
@@ -934,6 +963,9 @@ class LinePlot:
                             opacity=kwargs.get("alpha", None),
                         )
                     )
+                    patch_bounds_x.extend([x0, x1])
+                    patch_bounds_y.extend([y0, y1])
+                    _add_hover_trace([x0, x1, x1, x0], [y0, y0, y1, y1])
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Circle):
                     cx = txs(patch.center[0])
                     cy = tys(patch.center[1])
@@ -953,6 +985,10 @@ class LinePlot:
                             opacity=kwargs.get("alpha", None),
                         )
                     )
+                    patch_bounds_x.extend([cx - rx, cx + rx])
+                    patch_bounds_y.extend([cy - ry, cy + ry])
+                    angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
+                    _add_hover_trace(cx + rx * np.cos(angles), cy + ry * np.sin(angles))
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Ellipse):
                     cx = txs(patch.center[0])
                     cy = tys(patch.center[1])
@@ -973,6 +1009,10 @@ class LinePlot:
                             opacity=kwargs.get("alpha", None),
                         )
                     )
+                    patch_bounds_x.extend([cx - rx, cx + rx])
+                    patch_bounds_y.extend([cy - ry, cy + ry])
+                    angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
+                    _add_hover_trace(cx + rx * np.cos(angles), cy + ry * np.sin(angles))
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Polygon):
                     pts = patch.get_xy()
                     if len(pts) >= 2:
@@ -987,6 +1027,9 @@ class LinePlot:
                                 opacity=kwargs.get("alpha", None),
                             )
                         )
+                        patch_bounds_x.extend(x for x, _ in pts_t)
+                        patch_bounds_y.extend(y for _, y in pts_t)
+                        _add_hover_trace([x for x, _ in pts_t], [y for _, y in pts_t])
 
                 # Plotly shapes don't participate in legends; add a dummy trace.
                 if patch_label and bool(self._legend):
@@ -1000,6 +1043,18 @@ class LinePlot:
                             showlegend=True,
                         )
                     )
+
+        if patch_bounds_x:
+            traces.append(
+                go.Scatter(
+                    x=patch_bounds_x,
+                    y=patch_bounds_y,
+                    mode="markers",
+                    marker=dict(opacity=0),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
 
         return traces, shapes, annotations
 
