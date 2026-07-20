@@ -430,6 +430,30 @@ class Canvas:
         sp = self._get_or_create_subplot(row, col)
         sp.bar(x, height, layer=layer, **kwargs)
 
+    def gantt(
+        self,
+        tasks,
+        start_times,
+        durations,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """
+        Add a Gantt chart to the canvas (matplotlib-style convenience method).
+
+        Parameters:
+        tasks (array-like): Task names or labels (y-axis).
+        start_times (array-like): Start times for each task (x-axis).
+        durations (array-like): Duration of each task.
+        layer (int): Layer index (default 0).
+        row, col (int): Subplot position (default top-left).
+        **kwargs: Forwarded to the backend (e.g., color, alpha, edgecolor, label).
+        """
+        sp = self._get_or_create_subplot(row, col)
+        sp.gantt(tasks, start_times, durations, layer=layer, **kwargs)
+
     def set_xlabel(self, label: str, row: int | None = None, col: int | None = None):
         """Set the x-axis label for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_xlabel(label)
@@ -840,6 +864,15 @@ class Canvas:
                 self._save_plotly(fig, full_filepath)
                 if verbose:
                     print(f"Saved {full_filepath}")
+        elif backend == "tikzfigure":
+            if layers is not None:
+                raise NotImplementedError(
+                    "Layer-by-layer rendering is not supported for tikzfigure backend"
+                )
+            fig = self.plot(backend="tikzfigure", savefig=False)
+            fig.savefig(filename)
+            if verbose:
+                print(f"Saved {filename}")
 
     def plot(
         self,

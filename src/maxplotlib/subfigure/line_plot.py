@@ -185,6 +185,28 @@ class LinePlot:
         }
         self._add(ld, layer)
 
+    def gantt(self, tasks, start_times, durations, layer=0, **kwargs):
+        """
+        Add a Gantt chart to the subplot.
+
+        Parameters:
+        tasks (array-like): Task names or labels (y-axis).
+        start_times (array-like): Start times for each task (x-axis).
+        durations (array-like): Duration of each task.
+        layer (int): Layer index (default 0).
+        **kwargs: Additional keyword arguments forwarded to the backend
+            (e.g., color, alpha, edgecolor, label).
+        """
+        ld = {
+            "tasks": list(tasks),
+            "start_times": np.array(start_times),
+            "durations": np.array(durations),
+            "layer": layer,
+            "plot_type": "gantt",
+            "kwargs": kwargs,
+        }
+        self._add(ld, layer)
+
     def axhline(self, y=0, layer=0, **kwargs):
         """
         Add a horizontal line spanning the full width of the axes.
@@ -463,6 +485,14 @@ class LinePlot:
                         line["height"] * self._yscale,
                         **line["kwargs"],
                     )
+                elif line["plot_type"] == "gantt":
+                    tasks = line["tasks"]
+                    start_times = (line["start_times"] + self._xshift) * self._xscale
+                    durations = line["durations"] * self._xscale
+                    y_positions = np.arange(len(tasks))
+                    ax.barh(y_positions, durations, left=start_times, **line["kwargs"])
+                    ax.set_yticks(y_positions)
+                    ax.set_yticklabels(tasks)
                 elif line["plot_type"] == "fill_between":
                     ax.fill_between(
                         (line["x"] + self._xshift) * self._xscale,
@@ -560,6 +590,28 @@ class LinePlot:
 
                     nodes = [[xi, yi] for xi, yi in zip(x, y)]
                     tikz_figure.draw(nodes=nodes, **line["kwargs"])
+                elif line["plot_type"] == "gantt":
+                    tasks = line["tasks"]
+                    start_times = (line["start_times"] + self._xshift) * self._xscale
+                    durations = line["durations"] * self._xscale
+                    y_positions = np.arange(len(tasks))
+                    
+                    # Draw horizontal bars for each task
+                    for i, (task, start, duration) in enumerate(zip(tasks, start_times, durations)):
+                        # Create rectangle nodes for the bar
+                        x_start = start
+                        x_end = start + duration
+                        y_pos = y_positions[i]
+                        bar_height = 0.8  # Bar thickness
+                        
+                        # Draw rectangle as a path
+                        rect_nodes = [
+                            [x_start, y_pos - bar_height/2],
+                            [x_end, y_pos - bar_height/2],
+                            [x_end, y_pos + bar_height/2],
+                            [x_start, y_pos + bar_height/2],
+                        ]
+                        tikz_figure.draw(nodes=rect_nodes, cycle=True, fill=line["kwargs"].get("color", "blue"), **line["kwargs"])
         if verbose:
             print("Generated TikZ figure:")
             print(tikz_figure.generate_tikz())
@@ -599,6 +651,12 @@ class LinePlot:
         shapes: list[dict] = []
         annotations: list[dict] = []
         last_heatmap_idx: int | None = None
+        # Plotly shapes (unlike traces) don't participate in axis autorange,
+        # so patches would otherwise be clipped or invisible unless the caller
+        # sets explicit axis limits. Track each patch's bounding box here and
+        # add one invisible marker trace at the end so autorange sees them.
+        patch_bounds_x: list[float] = []
+        patch_bounds_y: list[float] = []
 
         def tx(values):
             return self._transform_x(values)
@@ -685,6 +743,23 @@ class LinePlot:
                     name=kwargs.get("label", ""),
                     showlegend=bool(kwargs.get("label")) and bool(self._legend),
                     marker_color=plotly_color(kwargs.get("color", None)),
+                )
+                traces.append(trace)
+            elif plot_type == "gantt":
+                kwargs = line["kwargs"]
+                tasks = line["tasks"]
+                start_times = tx(line["start_times"])
+                durations = np.asarray(line["durations"]) * self._xscale
+                y_positions = list(range(len(tasks)))
+                trace = go.Bar(
+                    x=durations,
+                    y=y_positions,
+                    base=start_times,
+                    orientation='h',
+                    name=kwargs.get("label", ""),
+                    showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    marker_color=plotly_color(kwargs.get("color", None)),
+                    opacity=kwargs.get("alpha", None),
                 )
                 traces.append(trace)
             elif plot_type == "fill_between":
@@ -917,6 +992,29 @@ class LinePlot:
                     if raw and not str(raw).startswith("_"):
                         patch_label = str(raw)
 
+                hovertext = kwargs.get("hovertext")
+
+                def _add_hover_trace(x_pts, y_pts, hovertext=hovertext):
+                    # Plotly shapes can't show hover info themselves, so an
+                    # invisible filled polygon trace is overlaid on top of
+                    # the shape's outline to make the whole area hoverable.
+                    if hovertext is None:
+                        return
+                    traces.append(
+                        go.Scatter(
+                            x=list(x_pts) + [x_pts[0]],
+                            y=list(y_pts) + [y_pts[0]],
+                            mode="lines",
+                            fill="toself",
+                            fillcolor="rgba(0,0,0,0)",
+                            line=dict(width=0),
+                            hoveron="fills",
+                            hoverinfo="text",
+                            hovertext=hovertext,
+                            showlegend=False,
+                        )
+                    )
+
                 if mpl_patches is not None and isinstance(patch, mpl_patches.Rectangle):
                     x0 = txs(patch.get_x())
                     y0 = tys(patch.get_y())
@@ -934,6 +1032,9 @@ class LinePlot:
                             opacity=kwargs.get("alpha", None),
                         )
                     )
+                    patch_bounds_x.extend([x0, x1])
+                    patch_bounds_y.extend([y0, y1])
+                    _add_hover_trace([x0, x1, x1, x0], [y0, y0, y1, y1])
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Circle):
                     cx = txs(patch.center[0])
                     cy = tys(patch.center[1])
@@ -953,6 +1054,10 @@ class LinePlot:
                             opacity=kwargs.get("alpha", None),
                         )
                     )
+                    patch_bounds_x.extend([cx - rx, cx + rx])
+                    patch_bounds_y.extend([cy - ry, cy + ry])
+                    angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
+                    _add_hover_trace(cx + rx * np.cos(angles), cy + ry * np.sin(angles))
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Ellipse):
                     cx = txs(patch.center[0])
                     cy = tys(patch.center[1])
@@ -973,6 +1078,10 @@ class LinePlot:
                             opacity=kwargs.get("alpha", None),
                         )
                     )
+                    patch_bounds_x.extend([cx - rx, cx + rx])
+                    patch_bounds_y.extend([cy - ry, cy + ry])
+                    angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
+                    _add_hover_trace(cx + rx * np.cos(angles), cy + ry * np.sin(angles))
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Polygon):
                     pts = patch.get_xy()
                     if len(pts) >= 2:
@@ -987,6 +1096,9 @@ class LinePlot:
                                 opacity=kwargs.get("alpha", None),
                             )
                         )
+                        patch_bounds_x.extend(x for x, _ in pts_t)
+                        patch_bounds_y.extend(y for _, y in pts_t)
+                        _add_hover_trace([x for x, _ in pts_t], [y for _, y in pts_t])
 
                 # Plotly shapes don't participate in legends; add a dummy trace.
                 if patch_label and bool(self._legend):
@@ -1000,6 +1112,18 @@ class LinePlot:
                             showlegend=True,
                         )
                     )
+
+        if patch_bounds_x:
+            traces.append(
+                go.Scatter(
+                    x=patch_bounds_x,
+                    y=patch_bounds_y,
+                    mode="markers",
+                    marker=dict(opacity=0),
+                    showlegend=False,
+                    hoverinfo="skip",
+                )
+            )
 
         return traces, shapes, annotations
 
@@ -1403,6 +1527,22 @@ class LinePlot:
                     transformed_heights.tolist(),
                     **bar_kwargs,
                 )
+                legend_entries.append((kwargs.get("label"), kwargs.get("color")))
+            elif plot_type == "gantt":
+                tasks = line["tasks"]
+                start_times = self._transform_x(line["start_times"]).tolist()
+                durations = (np.asarray(line["durations"]) * self._xscale).tolist()
+                y_positions = list(range(len(tasks)))
+                gantt_kwargs = self._plotext_bar_kwargs(kwargs)
+                gantt_kwargs["orientation"] = "h"
+                for i, (start, duration) in enumerate(zip(start_times, durations)):
+                    ax.bar(
+                        [start + duration / 2],
+                        [i],
+                        width=duration,
+                        **gantt_kwargs,
+                    )
+                ax.yticks(y_positions, tasks)
                 legend_entries.append((kwargs.get("label"), kwargs.get("color")))
             elif plot_type == "fill_between":
                 x = self._transform_x(line["x"]).tolist()
