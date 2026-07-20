@@ -988,9 +988,7 @@ class LinePlot:
                     patch_bounds_x.extend([cx - rx, cx + rx])
                     patch_bounds_y.extend([cy - ry, cy + ry])
                     angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
-                    _add_hover_trace(
-                        cx + rx * np.cos(angles), cy + ry * np.sin(angles)
-                    )
+                    _add_hover_trace(cx + rx * np.cos(angles), cy + ry * np.sin(angles))
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Ellipse):
                     cx = txs(patch.center[0])
                     cy = tys(patch.center[1])
@@ -1014,9 +1012,7 @@ class LinePlot:
                     patch_bounds_x.extend([cx - rx, cx + rx])
                     patch_bounds_y.extend([cy - ry, cy + ry])
                     angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
-                    _add_hover_trace(
-                        cx + rx * np.cos(angles), cy + ry * np.sin(angles)
-                    )
+                    _add_hover_trace(cx + rx * np.cos(angles), cy + ry * np.sin(angles))
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Polygon):
                     pts = patch.get_xy()
                     if len(pts) >= 2:
@@ -1033,9 +1029,7 @@ class LinePlot:
                         )
                         patch_bounds_x.extend(x for x, _ in pts_t)
                         patch_bounds_y.extend(y for _, y in pts_t)
-                        _add_hover_trace(
-                            [x for x, _ in pts_t], [y for _, y in pts_t]
-                        )
+                        _add_hover_trace([x for x, _ in pts_t], [y for _, y in pts_t])
 
                 # Plotly shapes don't participate in legends; add a dummy trace.
                 if patch_label and bool(self._legend):
