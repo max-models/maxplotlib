@@ -595,23 +595,30 @@ class LinePlot:
                     start_times = (line["start_times"] + self._xshift) * self._xscale
                     durations = line["durations"] * self._xscale
                     y_positions = np.arange(len(tasks))
-                    
+
                     # Draw horizontal bars for each task
-                    for i, (task, start, duration) in enumerate(zip(tasks, start_times, durations)):
+                    for i, (task, start, duration) in enumerate(
+                        zip(tasks, start_times, durations)
+                    ):
                         # Create rectangle nodes for the bar
                         x_start = start
                         x_end = start + duration
                         y_pos = y_positions[i]
                         bar_height = 0.8  # Bar thickness
-                        
+
                         # Draw rectangle as a path
                         rect_nodes = [
-                            [x_start, y_pos - bar_height/2],
-                            [x_end, y_pos - bar_height/2],
-                            [x_end, y_pos + bar_height/2],
-                            [x_start, y_pos + bar_height/2],
+                            [x_start, y_pos - bar_height / 2],
+                            [x_end, y_pos - bar_height / 2],
+                            [x_end, y_pos + bar_height / 2],
+                            [x_start, y_pos + bar_height / 2],
                         ]
-                        tikz_figure.draw(nodes=rect_nodes, cycle=True, fill=line["kwargs"].get("color", "blue"), **line["kwargs"])
+                        tikz_figure.draw(
+                            nodes=rect_nodes,
+                            cycle=True,
+                            fill=line["kwargs"].get("color", "blue"),
+                            **line["kwargs"],
+                        )
         if verbose:
             print("Generated TikZ figure:")
             print(tikz_figure.generate_tikz())
@@ -755,7 +762,7 @@ class LinePlot:
                     x=durations,
                     y=y_positions,
                     base=start_times,
-                    orientation='h',
+                    orientation="h",
                     name=kwargs.get("label", ""),
                     showlegend=bool(kwargs.get("label")) and bool(self._legend),
                     marker_color=plotly_color(kwargs.get("color", None)),

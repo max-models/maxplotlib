@@ -1130,23 +1130,32 @@ class Canvas:
                     )
                 elif line_data.get("plot_type") == "gantt":
                     tasks = line_data["tasks"]
-                    start_times = (line_data["start_times"] + line_plot._xshift) * line_plot._xscale
+                    start_times = (
+                        line_data["start_times"] + line_plot._xshift
+                    ) * line_plot._xscale
                     durations = line_data["durations"] * line_plot._xscale
                     y_positions = np.arange(len(tasks))
                     kwargs = line_data.get("kwargs", {})
-                    
+
                     # Draw horizontal bars for each task as filled rectangles
-                    for i, (task, start, duration) in enumerate(zip(tasks, start_times, durations)):
+                    for i, (task, start, duration) in enumerate(
+                        zip(tasks, start_times, durations)
+                    ):
                         x_start = float(start)
                         x_end = float(start + duration)
                         y_pos = float(y_positions[i])
                         bar_height = 0.8
-                        
+
                         # Create rectangle coordinates for the bar
                         x_coords = [x_start, x_end, x_end, x_start, x_start]
-                        y_coords = [y_pos - bar_height/2, y_pos - bar_height/2, 
-                                   y_pos + bar_height/2, y_pos + bar_height/2, y_pos - bar_height/2]
-                        
+                        y_coords = [
+                            y_pos - bar_height / 2,
+                            y_pos - bar_height / 2,
+                            y_pos + bar_height / 2,
+                            y_pos + bar_height / 2,
+                            y_pos - bar_height / 2,
+                        ]
+
                         # Add as a filled plot
                         color = kwargs.get("color", "blue")
                         ax.add_plot(
@@ -1156,10 +1165,10 @@ class Canvas:
                             fill=True,
                             line_width=0,
                         )
-                    
+
                     # Set y-axis ticks to show task names
                     if line_plot._yticks is None:
-                        ax.set_ticks('y', list(y_positions), tasks)
+                        ax.set_ticks("y", list(y_positions), tasks)
 
             # Add legend if requested
             if line_plot._legend and len(line_plot.line_data) > 0:
