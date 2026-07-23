@@ -430,6 +430,58 @@ class Canvas:
         sp = self._get_or_create_subplot(row, col)
         sp.bar(x, height, layer=layer, **kwargs)
 
+    def gantt(
+        self,
+        tasks,
+        start_times,
+        durations,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """
+        Add a Gantt chart to the canvas (matplotlib-style convenience method).
+
+        Parameters:
+        tasks (array-like): Task names or labels (y-axis).
+        start_times (array-like): Start times for each task (x-axis).
+        durations (array-like): Duration of each task.
+        layer (int): Layer index (default 0).
+        row, col (int): Subplot position (default top-left).
+        **kwargs: Forwarded to the backend (e.g., color, alpha, edgecolor, label).
+        """
+        sp = self._get_or_create_subplot(row, col)
+        sp.gantt(tasks, start_times, durations, layer=layer, **kwargs)
+
+    def flame_chart(
+        self,
+        labels,
+        parents,
+        values,
+        start_times=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """
+        Add a flame chart to the canvas (matplotlib-style convenience method).
+
+        Parameters:
+        labels (array-like): Labels for each stack frame/function.
+        parents (array-like): Parent indices for each frame (None for root, or index of parent).
+        values (array-like): Duration/sample count for each frame.
+        start_times (array-like, optional): Start times for each frame. If None, computed from hierarchy.
+        layer (int): Layer index (default 0).
+        row, col (int): Subplot position (default top-left).
+        **kwargs: Forwarded to the backend (e.g., colormap, edgecolor, label).
+        """
+        sp = self._get_or_create_subplot(row, col)
+        sp.flame_chart(
+            labels, parents, values, start_times=start_times, layer=layer, **kwargs
+        )
+
     def set_xlabel(self, label: str, row: int | None = None, col: int | None = None):
         """Set the x-axis label for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_xlabel(label)
@@ -840,6 +892,15 @@ class Canvas:
                 self._save_plotly(fig, full_filepath)
                 if verbose:
                     print(f"Saved {full_filepath}")
+        elif backend == "tikzfigure":
+            if layers is not None:
+                raise NotImplementedError(
+                    "Layer-by-layer rendering is not supported for tikzfigure backend"
+                )
+            fig = self.plot(backend="tikzfigure", savefig=False)
+            fig.savefig(filename)
+            if verbose:
+                print(f"Saved {filename}")
 
     def plot(
         self,
@@ -1095,6 +1156,47 @@ class Canvas:
                         color=kwargs.get("color", "black"),
                         line_width=kwargs.get("linewidth", 1.0),
                     )
+                elif line_data.get("plot_type") == "gantt":
+                    tasks = line_data["tasks"]
+                    start_times = (
+                        line_data["start_times"] + line_plot._xshift
+                    ) * line_plot._xscale
+                    durations = line_data["durations"] * line_plot._xscale
+                    y_positions = np.arange(len(tasks))
+                    kwargs = line_data.get("kwargs", {})
+
+                    # Draw horizontal bars for each task as filled rectangles
+                    for i, (task, start, duration) in enumerate(
+                        zip(tasks, start_times, durations)
+                    ):
+                        x_start = float(start)
+                        x_end = float(start + duration)
+                        y_pos = float(y_positions[i])
+                        bar_height = 0.8
+
+                        # Create rectangle coordinates for the bar
+                        x_coords = [x_start, x_end, x_end, x_start, x_start]
+                        y_coords = [
+                            y_pos - bar_height / 2,
+                            y_pos - bar_height / 2,
+                            y_pos + bar_height / 2,
+                            y_pos + bar_height / 2,
+                            y_pos - bar_height / 2,
+                        ]
+
+                        # Add as a filled plot
+                        color = kwargs.get("color", "blue")
+                        ax.add_plot(
+                            x=x_coords,
+                            y=y_coords,
+                            color=color,
+                            fill=True,
+                            line_width=0,
+                        )
+
+                    # Set y-axis ticks to show task names
+                    if line_plot._yticks is None:
+                        ax.set_ticks("y", list(y_positions), tasks)
 
             # Add legend if requested
             if line_plot._legend and len(line_plot.line_data) > 0:
