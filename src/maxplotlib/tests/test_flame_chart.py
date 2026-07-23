@@ -4,6 +4,7 @@ Tests for flame chart functionality across all backends.
 
 import numpy as np
 import pytest
+
 from maxplotlib import Canvas
 
 
@@ -37,11 +38,11 @@ def test_flame_chart_basic(sample_flame_data):
         values=sample_flame_data["values"],
         start_times=sample_flame_data["start_times"],
     )
-    
+
     # Verify subplot was created
     assert len(canvas._subplots) == 1
     subplot = canvas._subplots[(0, 0)]
-    
+
     # Verify flame chart data was added
     assert len(subplot.line_data) == 1
     flame_data = subplot.line_data[0]
@@ -60,7 +61,7 @@ def test_flame_chart_without_start_times(sample_flame_data):
         values=sample_flame_data["values"],
         start_times=None,  # Should be auto-computed
     )
-    
+
     subplot = canvas._subplots[(0, 0)]
     flame_data = subplot.line_data[0]
     assert flame_data["start_times"] is None
@@ -78,7 +79,7 @@ def test_flame_chart_with_kwargs(sample_flame_data):
         edgecolor="red",
         label="Test Flame",
     )
-    
+
     subplot = canvas._subplots[(0, 0)]
     flame_data = subplot.line_data[0]
     assert flame_data["kwargs"]["colormap"] == "plasma"
@@ -99,10 +100,10 @@ def test_flame_chart_matplotlib_backend(sample_flame_data, tmp_path):
     canvas.set_xlabel("Time (ms)")
     canvas.set_ylabel("Stack Depth")
     canvas.set_title("Test Flame Chart")
-    
+
     output_file = tmp_path / "test_flame_matplotlib.png"
     canvas.savefig(str(output_file), backend="matplotlib")
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0
 
@@ -120,10 +121,10 @@ def test_flame_chart_plotly_backend(sample_flame_data, tmp_path):
     canvas.set_xlabel("Time (ms)")
     canvas.set_ylabel("Stack Depth")
     canvas.set_title("Test Flame Chart")
-    
+
     output_file = tmp_path / "test_flame_plotly.html"
     canvas.savefig(str(output_file), backend="plotly")
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0
 
@@ -140,10 +141,10 @@ def test_flame_chart_plotext_backend(sample_flame_data, tmp_path):
     canvas.set_xlabel("Time (ms)")
     canvas.set_ylabel("Stack Depth")
     canvas.set_title("Test Flame Chart")
-    
+
     output_file = tmp_path / "test_flame_plotext.txt"
     canvas.savefig(str(output_file), backend="plotext")
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0
 
@@ -160,10 +161,10 @@ def test_flame_chart_tikzfigure_backend(sample_flame_data, tmp_path):
     canvas.set_xlabel("Time (ms)")
     canvas.set_ylabel("Stack Depth")
     canvas.set_title("Test Flame Chart")
-    
+
     output_file = tmp_path / "test_flame_tikz.pdf"
     canvas.savefig(str(output_file), backend="tikzfigure")
-    
+
     assert output_file.exists()
     assert output_file.stat().st_size > 0
 
@@ -177,7 +178,7 @@ def test_flame_chart_simple_hierarchy():
         values=[100, 50, 50],
         start_times=[0, 0, 50],
     )
-    
+
     subplot = canvas._subplots[(0, 0)]
     assert len(subplot.line_data) == 1
     flame_data = subplot.line_data[0]
@@ -193,7 +194,7 @@ def test_flame_chart_deep_hierarchy():
         values=[100, 80, 60, 40],
         start_times=[0, 0, 0, 0],
     )
-    
+
     subplot = canvas._subplots[(0, 0)]
     flame_data = subplot.line_data[0]
     assert len(flame_data["labels"]) == 4
@@ -208,7 +209,7 @@ def test_flame_chart_multiple_roots():
         values=[50, 50, 30, 30],
         start_times=[0, 50, 0, 50],
     )
-    
+
     subplot = canvas._subplots[(0, 0)]
     flame_data = subplot.line_data[0]
     assert flame_data["parents"].count(None) == 2
@@ -217,7 +218,7 @@ def test_flame_chart_multiple_roots():
 def test_flame_chart_with_layers():
     """Test flame chart with different layers."""
     canvas = Canvas(nrows=1, ncols=1)
-    
+
     # Add flame chart to layer 0
     canvas.flame_chart(
         labels=["func1", "func2"],
@@ -225,7 +226,7 @@ def test_flame_chart_with_layers():
         values=[100, 50],
         layer=0,
     )
-    
+
     # Add another flame chart to layer 1
     canvas.flame_chart(
         labels=["func3", "func4"],
@@ -233,7 +234,7 @@ def test_flame_chart_with_layers():
         values=[80, 40],
         layer=1,
     )
-    
+
     subplot = canvas._subplots[(0, 0)]
     assert len(subplot.line_data) == 2
     assert subplot.line_data[0]["layer"] == 0
@@ -249,7 +250,7 @@ def test_flame_chart_empty_data():
         values=[],
         start_times=[],
     )
-    
+
     subplot = canvas._subplots[(0, 0)]
     flame_data = subplot.line_data[0]
     assert len(flame_data["labels"]) == 0
@@ -265,7 +266,7 @@ def test_flame_chart_single_node():
         values=[100],
         start_times=[0],
     )
-    
+
     subplot = canvas._subplots[(0, 0)]
     flame_data = subplot.line_data[0]
     assert len(flame_data["labels"]) == 1
