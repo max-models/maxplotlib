@@ -454,6 +454,33 @@ class Canvas:
         sp = self._get_or_create_subplot(row, col)
         sp.gantt(tasks, start_times, durations, layer=layer, **kwargs)
 
+    def flame_chart(
+        self,
+        labels,
+        parents,
+        values,
+        start_times=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """
+        Add a flame chart to the canvas (matplotlib-style convenience method).
+
+        Parameters:
+        labels (array-like): Labels for each stack frame/function.
+        parents (array-like): Parent indices for each frame (None for root, or index of parent).
+        values (array-like): Duration/sample count for each frame.
+        start_times (array-like, optional): Start times for each frame. If None, computed from hierarchy.
+        layer (int): Layer index (default 0).
+        row, col (int): Subplot position (default top-left).
+        **kwargs: Forwarded to the backend (e.g., colormap, edgecolor, label).
+        """
+        sp = self._get_or_create_subplot(row, col)
+        sp.flame_chart(labels, parents, values, start_times=start_times, layer=layer, **kwargs)
+
+
     def set_xlabel(self, label: str, row: int | None = None, col: int | None = None):
         """Set the x-axis label for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_xlabel(label)
