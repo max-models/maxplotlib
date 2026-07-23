@@ -478,8 +478,9 @@ class Canvas:
         **kwargs: Forwarded to the backend (e.g., colormap, edgecolor, label).
         """
         sp = self._get_or_create_subplot(row, col)
-        sp.flame_chart(labels, parents, values, start_times=start_times, layer=layer, **kwargs)
-
+        sp.flame_chart(
+            labels, parents, values, start_times=start_times, layer=layer, **kwargs
+        )
 
     def set_xlabel(self, label: str, row: int | None = None, col: int | None = None):
         """Set the x-axis label for a subplot (default top-left)."""

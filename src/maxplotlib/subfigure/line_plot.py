@@ -522,7 +522,7 @@ class LinePlot:
                     parents = line["parents"]
                     values = line["values"] * self._xscale
                     start_times = line["start_times"]
-                    
+
                     # Calculate depth levels and positions
                     n = len(labels)
                     depths = np.zeros(n, dtype=int)
@@ -530,23 +530,30 @@ class LinePlot:
                         start_times = np.zeros(n)
                     else:
                         start_times = (start_times + self._xshift) * self._xscale
-                    
+
                     # Calculate depths based on parent relationships
                     for i in range(n):
                         if parents[i] is None:
                             depths[i] = 0
                         else:
-                            parent_idx = parents[i] if isinstance(parents[i], int) else list(labels).index(parents[i])
+                            parent_idx = (
+                                parents[i]
+                                if isinstance(parents[i], int)
+                                else list(labels).index(parents[i])
+                            )
                             depths[i] = depths[parent_idx] + 1
-                    
+
                     # Draw rectangles for each frame
                     import matplotlib.patches as mpatches
+
                     colormap = line["kwargs"].get("colormap", "viridis")
                     cmap = plt.get_cmap(colormap)
                     max_depth = depths.max() + 1
-                    
+
                     for i in range(n):
-                        color = cmap(depths[i] / max_depth) if max_depth > 1 else cmap(0.5)
+                        color = (
+                            cmap(depths[i] / max_depth) if max_depth > 1 else cmap(0.5)
+                        )
                         rect = mpatches.Rectangle(
                             (start_times[i], depths[i]),
                             values[i],
@@ -556,7 +563,7 @@ class LinePlot:
                             linewidth=0.5,
                         )
                         ax.add_patch(rect)
-                        
+
                         # Add label if rectangle is wide enough
                         if values[i] > 0.1 * (start_times.max() + values.max()):
                             ax.text(
@@ -566,9 +573,11 @@ class LinePlot:
                                 ha="center",
                                 va="center",
                                 fontsize=8,
-                                color="white" if depths[i] / max_depth > 0.5 else "black",
+                                color=(
+                                    "white" if depths[i] / max_depth > 0.5 else "black"
+                                ),
                             )
-                    
+
                     ax.set_ylim(-0.5, max_depth)
                     ax.set_ylabel("Stack Depth")
                 elif line["plot_type"] == "fill_between":
@@ -702,7 +711,7 @@ class LinePlot:
                     parents = line["parents"]
                     values = line["values"] * self._xscale
                     start_times = line["start_times"]
-                    
+
                     # Calculate depths
                     n = len(labels)
                     depths = np.zeros(n, dtype=int)
@@ -710,24 +719,28 @@ class LinePlot:
                         start_times = np.zeros(n)
                     else:
                         start_times = (start_times + self._xshift) * self._xscale
-                    
+
                     for i in range(n):
                         if parents[i] is None:
                             depths[i] = 0
                         else:
-                            parent_idx = parents[i] if isinstance(parents[i], int) else list(labels).index(parents[i])
+                            parent_idx = (
+                                parents[i]
+                                if isinstance(parents[i], int)
+                                else list(labels).index(parents[i])
+                            )
                             depths[i] = depths[parent_idx] + 1
-                    
+
                     # Draw rectangles for each frame
                     bar_height = 0.8
                     colors = ["red", "blue", "green", "orange", "purple", "cyan"]
-                    
+
                     for i in range(n):
                         x_start = start_times[i]
                         x_end = start_times[i] + values[i]
                         y_pos = depths[i]
                         color = colors[depths[i] % len(colors)]
-                        
+
                         rect_nodes = [
                             [x_start, y_pos - bar_height / 2],
                             [x_end, y_pos - bar_height / 2],
@@ -738,7 +751,11 @@ class LinePlot:
                             nodes=rect_nodes,
                             cycle=True,
                             fill=color,
-                            **{k: v for k, v in line["kwargs"].items() if k != "colormap"},
+                            **{
+                                k: v
+                                for k, v in line["kwargs"].items()
+                                if k != "colormap"
+                            },
                         )
         if verbose:
             print("Generated TikZ figure:")
@@ -896,7 +913,7 @@ class LinePlot:
                 parents = line["parents"]
                 values = np.asarray(line["values"]) * self._xscale
                 start_times = line["start_times"]
-                
+
                 # Calculate depths
                 n = len(labels)
                 depths = np.zeros(n, dtype=int)
@@ -904,40 +921,53 @@ class LinePlot:
                     start_times = np.zeros(n)
                 else:
                     start_times = tx(start_times)
-                
+
                 for i in range(n):
                     if parents[i] is None:
                         depths[i] = 0
                     else:
-                        parent_idx = parents[i] if isinstance(parents[i], int) else list(labels).index(parents[i])
+                        parent_idx = (
+                            parents[i]
+                            if isinstance(parents[i], int)
+                            else list(labels).index(parents[i])
+                        )
                         depths[i] = depths[parent_idx] + 1
-                
+
                 # Create rectangles as shapes
                 colormap = kwargs.get("colormap", "Viridis")
                 import plotly.express as px
-                colors = px.colors.sample_colorscale(colormap, np.linspace(0, 1, depths.max() + 1))
-                
+
+                colors = px.colors.sample_colorscale(
+                    colormap, np.linspace(0, 1, depths.max() + 1)
+                )
+
                 for i in range(n):
                     color = colors[depths[i]] if depths.max() > 0 else colors[0]
-                    shapes.append(dict(
-                        type="rect",
-                        x0=float(start_times[i]),
-                        x1=float(start_times[i] + values[i]),
-                        y0=float(depths[i]),
-                        y1=float(depths[i] + 0.9),
-                        fillcolor=color,
-                        line=dict(color=kwargs.get("edgecolor", "black"), width=0.5),
-                    ))
-                    
+                    shapes.append(
+                        dict(
+                            type="rect",
+                            x0=float(start_times[i]),
+                            x1=float(start_times[i] + values[i]),
+                            y0=float(depths[i]),
+                            y1=float(depths[i] + 0.9),
+                            fillcolor=color,
+                            line=dict(
+                                color=kwargs.get("edgecolor", "black"), width=0.5
+                            ),
+                        )
+                    )
+
                     # Add text annotation if wide enough
                     if values[i] > 0.1 * (start_times.max() + values.max()):
-                        annotations.append(dict(
-                            x=float(start_times[i] + values[i] / 2),
-                            y=float(depths[i] + 0.45),
-                            text=labels[i],
-                            showarrow=False,
-                            font=dict(size=8, color="white"),
-                        ))
+                        annotations.append(
+                            dict(
+                                x=float(start_times[i] + values[i] / 2),
+                                y=float(depths[i] + 0.45),
+                                text=labels[i],
+                                showarrow=False,
+                                font=dict(size=8, color="white"),
+                            )
+                        )
             elif plot_type == "fill_between":
                 kwargs = line["kwargs"]
                 x = tx(line["x"])
@@ -1725,7 +1755,7 @@ class LinePlot:
                 parents = line["parents"]
                 values = (np.asarray(line["values"]) * self._xscale).tolist()
                 start_times = line["start_times"]
-                
+
                 # Calculate depths
                 n = len(labels)
                 depths = np.zeros(n, dtype=int)
@@ -1733,27 +1763,31 @@ class LinePlot:
                     start_times = np.zeros(n).tolist()
                 else:
                     start_times = self._transform_x(line["start_times"]).tolist()
-                
+
                 for i in range(n):
                     if parents[i] is None:
                         depths[i] = 0
                     else:
-                        parent_idx = parents[i] if isinstance(parents[i], int) else list(labels).index(parents[i])
+                        parent_idx = (
+                            parents[i]
+                            if isinstance(parents[i], int)
+                            else list(labels).index(parents[i])
+                        )
                         depths[i] = depths[parent_idx] + 1
-                
+
                 # Draw bars for each frame
                 flame_kwargs = self._plotext_bar_kwargs(kwargs)
                 flame_kwargs["orientation"] = "h"
-                
+
                 # Use different colors for different depths
                 colormap = kwargs.get("colormap", "viridis")
                 max_depth = int(depths.max()) + 1
-                
+
                 for i in range(n):
                     # Simple color cycling based on depth
                     depth_colors = ["red", "green", "blue", "yellow", "cyan", "magenta"]
                     color = depth_colors[depths[i] % len(depth_colors)]
-                    
+
                     ax.bar(
                         [start_times[i] + values[i] / 2],
                         [depths[i]],
@@ -1761,7 +1795,7 @@ class LinePlot:
                         color=color,
                         **{k: v for k, v in flame_kwargs.items() if k != "color"},
                     )
-                
+
                 legend_entries.append((kwargs.get("label"), kwargs.get("color")))
             elif plot_type == "fill_between":
                 x = self._transform_x(line["x"]).tolist()
