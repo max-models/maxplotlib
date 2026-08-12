@@ -347,9 +347,32 @@ def test_canvas_show_uses_matplotlib_show(monkeypatch):
 
     fig, axes = canvas.show()
 
-    assert calls == [((), {})]
+    # block=True is passed explicitly (not left at plt.show()'s own default)
+    # so a caller looping over several canvases shows them one at a time
+    # regardless of matplotlib's interactive-mode state.
+    assert calls == [((), {"block": True})]
     assert fig is not None
     assert axes is not None
+
+
+def test_canvas_show_block_false_is_forwarded(monkeypatch):
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    calls = []
+
+    monkeypatch.setattr(
+        plt, "show", lambda *args, **kwargs: calls.append((args, kwargs))
+    )
+
+    canvas = Canvas()
+    subplot = canvas.add_subplot()
+    subplot.plot([0, 1], [0, 1])
+
+    canvas.show(block=False)
+
+    assert calls == [((), {"block": False})]
 
 
 def test_show_canvas_script_invokes_canvas_show(monkeypatch):

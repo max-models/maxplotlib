@@ -946,7 +946,24 @@ class Canvas:
         layers: list | None = None,
         usetex: bool | None = None,
         verbose: bool = False,
+        block: bool = True,
     ):
+        """
+        Render and display the canvas.
+
+        Parameters
+        ----------
+        block : bool, optional
+            matplotlib backend only (default: True). Whether to block until
+            the figure window is closed before returning. Passed straight to
+            ``plt.show(block=...)`` rather than left at its default, because
+            that default follows ``matplotlib.is_interactive()`` -- which
+            other imported code (IPython, a prior interactive session) can
+            flip to True behind this call's back, silently turning off
+            blocking. Forcing it explicitly is what makes repeated
+            ``canvas.show()`` calls in a loop display one figure at a time
+            instead of every window appearing together.
+        """
         if verbose:
             print(f"Showing canvas using backend: {backend}")
 
@@ -962,7 +979,7 @@ class Canvas:
             )
             if verbose:
                 print("Displaying Matplotlib figure...")
-            plt.show()
+            plt.show(block=block)
             return fig, axes
         elif backend == "plotly":
             resolved_usetex = self._usetex if usetex is None else usetex
