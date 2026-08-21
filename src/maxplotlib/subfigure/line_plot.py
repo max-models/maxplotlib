@@ -88,8 +88,10 @@ class LinePlot:
         # Custom tick positions and labels
         self._xticks: list | None = None
         self._xticklabels: list | None = None
+        self._xtick_kwargs: dict = {}
         self._yticks: list | None = None
         self._yticklabels: list | None = None
+        self._ytick_kwargs: dict = {}
 
         # Aspect ratio
         self._aspect = None
@@ -305,15 +307,22 @@ class LinePlot:
         """Set the y-axis scale type: 'linear', 'log', or 'symlog'."""
         self._yaxis_scale = scale
 
-    def set_xticks(self, ticks, labels=None):
-        """Set x-axis tick positions and optional labels."""
+    def set_xticks(self, ticks, labels=None, **kwargs):
+        """Set x-axis tick positions, labels, and label properties.
+
+        Keyword arguments are forwarded to the plotting backend. For example,
+        ``rotation=45`` rotates the tick labels in the Matplotlib and Plotly
+        backends.
+        """
         self._xticks = list(ticks)
         self._xticklabels = list(labels) if labels is not None else None
+        self._xtick_kwargs = dict(kwargs)
 
-    def set_yticks(self, ticks, labels=None):
-        """Set y-axis tick positions and optional labels."""
+    def set_yticks(self, ticks, labels=None, **kwargs):
+        """Set y-axis tick positions, labels, and label properties."""
         self._yticks = list(ticks)
         self._yticklabels = list(labels) if labels is not None else None
+        self._ytick_kwargs = dict(kwargs)
 
     def set_aspect(self, aspect):
         """Set the axes aspect ratio: 'equal', 'auto', or a float."""
@@ -654,13 +663,17 @@ class LinePlot:
         if self._yaxis_scale is not None:
             ax.set_yscale(self._yaxis_scale)
         if self._xticks is not None:
-            ax.set_xticks(self._xticks)
-            if self._xticklabels is not None:
-                ax.set_xticklabels(self._xticklabels)
+            ax.set_xticks(
+                self._xticks,
+                labels=self._xticklabels,
+                **self._xtick_kwargs,
+            )
         if self._yticks is not None:
-            ax.set_yticks(self._yticks)
-            if self._yticklabels is not None:
-                ax.set_yticklabels(self._yticklabels)
+            ax.set_yticks(
+                self._yticks,
+                labels=self._yticklabels,
+                **self._ytick_kwargs,
+            )
         if self._aspect is not None:
             ax.set_aspect(self._aspect)
 

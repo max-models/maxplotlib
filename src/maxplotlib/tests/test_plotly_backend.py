@@ -28,6 +28,18 @@ def test_plotly_backend_supports_common_primitives():
     )  # subplot title + text/annotate
 
 
+def test_plotly_backend_supports_tick_label_rotation():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    axis.set_xticks([0, 1], labels=["zero", "one"], rotation=45)
+
+    fig = canvas.plot(backend="plotly")
+
+    assert fig.layout.xaxis.tickangle == 45
+
+
 def test_plotly_backend_respects_layers():
     from maxplotlib import Canvas
 

@@ -543,16 +543,26 @@ class Canvas:
         self._get_or_create_subplot(row, col).set_yscale(scale)
 
     def set_xticks(
-        self, ticks, labels=None, row: int | None = None, col: int | None = None
+        self,
+        ticks,
+        labels=None,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
-        """Set x-axis tick positions (and optional labels) for a subplot."""
-        self._get_or_create_subplot(row, col).set_xticks(ticks, labels)
+        """Set x-axis ticks and optional label properties for a subplot."""
+        self._get_or_create_subplot(row, col).set_xticks(ticks, labels, **kwargs)
 
     def set_yticks(
-        self, ticks, labels=None, row: int | None = None, col: int | None = None
+        self,
+        ticks,
+        labels=None,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
-        """Set y-axis tick positions (and optional labels) for a subplot."""
-        self._get_or_create_subplot(row, col).set_yticks(ticks, labels)
+        """Set y-axis ticks and optional label properties for a subplot."""
+        self._get_or_create_subplot(row, col).set_yticks(ticks, labels, **kwargs)
 
     def fill_between(
         self,
@@ -1424,6 +1434,7 @@ class Canvas:
                     tickmode="array",
                     tickvals=tickvals,
                     ticktext=line_plot._xticklabels,
+                    tickangle=line_plot._xtick_kwargs.get("rotation"),
                     row=row + 1,
                     col=col + 1,
                 )
@@ -1433,6 +1444,7 @@ class Canvas:
                     tickmode="array",
                     tickvals=tickvals,
                     ticktext=line_plot._yticklabels,
+                    tickangle=line_plot._ytick_kwargs.get("rotation"),
                     row=row + 1,
                     col=col + 1,
                 )

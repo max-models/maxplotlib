@@ -431,6 +431,23 @@ def test_canvas_show_block_false_is_forwarded(monkeypatch):
     assert calls == [((), {"block": False})]
 
 
+def test_canvas_tick_label_rotation_is_forwarded_to_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    canvas.set_xticks([0, 1], labels=["zero", "one"], rotation=45)
+
+    fig, axes = canvas.plot()
+    assert [label.get_rotation() for label in axes[0][0].get_xticklabels()] == [
+        45.0,
+        45.0,
+    ]
+    plt.close(fig)
+
+
 def test_show_canvas_script_invokes_canvas_show(monkeypatch):
     import maxplotlib
 
