@@ -39,6 +39,22 @@ def _parse_bool_env_var(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _display_matplotlib_figure_in_notebook(fig) -> bool:
+    """Display a Matplotlib figure through IPython when running in Jupyter."""
+    try:
+        from IPython import get_ipython
+        from IPython.display import display
+    except ImportError:
+        return False
+
+    shell = get_ipython()
+    if shell is None or "IPKernelApp" not in getattr(shell, "config", {}):
+        return False
+
+    display(fig)
+    return True
+
+
 def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
     """
     Plot all nodes and paths on the provided axis using Matplotlib.
@@ -979,7 +995,12 @@ class Canvas:
             )
             if verbose:
                 print("Displaying Matplotlib figure...")
-            plt.show(block=block)
+            if _display_matplotlib_figure_in_notebook(fig):
+                # IPython has rendered the figure already. Closing it prevents
+                # a later implicit pyplot display and releases its resources.
+                plt.close(fig)
+            else:
+                plt.show(block=block)
             return fig, axes
         elif backend == "plotly":
             resolved_usetex = self._usetex if usetex is None else usetex

@@ -355,6 +355,62 @@ def test_canvas_show_uses_matplotlib_show(monkeypatch):
     assert axes is not None
 
 
+def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):
+    import matplotlib.pyplot as plt
+    import pytest
+    import sys
+    import types
+
+    from maxplotlib import Canvas
+
+    displayed = []
+    closed = []
+    fig = object()
+
+    ipython = types.ModuleType("IPython")
+    ipython.get_ipython = lambda: types.SimpleNamespace(config={"IPKernelApp": {}})
+    ipython_display = types.ModuleType("IPython.display")
+    ipython_display.display = displayed.append
+
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    monkeypatch.setitem(sys.modules, "IPython.display", ipython_display)
+    monkeypatch.setattr(plt, "close", lambda value: closed.append(value))
+    monkeypatch.setattr(Canvas, "plot", lambda *args, **kwargs: (fig, object()))
+    monkeypatch.setattr(plt, "show", lambda: pytest.fail("pyplot.show was called"))
+
+    canvas = Canvas()
+    result = canvas.show()
+    assert result[0] is fig
+    assert result[1] is not None
+    assert displayed == [fig]
+    assert closed == [fig]
+
+
+def test_canvas_show_falls_back_to_pyplot_outside_jupyter(monkeypatch):
+    import matplotlib.pyplot as plt
+    import pytest
+    import sys
+    import types
+
+    from maxplotlib import Canvas
+
+    calls = []
+    ipython = types.ModuleType("IPython")
+    ipython.get_ipython = lambda: types.SimpleNamespace(config={})
+    ipython_display = types.ModuleType("IPython.display")
+    ipython_display.display = lambda fig: pytest.fail("IPython display was called")
+
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    monkeypatch.setitem(sys.modules, "IPython.display", ipython_display)
+    monkeypatch.setattr(plt, "show", lambda *args, **kwargs: calls.append(kwargs))
+
+    canvas = Canvas()
+    canvas.add_subplot().plot([0, 1], [0, 1])
+    canvas.show(block=False)
+
+    assert calls == [{"block": False}]
+
+
 def test_canvas_show_block_false_is_forwarded(monkeypatch):
     import matplotlib.pyplot as plt
 
