@@ -448,6 +448,89 @@ def test_canvas_tick_label_rotation_is_forwarded_to_matplotlib():
     plt.close(fig)
 
 
+def test_matplotlib_postprocess_can_customize_figure_and_axes():
+    from matplotlib.colors import to_rgba
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, (axis0, axis1) = Canvas.subplots(nrows=1, ncols=2)
+    axis0.plot([0, 1], [0, 1])
+    axis1.plot([0, 1], [1, 0])
+    received = []
+
+    def customize(fig, axes):
+        received.append((fig, axes))
+        fig.suptitle("Customized")
+        for matplotlib_axis in axes.flat:
+            matplotlib_axis.set_facecolor("lightgray")
+
+    fig, axes = canvas.plot(matplotlib_postprocess=customize)
+
+    assert received == [(fig, axes)]
+    assert fig._suptitle.get_text() == "Customized"
+    assert all(axis.get_facecolor() == to_rgba("lightgray") for axis in axes.flat)
+    plt.close(fig)
+
+
+def test_matplotlib_customizations_apply_declarative_figure_and_axes_methods():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, (axis0, axis1) = Canvas.subplots(ncols=2)
+    axis0.plot([0, 1], [0, 1])
+    axis1.plot([0, 1], [1, 0])
+
+    fig, axes = canvas.plot(
+        matplotlib_customizations={
+            "figure": {"suptitle": "Customized"},
+            "axes": {
+                "set_facecolor": "lightgray",
+                "tick_params": {
+                    "kwargs": {"axis": "both", "length": 6},
+                },
+            },
+        }
+    )
+
+    from matplotlib.colors import to_rgba
+
+    assert fig._suptitle.get_text() == "Customized"
+    assert all(axis.get_facecolor() == to_rgba("lightgray") for axis in axes.flat)
+    assert all(axis.xaxis.majorTicks[0].tick1line.get_markersize() == 6 for axis in axes.flat)
+    plt.close(fig)
+
+
+def test_matplotlib_customizations_accept_a_callable():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    received = []
+
+    def customize(fig, axes):
+        received.append((fig, axes))
+        fig.suptitle("Customized")
+
+    fig, axes = canvas.plot(matplotlib_customizations=customize)
+
+    assert received == [(fig, axes)]
+    assert fig._suptitle.get_text() == "Customized"
+    plt.close(fig)
+
+
+def test_matplotlib_postprocess_rejects_non_matplotlib_backends():
+    import pytest
+
+    from maxplotlib import Canvas
+
+    with pytest.raises(ValueError, match="only supported with the matplotlib backend"):
+        Canvas().plot(backend="plotly", matplotlib_postprocess=lambda fig, axes: None)
+
+
 def test_show_canvas_script_invokes_canvas_show(monkeypatch):
     import maxplotlib
 

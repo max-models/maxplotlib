@@ -42,6 +42,38 @@ Plot the figure with the default (matplotlib) backend:
 canvas.show()
 ```
 
+For Matplotlib-specific customization, pass method calls declaratively. Figure
+methods run once and axes methods run for every subplot, providing access to
+any Matplotlib API without requiring a maxplotlib wrapper:
+
+```{python}
+#| output: false
+canvas.plot(matplotlib_customizations={
+    "figure": {
+        "suptitle": "My figure",
+    },
+    "axes": {
+        "tick_params": {
+            "axis": "both",
+            "which": "major",
+            "length": 6,
+        },
+    },
+})
+```
+
+For dynamic customization, the same option also accepts a function:
+
+```{python}
+#| output: false
+def customize(fig, axes):
+    fig.suptitle("My figure")
+    for ax in axes.flat:
+        ax.tick_params(axis="both", which="major", length=6)
+
+canvas.plot(matplotlib_customizations=customize)
+```
+
 Render the same line graph directly in the terminal with the `plotext` backend:
 
 ```{python}

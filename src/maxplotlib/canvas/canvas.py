@@ -55,6 +55,46 @@ def _display_matplotlib_figure_in_notebook(fig) -> bool:
     return True
 
 
+def _apply_matplotlib_customizations(fig, axes, customizations) -> None:
+    """Apply declarative method calls to a Matplotlib figure and its axes."""
+    if callable(customizations):
+        customizations(fig, axes)
+        return
+    if not isinstance(customizations, Mapping):
+        raise TypeError("matplotlib_customizations must be a mapping or callable")
+
+    unknown_targets = set(customizations) - {"figure", "axes"}
+    if unknown_targets:
+        raise ValueError(
+            "matplotlib_customizations only supports 'figure' and 'axes' targets; "
+            f"got {sorted(unknown_targets)!r}"
+        )
+
+    for target, objects in (
+        ("figure", (fig,)),
+        ("axes", tuple(axes.flat)),
+    ):
+        for method_name, spec in customizations.get(target, {}).items():
+            if not isinstance(method_name, str):
+                raise TypeError("Matplotlib customization method names must be strings")
+            if isinstance(spec, Mapping) and ("args" in spec or "kwargs" in spec):
+                args = tuple(spec.get("args", ()))
+                kwargs = dict(spec.get("kwargs", {}))
+            elif isinstance(spec, Mapping):
+                args = ()
+                kwargs = dict(spec)
+            elif spec is None:
+                args = ()
+                kwargs = {}
+            else:
+                args = (spec,)
+                kwargs = {}
+
+            for obj in objects:
+                method = getattr(obj, method_name)
+                method(*args, **kwargs)
+
+
 def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
     """
     Plot all nodes and paths on the provided axis using Matplotlib.
@@ -935,7 +975,22 @@ class Canvas:
         layers: list | None = None,
         usetex: bool | None = None,
         verbose: bool = False,
+        matplotlib_postprocess=None,
+        matplotlib_customizations=None,
     ):
+        """Render the canvas.
+
+        ``matplotlib_customizations`` accepts either a callable receiving
+        ``(figure, axes)`` or a mapping whose ``figure`` methods run once and
+        whose ``axes`` methods run on every axes. Values are keyword arguments,
+        or use ``{"args": [...], "kwargs": {...}}`` for positional and keyword
+        arguments. A scalar value is passed as one positional argument.
+
+        ``matplotlib_postprocess`` is an optional callable receiving
+        ``(figure, axes)`` after a Matplotlib figure has been created. It can
+        call any Matplotlib API, including APIs not wrapped by maxplotlib.
+        Both options are only valid with the Matplotlib backend.
+        """
         resolved_usetex = self._usetex if usetex is None else usetex
 
         if verbose:
@@ -947,6 +1002,12 @@ class Canvas:
                 layers=layers,
                 usetex=resolved_usetex,
                 verbose=verbose,
+                matplotlib_postprocess=matplotlib_postprocess,
+                matplotlib_customizations=matplotlib_customizations,
+            )
+        elif matplotlib_postprocess is not None or matplotlib_customizations is not None:
+            raise ValueError(
+                "Matplotlib customizations are only supported with the matplotlib backend"
             )
         elif backend == "plotly":
             return self.plot_plotly(
@@ -973,6 +1034,8 @@ class Canvas:
         usetex: bool | None = None,
         verbose: bool = False,
         block: bool = True,
+        matplotlib_postprocess=None,
+        matplotlib_customizations=None,
     ):
         """
         Render and display the canvas.
@@ -992,6 +1055,12 @@ class Canvas:
         """
         if verbose:
             print(f"Showing canvas using backend: {backend}")
+        if backend != "matplotlib" and (
+            matplotlib_postprocess is not None or matplotlib_customizations is not None
+        ):
+            raise ValueError(
+                "Matplotlib customizations are only supported with the matplotlib backend"
+            )
 
         if backend == "matplotlib":
             if verbose:
@@ -1002,6 +1071,8 @@ class Canvas:
                 layers=layers,
                 usetex=usetex,
                 verbose=verbose,
+                matplotlib_postprocess=matplotlib_postprocess,
+                matplotlib_customizations=matplotlib_customizations,
             )
             if verbose:
                 print("Displaying Matplotlib figure...")
@@ -1041,6 +1112,8 @@ class Canvas:
         layers: list | None = None,
         usetex: bool | None = None,
         verbose: bool = False,
+        matplotlib_postprocess=None,
+        matplotlib_customizations=None,
     ):
         """
         Generate and optionally display the subplots.
@@ -1123,6 +1196,12 @@ class Canvas:
         self._plotted = True
         self._matplotlib_fig = fig
         self._matplotlib_axes = axes
+        if matplotlib_customizations is not None:
+            _apply_matplotlib_customizations(fig, axes, matplotlib_customizations)
+        if matplotlib_postprocess is not None:
+            if not callable(matplotlib_postprocess):
+                raise TypeError("matplotlib_postprocess must be callable")
+            matplotlib_postprocess(fig, axes)
         return fig, axes
 
     def plot_tikzfigure(
