@@ -1,5 +1,7 @@
 import numpy as np
 
+import pytest
+
 
 def test_plotly_backend_supports_common_primitives():
     from maxplotlib import Canvas
@@ -185,3 +187,31 @@ def test_plotly_backend_supports_common_patches_and_symlog():
     ax2.set_yscale("symlog")
     fig2 = canvas2.plot(backend="plotly")
     assert fig2 is not None
+
+
+def test_plotly_backend_reports_unsupported_primitives_and_allows_override():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    axis.quiver([0], [0], [1], [1])
+
+    with pytest.raises(NotImplementedError, match="quiver"):
+        canvas.plot(backend="plotly")
+
+    fig = canvas.plot(backend="plotly", allow_unsupported=True)
+    assert len(fig.data) == 1
+
+
+def test_plotly_backend_reports_matplotlib_only_bar_labels():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.bar([0, 1], [2, 3])
+    axis.bar_label(fmt="%d")
+
+    with pytest.raises(NotImplementedError, match="bar_label"):
+        canvas.plot(backend="plotly")
+
+    fig = canvas.plot(backend="plotly", allow_unsupported=True)
+    assert len(fig.data) == 1

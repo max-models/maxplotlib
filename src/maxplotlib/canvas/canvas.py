@@ -1480,6 +1480,7 @@ class Canvas:
         verbose: bool = False,
         matplotlib_postprocess=None,
         matplotlib_customizations=None,
+        allow_unsupported: bool = False,
     ):
         """Render the canvas.
 
@@ -1520,6 +1521,7 @@ class Canvas:
                 layers=layers,
                 usetex=resolved_usetex,
                 verbose=verbose,
+                allow_unsupported=allow_unsupported,
             )
         elif backend == "plotext":
             return self.plot_plotext(
@@ -1541,6 +1543,7 @@ class Canvas:
         block: bool = True,
         matplotlib_postprocess=None,
         matplotlib_customizations=None,
+        allow_unsupported: bool = False,
     ):
         """
         Render and display the canvas.
@@ -1591,7 +1594,11 @@ class Canvas:
         elif backend == "plotly":
             resolved_usetex = self._usetex if usetex is None else usetex
             fig = self.plot_plotly(
-                savefig=False, layers=layers, usetex=resolved_usetex, verbose=verbose
+                savefig=False,
+                layers=layers,
+                usetex=resolved_usetex,
+                verbose=verbose,
+                allow_unsupported=allow_unsupported,
             )
             fig.show()
             return fig
@@ -1921,6 +1928,7 @@ class Canvas:
         layers: list | None = None,
         usetex: bool | None = None,
         verbose: bool = False,
+        allow_unsupported: bool = False,
     ):
         """
         Generate and optionally display the subplots using Plotly.
@@ -1958,7 +1966,9 @@ class Canvas:
 
         # Plot each subplot and propagate axis labels/scale
         for (row, col), line_plot in self._subplot_dict.items():
-            traces, shapes, annotations = line_plot.plot_plotly(layers=layers)
+            traces, shapes, annotations = line_plot.plot_plotly(
+                layers=layers, allow_unsupported=allow_unsupported
+            )
             for trace in traces:
                 if trace.type == "pie":
                     fig.add_trace(trace)
@@ -1973,7 +1983,7 @@ class Canvas:
             twin_subplot = self._twinx_subplots.get((row, col))
             if twin_subplot is not None:
                 twin_traces, twin_shapes, twin_annotations = twin_subplot.plot_plotly(
-                    layers=layers
+                    layers=layers, allow_unsupported=allow_unsupported
                 )
                 for trace in twin_traces:
                     if trace.type == "pie":

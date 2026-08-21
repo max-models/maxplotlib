@@ -1395,7 +1395,7 @@ class LinePlot:
             print(tikz_figure.generate_tikz())
         return tikz_figure
 
-    def plot_plotly(self, layers=None):
+    def plot_plotly(self, layers=None, allow_unsupported=False):
         """
         Plot all lines using Plotly.
 
@@ -1436,6 +1436,29 @@ class LinePlot:
         patch_bounds_x: list[float] = []
         patch_bounds_y: list[float] = []
 
+        # These primitives have no faithful 2-D Plotly equivalent in the
+        # current backend.  Keep the default strict so a mixed plot cannot
+        # silently lose data, while allowing callers to deliberately render
+        # the Plotly-compatible portions of a canvas.
+        unsupported_plot_types = {
+            "quiver",
+            "triplot",
+            "tripcolor",
+            "tricontour",
+            "tricontourf",
+            "streamplot",
+            "pcolor",
+            "pcolorfast",
+            "spy",
+            "table",
+        }
+
+        if self._bar_label_kwargs and not allow_unsupported:
+            raise NotImplementedError(
+                "bar_label is currently supported only by the matplotlib backend; "
+                "pass allow_unsupported=True to skip it for Plotly"
+            )
+
         def tx(values):
             return self._transform_x(values)
 
@@ -1468,6 +1491,13 @@ class LinePlot:
 
         for line in self._iter_layer_lines(layers=layers):
             plot_type = line["plot_type"]
+            if plot_type in unsupported_plot_types:
+                if allow_unsupported:
+                    continue
+                raise NotImplementedError(
+                    f"{plot_type} is currently supported only by the matplotlib "
+                    "backend; pass allow_unsupported=True to skip it for Plotly"
+                )
             if plot_type == "plot":
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker")
