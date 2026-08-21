@@ -105,6 +105,30 @@ def test_plotly_backend_supports_statistical_and_event_plots():
     assert len(fig.layout.shapes) >= 4
 
 
+def test_plotly_backend_supports_scientific_field_plots():
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 5)
+    y = np.linspace(-1, 1, 5)
+    xx, yy = np.meshgrid(x, y)
+    z = xx**2 + yy**2
+
+    canvas, axis = Canvas.subplots()
+    axis.contour(x, y, z)
+    axis.contourf(x, y, z)
+    axis.pcolormesh(x, y, z)
+    axis.hexbin(xx.ravel(), yy.ravel(), gridsize=5)
+    axis.matshow(z)
+
+    fig = canvas.plot(backend="plotly")
+
+    assert any(trace.type == "contour" for trace in fig.data)
+    assert any(trace.type == "heatmap" for trace in fig.data)
+    assert any(trace.type == "histogram2d" for trace in fig.data)
+
+
 def test_plotly_backend_respects_layers():
     from maxplotlib import Canvas
 

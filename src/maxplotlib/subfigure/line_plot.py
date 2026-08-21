@@ -294,6 +294,76 @@ class LinePlot:
             layer,
         )
 
+    def contour(self, x, y, z, layer=0, **kwargs):
+        """Add contour lines for a 2D scalar field."""
+        self._add(
+            {"x": x, "y": y, "z": np.asarray(z), "layer": layer, "plot_type": "contour", "kwargs": kwargs},
+            layer,
+        )
+
+    def contourf(self, x, y, z, layer=0, **kwargs):
+        """Add filled contours for a 2D scalar field."""
+        self._add(
+            {"x": x, "y": y, "z": np.asarray(z), "layer": layer, "plot_type": "contourf", "kwargs": kwargs},
+            layer,
+        )
+
+    def pcolormesh(self, x, y, z, layer=0, **kwargs):
+        """Add a pseudocolor mesh."""
+        self._add(
+            {"x": x, "y": y, "z": np.asarray(z), "layer": layer, "plot_type": "pcolormesh", "kwargs": kwargs},
+            layer,
+        )
+
+    def hexbin(self, x, y, layer=0, **kwargs):
+        """Add a hexagonal bin density plot."""
+        self._add(
+            {"x": np.asarray(x), "y": np.asarray(y), "layer": layer, "plot_type": "hexbin", "kwargs": kwargs},
+            layer,
+        )
+
+    def matshow(self, data, layer=0, **kwargs):
+        """Display a matrix with matrix-oriented axes."""
+        self._add(
+            {"data": np.asarray(data), "layer": layer, "plot_type": "matshow", "kwargs": kwargs},
+            layer,
+        )
+
+    def quiver(self, x, y, u, v, layer=0, **kwargs):
+        """Add a vector field."""
+        self._add(
+            {"x": x, "y": y, "u": u, "v": v, "layer": layer, "plot_type": "quiver", "kwargs": kwargs},
+            layer,
+        )
+
+    def triplot(self, x, y, triangles=None, layer=0, **kwargs):
+        """Add an unstructured triangular grid."""
+        self._add(
+            {"x": x, "y": y, "triangles": triangles, "layer": layer, "plot_type": "triplot", "kwargs": kwargs},
+            layer,
+        )
+
+    def tripcolor(self, x, y, c, triangles=None, layer=0, **kwargs):
+        """Add a colored unstructured triangular grid."""
+        self._add(
+            {"x": x, "y": y, "c": c, "triangles": triangles, "layer": layer, "plot_type": "tripcolor", "kwargs": kwargs},
+            layer,
+        )
+
+    def tricontour(self, x, y, z, triangles=None, layer=0, **kwargs):
+        """Add contour lines on an unstructured triangular grid."""
+        self._add(
+            {"x": x, "y": y, "z": z, "triangles": triangles, "layer": layer, "plot_type": "tricontour", "kwargs": kwargs},
+            layer,
+        )
+
+    def tricontourf(self, x, y, z, triangles=None, layer=0, **kwargs):
+        """Add filled contours on an unstructured triangular grid."""
+        self._add(
+            {"x": x, "y": y, "z": z, "triangles": triangles, "layer": layer, "plot_type": "tricontourf", "kwargs": kwargs},
+            layer,
+        )
+
     def gantt(self, tasks, start_times, durations, layer=0, **kwargs):
         """
         Add a Gantt chart to the subplot.
@@ -753,6 +823,46 @@ class LinePlot:
                     ax.violinplot(line["dataset"], **line["kwargs"])
                 elif line["plot_type"] == "eventplot":
                     ax.eventplot(line["positions"], **line["kwargs"])
+                elif line["plot_type"] == "contour":
+                    ax.contour(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] == "contourf":
+                    ax.contourf(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] == "pcolormesh":
+                    ax.pcolormesh(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] == "hexbin":
+                    ax.hexbin(line["x"], line["y"], **line["kwargs"])
+                elif line["plot_type"] == "matshow":
+                    ax.matshow(line["data"], **line["kwargs"])
+                elif line["plot_type"] == "quiver":
+                    ax.quiver(line["x"], line["y"], line["u"], line["v"], **line["kwargs"])
+                elif line["plot_type"] == "triplot":
+                    import matplotlib.tri as mtri
+
+                    triangulation = mtri.Triangulation(
+                        line["x"], line["y"], triangles=line["triangles"]
+                    )
+                    ax.triplot(triangulation, **line["kwargs"])
+                elif line["plot_type"] == "tripcolor":
+                    import matplotlib.tri as mtri
+
+                    triangulation = mtri.Triangulation(
+                        line["x"], line["y"], triangles=line["triangles"]
+                    )
+                    ax.tripcolor(triangulation, line["c"], **line["kwargs"])
+                elif line["plot_type"] == "tricontour":
+                    import matplotlib.tri as mtri
+
+                    triangulation = mtri.Triangulation(
+                        line["x"], line["y"], triangles=line["triangles"]
+                    )
+                    ax.tricontour(triangulation, line["z"], **line["kwargs"])
+                elif line["plot_type"] == "tricontourf":
+                    import matplotlib.tri as mtri
+
+                    triangulation = mtri.Triangulation(
+                        line["x"], line["y"], triangles=line["triangles"]
+                    )
+                    ax.tricontourf(triangulation, line["z"], **line["kwargs"])
                 elif line["plot_type"] == "gantt":
                     tasks = line["tasks"]
                     start_times = (line["start_times"] + self._xshift) * self._xscale
@@ -1345,6 +1455,64 @@ class LinePlot:
                                 line=dict(color="black"),
                             )
                         )
+            elif plot_type == "contour":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Contour(
+                        x=line["x"],
+                        y=line["y"],
+                        z=line["z"],
+                        contours=dict(coloring="lines"),
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                    )
+                )
+            elif plot_type == "contourf":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Contour(
+                        x=line["x"],
+                        y=line["y"],
+                        z=line["z"],
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                    )
+                )
+            elif plot_type == "pcolormesh":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Heatmap(
+                        x=line["x"],
+                        y=line["y"],
+                        z=line["z"],
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                    )
+                )
+            elif plot_type == "hexbin":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Histogram2d(
+                        x=tx(line["x"]),
+                        y=ty(line["y"]),
+                        nbinsx=kwargs.get("gridsize", 30)
+                        if np.isscalar(kwargs.get("gridsize", 30))
+                        else 30,
+                        nbinsy=kwargs.get("gridsize", 30)
+                        if np.isscalar(kwargs.get("gridsize", 30))
+                        else 30,
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                    )
+                )
+            elif plot_type == "matshow":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Heatmap(
+                        z=line["data"],
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                    )
+                )
             elif plot_type == "gantt":
                 kwargs = line["kwargs"]
                 tasks = line["tasks"]

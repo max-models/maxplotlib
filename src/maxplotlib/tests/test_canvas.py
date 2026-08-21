@@ -583,6 +583,56 @@ def test_statistical_and_event_plot_primitives_are_supported():
     plt.close(fig)
 
 
+def test_scientific_field_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 8)
+    y = np.linspace(-1, 1, 8)
+    xx, yy = np.meshgrid(x, y)
+    z = xx**2 + yy**2
+
+    canvas, axis = Canvas.subplots()
+    axis.contour(x, y, z)
+    axis.contourf(x, y, z, alpha=0.4)
+    axis.pcolormesh(x, y, z)
+    axis.hexbin(np.ravel(xx), np.ravel(yy), gridsize=8)
+    axis.matshow(z)
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.collections) > 0
+    assert len(matplotlib_axis.images) > 0
+    plt.close(fig)
+
+
+def test_vector_and_triangulated_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.array([0.0, 1.0, 0.0, 1.0])
+    y = np.array([0.0, 0.0, 1.0, 1.0])
+    triangles = [[0, 1, 2], [1, 3, 2]]
+    z = x + y
+
+    canvas, axis = Canvas.subplots()
+    axis.quiver(x, y, np.ones(4), np.ones(4))
+    axis.triplot(x, y, triangles=triangles)
+    axis.tripcolor(x, y, z, triangles=triangles, alpha=0.3)
+    axis.tricontour(x, y, z, triangles=triangles)
+    axis.tricontourf(x, y, z, triangles=triangles, alpha=0.2)
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.collections) > 0
+    assert len(matplotlib_axis.lines) > 0
+    plt.close(fig)
+
+
 def test_matplotlib_postprocess_can_customize_figure_and_axes():
     from matplotlib.colors import to_rgba
     import matplotlib.pyplot as plt

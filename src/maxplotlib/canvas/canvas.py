@@ -609,6 +609,144 @@ class Canvas:
             positions, layer=layer, **kwargs
         )
 
+    def contour(
+        self,
+        x,
+        y,
+        z,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add contour lines to a subplot."""
+        self._get_or_create_subplot(row, col).contour(x, y, z, layer=layer, **kwargs)
+
+    def contourf(
+        self,
+        x,
+        y,
+        z,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add filled contours to a subplot."""
+        self._get_or_create_subplot(row, col).contourf(x, y, z, layer=layer, **kwargs)
+
+    def pcolormesh(
+        self,
+        x,
+        y,
+        z,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add a pseudocolor mesh to a subplot."""
+        self._get_or_create_subplot(row, col).pcolormesh(
+            x, y, z, layer=layer, **kwargs
+        )
+
+    def hexbin(
+        self,
+        x,
+        y,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add a hexagonal density plot to a subplot."""
+        self._get_or_create_subplot(row, col).hexbin(x, y, layer=layer, **kwargs)
+
+    def matshow(
+        self, data, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Display a matrix with matrix-oriented axes."""
+        self._get_or_create_subplot(row, col).matshow(data, layer=layer, **kwargs)
+
+    def quiver(
+        self,
+        x,
+        y,
+        u,
+        v,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add a vector field to a subplot."""
+        self._get_or_create_subplot(row, col).quiver(
+            x, y, u, v, layer=layer, **kwargs
+        )
+
+    def triplot(
+        self,
+        x,
+        y,
+        triangles=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add an unstructured triangular grid to a subplot."""
+        self._get_or_create_subplot(row, col).triplot(
+            x, y, triangles=triangles, layer=layer, **kwargs
+        )
+
+    def tripcolor(
+        self,
+        x,
+        y,
+        c,
+        triangles=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add colored unstructured triangles to a subplot."""
+        self._get_or_create_subplot(row, col).tripcolor(
+            x, y, c, triangles=triangles, layer=layer, **kwargs
+        )
+
+    def tricontour(
+        self,
+        x,
+        y,
+        z,
+        triangles=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add unstructured contour lines to a subplot."""
+        self._get_or_create_subplot(row, col).tricontour(
+            x, y, z, triangles=triangles, layer=layer, **kwargs
+        )
+
+    def tricontourf(
+        self,
+        x,
+        y,
+        z,
+        triangles=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add filled unstructured contours to a subplot."""
+        self._get_or_create_subplot(row, col).tricontourf(
+            x, y, z, triangles=triangles, layer=layer, **kwargs
+        )
+
     def gantt(
         self,
         tasks,
