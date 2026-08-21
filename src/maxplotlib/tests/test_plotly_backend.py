@@ -40,6 +40,71 @@ def test_plotly_backend_supports_tick_label_rotation():
     assert fig.layout.xaxis.tickangle == 45
 
 
+def test_plotly_backend_supports_twinx():
+    from maxplotlib import Canvas
+
+    canvas, primary = Canvas.subplots()
+    secondary = canvas.twinx()
+    primary.plot([0, 1], [0, 1], color="blue")
+    secondary.plot([0, 1], [10, 20], color="red")
+    secondary.set_ylabel("Secondary")
+
+    fig = canvas.plot(backend="plotly")
+
+    assert len(fig.data) == 2
+    assert fig.layout.yaxis2.title.text == "Secondary"
+
+
+def test_plotly_backend_supports_common_added_primitives():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.barh([0, 1], [2, 3])
+    axis.hist([0, 1, 1, 2], bins=3)
+    axis.fill_betweenx([0, 1], 0, 1, alpha=0.2)
+    axis.axvspan(0.25, 0.75, alpha=0.1)
+    axis.axhspan(0.25, 0.75, alpha=0.1)
+    axis.arrow(0, 0, 1, 1)
+
+    fig = canvas.plot(backend="plotly")
+
+    assert len(fig.data) >= 3
+    assert len(fig.layout.shapes) >= 2
+    assert any(annotation.showarrow for annotation in fig.layout.annotations)
+
+
+def test_plotly_backend_supports_step_stairs_broken_barh_and_pie():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.step([0, 1, 2], [1, 3, 2])
+    axis.stairs([1, 2], edges=[0, 1, 2])
+    axis.broken_barh([(0, 1), (2, 0.5)], (0, 0.5))
+    axis.pie([2, 3, 4], labels=["A", "B", "C"])
+
+    fig = canvas.plot(backend="plotly")
+
+    assert any(trace.type == "pie" for trace in fig.data)
+    assert len(fig.data) >= 5
+
+
+def test_plotly_backend_supports_statistical_and_event_plots():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.stem([0, 1, 2], [1, 3, 2])
+    axis.stackplot([0, 1, 2], [1, 2, 1], [2, 1, 2])
+    axis.boxplot([[1, 2, 3], [2, 4, 5]])
+    axis.violinplot([[1, 2, 3], [2, 4, 5]])
+    axis.eventplot([[0.2, 0.5], [1.0, 1.5]])
+
+    fig = canvas.plot(backend="plotly")
+
+    assert any(trace.type == "box" for trace in fig.data)
+    assert any(trace.type == "violin" for trace in fig.data)
+    assert len(fig.layout.shapes) >= 4
+
+
 def test_plotly_backend_respects_layers():
     from maxplotlib import Canvas
 

@@ -472,6 +472,117 @@ def test_axis_label_and_tick_settings_are_forwarded_to_matplotlib():
     plt.close(fig)
 
 
+def test_common_axis_and_figure_controls_are_forwarded_to_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([1, 2, 3], [1, 4, 9])
+    canvas.set_facecolor("whitesmoke")
+    canvas.set_axisbelow(True)
+    canvas.margins(x=0.2, y=0.1)
+    canvas.invert_yaxis()
+    canvas.minorticks_on()
+    canvas.set_axis_on()
+    canvas.supxlabel("Shared time", fontsize=11)
+    canvas.supylabel("Shared value", fontsize=11)
+    canvas.subplots_adjust(left=0.2)
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert matplotlib_axis.get_facecolor() == (0.9607843137254902,) * 3 + (1.0,)
+    assert matplotlib_axis.get_axisbelow() is True
+    assert matplotlib_axis.yaxis_inverted()
+    assert matplotlib_axis.xaxis.get_minorticklocs().size > 0
+    assert fig._supxlabel.get_text() == "Shared time"
+    assert fig._supylabel.get_text() == "Shared value"
+    plt.close(fig)
+
+
+def test_twinx_renders_a_secondary_matplotlib_y_axis():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, primary = Canvas.subplots()
+    secondary = canvas.twinx()
+    primary.plot([0, 1, 2], [0, 1, 2], color="tab:blue", label="temperature")
+    secondary.plot([0, 1, 2], [10, 20, 30], color="tab:red", label="pressure")
+    primary.set_ylabel("Temperature", color="tab:blue")
+    secondary.set_ylabel("Pressure", color="tab:red")
+
+    fig, axes = canvas.plot()
+    twin_axis = canvas.twinx_axes[(0, 0)]
+
+    assert twin_axis is not axes[0][0]
+    assert twin_axis.get_ylabel() == "Pressure"
+    assert axes[0][0].get_ylabel() == "Temperature"
+    assert len(twin_axis.lines) == 1
+    plt.close(fig)
+
+
+def test_common_matplotlib_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.barh([0, 1], [2, 3], color="steelblue")
+    axis.hist([0, 1, 1, 2, 2, 2], bins=3, alpha=0.5)
+    axis.fill_betweenx([0, 1, 2], 0.5, [1, 1.5, 2], alpha=0.2)
+    axis.axvspan(0.25, 0.75, alpha=0.1)
+    axis.axhspan(0.5, 1.5, alpha=0.1)
+    axis.arrow(0, 0, 1, 1, length_includes_head=True)
+    axis.axline((0, 0), slope=1, linestyle="--")
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.patches) > 0
+    assert len(matplotlib_axis.lines) > 0
+    plt.close(fig)
+
+
+def test_additional_matplotlib_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.step([0, 1, 2], [1, 3, 2], color="black")
+    axis.stairs([1, 2, 1], edges=[0, 1, 2, 3], color="purple")
+    axis.broken_barh([(0, 1), (1.5, 0.5)], (0, 0.4), color="orange")
+    axis.bar([0, 1], [2, 3])
+    axis.bar_label(fmt="%d")
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.containers) >= 1
+    assert len(matplotlib_axis.lines) >= 1
+    assert len(matplotlib_axis.patches) >= 2
+    assert len(matplotlib_axis.texts) >= 2
+    plt.close(fig)
+
+
+def test_statistical_and_event_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.stem([0, 1, 2], [1, 3, 2])
+    axis.stackplot([0, 1, 2], [1, 2, 1], [2, 1, 2])
+    axis.boxplot([[1, 2, 3], [2, 4, 5]])
+    axis.violinplot([[1, 2, 3], [2, 4, 5]])
+    axis.eventplot([[0.2, 0.5], [1.0, 1.5]])
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.lines) > 0
+    assert len(matplotlib_axis.collections) > 0
+    plt.close(fig)
+
+
 def test_matplotlib_postprocess_can_customize_figure_and_axes():
     from matplotlib.colors import to_rgba
     import matplotlib.pyplot as plt

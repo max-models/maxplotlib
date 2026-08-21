@@ -307,10 +307,18 @@ class Canvas:
         self._plotext_figure = None
         self._suptitle: str | None = None
         self._suptitle_kwargs: dict = {}
+        self._supxlabel: str | None = None
+        self._supxlabel_kwargs: dict = {}
+        self._supylabel: str | None = None
+        self._supylabel_kwargs: dict = {}
+        self._subplots_adjust_kwargs: dict = {}
+        self._tight_layout_kwargs: dict | None = None
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
         self._subplots = {}
+        self._twinx_subplots = {}
+        self._matplotlib_twin_axes = {}
         self._num_subplots = 0
 
         self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
@@ -387,6 +395,9 @@ class Canvas:
         layers = []
         for (row, col), subplot in self._subplot_dict.items():
             layers.extend(subplot.layers)
+            twin_subplot = self._twinx_subplots.get((row, col))
+            if twin_subplot is not None:
+                layers.extend(twin_subplot.layers)
         return list(set(layers))
 
     def generate_new_rowcol(self, row, col):
@@ -494,6 +505,109 @@ class Canvas:
         """
         sp = self._get_or_create_subplot(row, col)
         sp.bar(x, height, layer=layer, **kwargs)
+
+    def barh(
+        self, y, width, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a horizontal bar chart to a subplot."""
+        self._get_or_create_subplot(row, col).barh(y, width, layer=layer, **kwargs)
+
+    def hist(
+        self, x, bins=10, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a histogram to a subplot."""
+        self._get_or_create_subplot(row, col).hist(x, bins=bins, layer=layer, **kwargs)
+
+    def step(
+        self, x, y, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a step plot to a subplot."""
+        self._get_or_create_subplot(row, col).step(x, y, layer=layer, **kwargs)
+
+    def stairs(
+        self,
+        values,
+        edges=None,
+        baseline=0,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add a stairs plot to a subplot."""
+        self._get_or_create_subplot(row, col).stairs(
+            values, edges=edges, baseline=baseline, layer=layer, **kwargs
+        )
+
+    def broken_barh(
+        self,
+        xranges,
+        yrange,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add broken horizontal bars to a subplot."""
+        self._get_or_create_subplot(row, col).broken_barh(
+            xranges, yrange, layer=layer, **kwargs
+        )
+
+    def pie(
+        self, x, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a pie chart to a subplot."""
+        self._get_or_create_subplot(row, col).pie(x, layer=layer, **kwargs)
+
+    def bar_label(
+        self, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add labels to bar containers in the Matplotlib backend."""
+        self._get_or_create_subplot(row, col).bar_label(**kwargs)
+
+    def stem(
+        self, x, y, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a stem plot to a subplot."""
+        self._get_or_create_subplot(row, col).stem(x, y, layer=layer, **kwargs)
+
+    def stackplot(
+        self, x, *ys, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a stacked area plot to a subplot."""
+        self._get_or_create_subplot(row, col).stackplot(x, *ys, layer=layer, **kwargs)
+
+    def boxplot(
+        self, x, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a box-and-whisker plot to a subplot."""
+        self._get_or_create_subplot(row, col).boxplot(x, layer=layer, **kwargs)
+
+    def violinplot(
+        self,
+        dataset,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add a violin plot to a subplot."""
+        self._get_or_create_subplot(row, col).violinplot(
+            dataset, layer=layer, **kwargs
+        )
+
+    def eventplot(
+        self,
+        positions,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add an event/rug plot to a subplot."""
+        self._get_or_create_subplot(row, col).eventplot(
+            positions, layer=layer, **kwargs
+        )
 
     def gantt(
         self,
@@ -615,6 +729,54 @@ class Canvas:
         """Set y-axis scale ('linear', 'log', 'symlog') for a subplot."""
         self._get_or_create_subplot(row, col).set_yscale(scale)
 
+    def set_axis_off(self, row: int | None = None, col: int | None = None):
+        """Hide the axis frame, ticks, and labels for a subplot."""
+        self._get_or_create_subplot(row, col).set_axis_off()
+
+    def set_axis_on(self, row: int | None = None, col: int | None = None):
+        """Show the axis frame, ticks, and labels for a subplot."""
+        self._get_or_create_subplot(row, col).set_axis_on()
+
+    def set_axisbelow(
+        self, state=True, row: int | None = None, col: int | None = None
+    ):
+        """Set whether gridlines and ticks are drawn below plot data."""
+        self._get_or_create_subplot(row, col).set_axisbelow(state)
+
+    def set_facecolor(self, color, row: int | None = None, col: int | None = None):
+        """Set a subplot's background color."""
+        self._get_or_create_subplot(row, col).set_facecolor(color)
+
+    def margins(self, *args, row: int | None = None, col: int | None = None, **kwargs):
+        """Set x/y data margins for a subplot."""
+        self._get_or_create_subplot(row, col).margins(*args, **kwargs)
+
+    def invert_xaxis(self, row: int | None = None, col: int | None = None):
+        """Invert a subplot's x-axis."""
+        self._get_or_create_subplot(row, col).invert_xaxis()
+
+    def invert_yaxis(self, row: int | None = None, col: int | None = None):
+        """Invert a subplot's y-axis."""
+        self._get_or_create_subplot(row, col).invert_yaxis()
+
+    def minorticks_on(self, row: int | None = None, col: int | None = None):
+        """Enable minor ticks for a subplot."""
+        self._get_or_create_subplot(row, col).minorticks_on()
+
+    def minorticks_off(self, row: int | None = None, col: int | None = None):
+        """Disable minor ticks for a subplot."""
+        self._get_or_create_subplot(row, col).minorticks_off()
+
+    def locator_params(self, row: int | None = None, col: int | None = None, **kwargs):
+        """Set axis locator parameters for a subplot."""
+        self._get_or_create_subplot(row, col).locator_params(**kwargs)
+
+    def ticklabel_format(
+        self, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Configure numeric tick-label formatting for a subplot."""
+        self._get_or_create_subplot(row, col).ticklabel_format(**kwargs)
+
     def set_xticks(
         self,
         ticks,
@@ -650,6 +812,21 @@ class Canvas:
         """Fill the region between two curves on a subplot."""
         self._get_or_create_subplot(row, col).fill_between(
             x, y1, y2, layer=layer, **kwargs
+        )
+
+    def fill_betweenx(
+        self,
+        y,
+        x1,
+        x2=0,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Fill the area between two x-boundaries along y."""
+        self._get_or_create_subplot(row, col).fill_betweenx(
+            y, x1, x2, layer=layer, **kwargs
         )
 
     def errorbar(
@@ -708,6 +885,39 @@ class Canvas:
         """Add vertical lines at specified x positions to a subplot."""
         self._get_or_create_subplot(row, col).vlines(
             x, ymin, ymax, layer=layer, **kwargs
+        )
+
+    def axvspan(
+        self, xmin, xmax, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a vertical shaded span across a subplot."""
+        self._get_or_create_subplot(row, col).axvspan(xmin, xmax, layer=layer, **kwargs)
+
+    def axhspan(
+        self, ymin, ymax, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add a horizontal shaded span across a subplot."""
+        self._get_or_create_subplot(row, col).axhspan(ymin, ymax, layer=layer, **kwargs)
+
+    def arrow(
+        self, x, y, dx, dy, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Add an arrow to a subplot."""
+        self._get_or_create_subplot(row, col).arrow(x, y, dx, dy, layer=layer, **kwargs)
+
+    def axline(
+        self,
+        xy1,
+        xy2=None,
+        slope=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add an infinitely extending line to a subplot."""
+        self._get_or_create_subplot(row, col).axline(
+            xy1, xy2=xy2, slope=slope, layer=layer, **kwargs
         )
 
     def annotate(
@@ -784,6 +994,26 @@ class Canvas:
             )
         return sp
 
+    def twinx(self, row: int | None = None, col: int | None = None) -> LinePlot:
+        """Create or return a secondary y-axis sharing a subplot's x-axis.
+
+        The returned subplot accepts the same plotting methods as a regular
+        subplot. With the Matplotlib backend it is rendered on ``ax.twinx()``.
+        Only one secondary y-axis is supported per subplot.
+        """
+        self._get_or_create_subplot(row, col)
+        if row is None:
+            row, col = 0, 0
+        key = (row, col)
+        if key not in self._twinx_subplots:
+            self._twinx_subplots[key] = LinePlot()
+        return self._twinx_subplots[key]
+
+    @property
+    def twinx_axes(self):
+        """Return materialized Matplotlib secondary axes by ``(row, col)``."""
+        return dict(self._matplotlib_twin_axes)
+
     def iter_subplots(self):
         """Yield (row, col, subplot) for every initialized subplot, row-major."""
         for r in range(self.nrows):
@@ -802,6 +1032,24 @@ class Canvas:
         """
         self._suptitle = title
         self._suptitle_kwargs = kwargs
+
+    def supxlabel(self, label: str, **kwargs):
+        """Set a figure-level x-axis label."""
+        self._supxlabel = label
+        self._supxlabel_kwargs = dict(kwargs)
+
+    def supylabel(self, label: str, **kwargs):
+        """Set a figure-level y-axis label."""
+        self._supylabel = label
+        self._supylabel_kwargs = dict(kwargs)
+
+    def subplots_adjust(self, **kwargs):
+        """Adjust subplot spacing after the figure is created."""
+        self._subplots_adjust_kwargs = dict(kwargs)
+
+    def tight_layout(self, **kwargs):
+        """Apply Matplotlib's automatic tight layout after plotting."""
+        self._tight_layout_kwargs = dict(kwargs)
 
     def add_tikzfigure(
         self,
@@ -1225,6 +1473,15 @@ class Canvas:
             suptitle_kwargs.setdefault("fontsize", self.fontsize)
             fig.suptitle(self._suptitle, **suptitle_kwargs)
 
+        if self._supxlabel:
+            fig.supxlabel(self._supxlabel, **self._supxlabel_kwargs)
+        if self._supylabel:
+            fig.supylabel(self._supylabel, **self._supylabel_kwargs)
+        if self._subplots_adjust_kwargs:
+            fig.subplots_adjust(**self._subplots_adjust_kwargs)
+        if self._tight_layout_kwargs is not None:
+            fig.tight_layout(**self._tight_layout_kwargs)
+
         if verbose:
             print("Set suptitle.")
 
@@ -1232,6 +1489,11 @@ class Canvas:
         self._plotted = True
         self._matplotlib_fig = fig
         self._matplotlib_axes = axes
+        self._matplotlib_twin_axes = {}
+        for (row, col), twin_subplot in self._twinx_subplots.items():
+            twin_axis = axes[row][col].twinx()
+            twin_subplot.plot_matplotlib(twin_axis, layers=layers)
+            self._matplotlib_twin_axes[(row, col)] = twin_axis
         if matplotlib_customizations is not None:
             _apply_matplotlib_customizations(fig, axes, matplotlib_customizations)
         if matplotlib_postprocess is not None:
@@ -1259,6 +1521,11 @@ class Canvas:
         """
         if verbose:
             print(f"Plotting tikzfigure with {len(self._subplot_dict)} subplot(s)")
+
+        if self._twinx_subplots:
+            raise NotImplementedError(
+                "twinx plots are currently supported only by the matplotlib and plotly backends"
+            )
 
         # Check for unsupported layouts
         if self.nrows > 1:
@@ -1395,6 +1662,10 @@ class Canvas:
         layers: list | None = None,
         verbose: bool = False,
     ) -> PlotextFigure:
+        if self._twinx_subplots:
+            raise NotImplementedError(
+                "twinx plots are not supported by the plotext backend"
+            )
         if verbose:
             print("Generating plotext figure...")
 
@@ -1450,22 +1721,55 @@ class Canvas:
             index = row * self.ncols + col
             subplot_titles[index] = sp._title or f"({row}, {col})"
 
+        specs = [
+            [
+                {"secondary_y": (r, c) in self._twinx_subplots}
+                for c in range(self.ncols)
+            ]
+            for r in range(self.nrows)
+        ]
         fig = make_subplots(
             rows=self.nrows,
             cols=self.ncols,
             subplot_titles=subplot_titles,
+            specs=specs,
         )
 
         # Plot each subplot and propagate axis labels/scale
         for (row, col), line_plot in self._subplot_dict.items():
             traces, shapes, annotations = line_plot.plot_plotly(layers=layers)
             for trace in traces:
-                fig.add_trace(trace, row=row + 1, col=col + 1)
+                if trace.type == "pie":
+                    fig.add_trace(trace)
+                else:
+                    fig.add_trace(trace, row=row + 1, col=col + 1)
 
             # Axis indices are row-major: (row*ncols + col + 1)
             axis_index = row * self.ncols + col + 1
             xref = "x" if axis_index == 1 else f"x{axis_index}"
             yref = "y" if axis_index == 1 else f"y{axis_index}"
+
+            twin_subplot = self._twinx_subplots.get((row, col))
+            if twin_subplot is not None:
+                twin_traces, twin_shapes, twin_annotations = twin_subplot.plot_plotly(
+                    layers=layers
+                )
+                for trace in twin_traces:
+                    if trace.type == "pie":
+                        fig.add_trace(trace)
+                    else:
+                        fig.add_trace(
+                            trace,
+                            row=row + 1,
+                            col=col + 1,
+                            secondary_y=True,
+                        )
+                for shape in twin_shapes:
+                    shape = dict(shape)
+                    shape["yref"] = yref
+                    fig.add_shape(shape)
+                for annotation in twin_annotations:
+                    fig.add_annotation(dict(annotation))
 
             for shape in shapes:
                 shape = dict(shape)
@@ -1501,6 +1805,14 @@ class Canvas:
             if line_plot._yaxis_scale == "log":
                 yaxis_kwargs["type"] = "log"
             fig.update_yaxes(**yaxis_kwargs)
+
+            if twin_subplot is not None:
+                fig.update_yaxes(
+                    title_text=twin_subplot._ylabel or None,
+                    secondary_y=True,
+                    row=row + 1,
+                    col=col + 1,
+                )
 
             # Axis limits
             if line_plot._xmin is not None or line_plot._xmax is not None:

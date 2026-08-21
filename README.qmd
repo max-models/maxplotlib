@@ -93,6 +93,41 @@ canvas.tick_params(
 )
 ```
 
+Common axis controls and figure-level layout settings are also available:
+
+```{python}
+#| output: false
+canvas.set_facecolor("whitesmoke")
+canvas.set_axisbelow(True)
+canvas.margins(x=0.05, y=0.1)
+canvas.minorticks_on()
+canvas.invert_yaxis()
+canvas.supxlabel("Shared x label")
+canvas.supylabel("Shared y label")
+canvas.subplots_adjust(left=0.15, bottom=0.15)
+canvas.tight_layout()
+```
+
+### Secondary Y-Axis
+
+Use `Canvas.twinx()` to add a second y-axis that shares the primary x-axis:
+
+```{python}
+#| output: false
+twin_canvas, primary = Canvas.subplots()
+secondary = twin_canvas.twinx()
+
+primary.plot(x, np.sin(x), color="tab:blue")
+secondary.plot(x, 100 * np.cos(x), color="tab:red")
+primary.set_ylabel("sin(x)", color="tab:blue")
+secondary.set_ylabel("100 cos(x)", color="tab:red")
+
+twin_canvas.show()
+```
+
+Secondary y-axes are currently supported by the Matplotlib and Plotly
+backends.
+
 Render the same line graph directly in the terminal with the `plotext` backend:
 
 ```{python}
