@@ -356,10 +356,11 @@ def test_canvas_show_uses_matplotlib_show(monkeypatch):
 
 
 def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):
-    import matplotlib.pyplot as plt
-    import pytest
     import sys
     import types
+
+    import matplotlib.pyplot as plt
+    import pytest
 
     from maxplotlib import Canvas
 
@@ -387,10 +388,11 @@ def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):
 
 
 def test_canvas_show_falls_back_to_pyplot_outside_jupyter(monkeypatch):
-    import matplotlib.pyplot as plt
-    import pytest
     import sys
     import types
+
+    import matplotlib.pyplot as plt
+    import pytest
 
     from maxplotlib import Canvas
 
@@ -633,9 +635,35 @@ def test_vector_and_triangulated_plot_primitives_are_supported():
     plt.close(fig)
 
 
-def test_matplotlib_postprocess_can_customize_figure_and_axes():
-    from matplotlib.colors import to_rgba
+def test_stream_matrix_and_table_primitives_are_supported():
     import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 8)
+    y = np.linspace(-1, 1, 8)
+    xx, yy = np.meshgrid(x, y)
+    z = xx**2 + yy**2
+    matrix = np.eye(5)
+
+    canvas, axis = Canvas.subplots()
+    axis.streamplot(x, y, -yy, xx)
+    axis.pcolor(x, y, z, alpha=0.2)
+    axis.pcolorfast(np.linspace(-1, 1, 9), np.linspace(-1, 1, 9), z, alpha=0.2)
+    axis.spy(matrix)
+    axis.table(cellText=[["A", "B"], ["1", "2"]], loc="upper right")
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.collections) > 0
+    assert len(matplotlib_axis.tables) == 1
+    plt.close(fig)
+
+
+def test_matplotlib_postprocess_can_customize_figure_and_axes():
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgba
 
     from maxplotlib import Canvas
 
@@ -683,7 +711,9 @@ def test_matplotlib_customizations_apply_declarative_figure_and_axes_methods():
 
     assert fig._suptitle.get_text() == "Customized"
     assert all(axis.get_facecolor() == to_rgba("lightgray") for axis in axes.flat)
-    assert all(axis.xaxis.majorTicks[0].tick1line.get_markersize() == 6 for axis in axes.flat)
+    assert all(
+        axis.xaxis.majorTicks[0].tick1line.get_markersize() == 6 for axis in axes.flat
+    )
     plt.close(fig)
 
 

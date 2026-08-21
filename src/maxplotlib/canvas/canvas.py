@@ -507,13 +507,25 @@ class Canvas:
         sp.bar(x, height, layer=layer, **kwargs)
 
     def barh(
-        self, y, width, layer=0, row: int | None = None, col: int | None = None, **kwargs
+        self,
+        y,
+        width,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
         """Add a horizontal bar chart to a subplot."""
         self._get_or_create_subplot(row, col).barh(y, width, layer=layer, **kwargs)
 
     def hist(
-        self, x, bins=10, layer=0, row: int | None = None, col: int | None = None, **kwargs
+        self,
+        x,
+        bins=10,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
         """Add a histogram to a subplot."""
         self._get_or_create_subplot(row, col).hist(x, bins=bins, layer=layer, **kwargs)
@@ -553,15 +565,11 @@ class Canvas:
             xranges, yrange, layer=layer, **kwargs
         )
 
-    def pie(
-        self, x, layer=0, row: int | None = None, col: int | None = None, **kwargs
-    ):
+    def pie(self, x, layer=0, row: int | None = None, col: int | None = None, **kwargs):
         """Add a pie chart to a subplot."""
         self._get_or_create_subplot(row, col).pie(x, layer=layer, **kwargs)
 
-    def bar_label(
-        self, row: int | None = None, col: int | None = None, **kwargs
-    ):
+    def bar_label(self, row: int | None = None, col: int | None = None, **kwargs):
         """Add labels to bar containers in the Matplotlib backend."""
         self._get_or_create_subplot(row, col).bar_label(**kwargs)
 
@@ -592,9 +600,7 @@ class Canvas:
         **kwargs,
     ):
         """Add a violin plot to a subplot."""
-        self._get_or_create_subplot(row, col).violinplot(
-            dataset, layer=layer, **kwargs
-        )
+        self._get_or_create_subplot(row, col).violinplot(dataset, layer=layer, **kwargs)
 
     def eventplot(
         self,
@@ -646,9 +652,7 @@ class Canvas:
         **kwargs,
     ):
         """Add a pseudocolor mesh to a subplot."""
-        self._get_or_create_subplot(row, col).pcolormesh(
-            x, y, z, layer=layer, **kwargs
-        )
+        self._get_or_create_subplot(row, col).pcolormesh(x, y, z, layer=layer, **kwargs)
 
     def hexbin(
         self,
@@ -680,9 +684,7 @@ class Canvas:
         **kwargs,
     ):
         """Add a vector field to a subplot."""
-        self._get_or_create_subplot(row, col).quiver(
-            x, y, u, v, layer=layer, **kwargs
-        )
+        self._get_or_create_subplot(row, col).quiver(x, y, u, v, layer=layer, **kwargs)
 
     def triplot(
         self,
@@ -745,6 +747,72 @@ class Canvas:
         """Add filled unstructured contours to a subplot."""
         self._get_or_create_subplot(row, col).tricontourf(
             x, y, z, triangles=triangles, layer=layer, **kwargs
+        )
+
+    def streamplot(
+        self,
+        x,
+        y,
+        u,
+        v,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add streamlines for a vector field to a subplot."""
+        self._get_or_create_subplot(row, col).streamplot(
+            x, y, u, v, layer=layer, **kwargs
+        )
+
+    def pcolor(
+        self,
+        x,
+        y,
+        z,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add a pseudocolor plot to a subplot."""
+        self._get_or_create_subplot(row, col).pcolor(x, y, z, layer=layer, **kwargs)
+
+    def pcolorfast(
+        self,
+        x,
+        y,
+        z,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add a fast pseudocolor plot to a subplot."""
+        self._get_or_create_subplot(row, col).pcolorfast(x, y, z, layer=layer, **kwargs)
+
+    def spy(
+        self,
+        matrix,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Visualize a matrix sparsity pattern in a subplot."""
+        self._get_or_create_subplot(row, col).spy(matrix, layer=layer, **kwargs)
+
+    def table(
+        self,
+        cellText=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add a table annotation to a subplot."""
+        self._get_or_create_subplot(row, col).table(
+            cellText=cellText, layer=layer, **kwargs
         )
 
     def gantt(
@@ -853,9 +921,7 @@ class Canvas:
         """Show or hide the legend for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_legend(visible)
 
-    def tick_params(
-        self, row: int | None = None, col: int | None = None, **kwargs
-    ):
+    def tick_params(self, row: int | None = None, col: int | None = None, **kwargs):
         """Configure major/minor tick appearance for a subplot."""
         self._get_or_create_subplot(row, col).tick_params(**kwargs)
 
@@ -875,9 +941,7 @@ class Canvas:
         """Show the axis frame, ticks, and labels for a subplot."""
         self._get_or_create_subplot(row, col).set_axis_on()
 
-    def set_axisbelow(
-        self, state=True, row: int | None = None, col: int | None = None
-    ):
+    def set_axisbelow(self, state=True, row: int | None = None, col: int | None = None):
         """Set whether gridlines and ticks are drawn below plot data."""
         self._get_or_create_subplot(row, col).set_axisbelow(state)
 
@@ -1026,19 +1090,39 @@ class Canvas:
         )
 
     def axvspan(
-        self, xmin, xmax, layer=0, row: int | None = None, col: int | None = None, **kwargs
+        self,
+        xmin,
+        xmax,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
         """Add a vertical shaded span across a subplot."""
         self._get_or_create_subplot(row, col).axvspan(xmin, xmax, layer=layer, **kwargs)
 
     def axhspan(
-        self, ymin, ymax, layer=0, row: int | None = None, col: int | None = None, **kwargs
+        self,
+        ymin,
+        ymax,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
         """Add a horizontal shaded span across a subplot."""
         self._get_or_create_subplot(row, col).axhspan(ymin, ymax, layer=layer, **kwargs)
 
     def arrow(
-        self, x, y, dx, dy, layer=0, row: int | None = None, col: int | None = None, **kwargs
+        self,
+        x,
+        y,
+        dx,
+        dy,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
         """Add an arrow to a subplot."""
         self._get_or_create_subplot(row, col).arrow(x, y, dx, dy, layer=layer, **kwargs)
@@ -1424,7 +1508,9 @@ class Canvas:
                 matplotlib_postprocess=matplotlib_postprocess,
                 matplotlib_customizations=matplotlib_customizations,
             )
-        elif matplotlib_postprocess is not None or matplotlib_customizations is not None:
+        elif (
+            matplotlib_postprocess is not None or matplotlib_customizations is not None
+        ):
             raise ValueError(
                 "Matplotlib customizations are only supported with the matplotlib backend"
             )
@@ -1860,10 +1946,7 @@ class Canvas:
             subplot_titles[index] = sp._title or f"({row}, {col})"
 
         specs = [
-            [
-                {"secondary_y": (r, c) in self._twinx_subplots}
-                for c in range(self.ncols)
-            ]
+            [{"secondary_y": (r, c) in self._twinx_subplots} for c in range(self.ncols)]
             for r in range(self.nrows)
         ]
         fig = make_subplots(

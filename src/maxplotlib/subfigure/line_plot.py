@@ -230,21 +230,40 @@ class LinePlot:
     def step(self, x, y, layer=0, **kwargs):
         """Add a step plot."""
         self._add(
-            {"x": np.array(x), "y": np.array(y), "layer": layer, "plot_type": "step", "kwargs": kwargs},
+            {
+                "x": np.array(x),
+                "y": np.array(y),
+                "layer": layer,
+                "plot_type": "step",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def stairs(self, values, edges=None, baseline=0, layer=0, **kwargs):
         """Add a stairs plot."""
         self._add(
-            {"values": np.array(values), "edges": edges, "baseline": baseline, "layer": layer, "plot_type": "stairs", "kwargs": kwargs},
+            {
+                "values": np.array(values),
+                "edges": edges,
+                "baseline": baseline,
+                "layer": layer,
+                "plot_type": "stairs",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def broken_barh(self, xranges, yrange, layer=0, **kwargs):
         """Add horizontal bars with gaps between x ranges."""
         self._add(
-            {"xranges": list(xranges), "yrange": yrange, "layer": layer, "plot_type": "broken_barh", "kwargs": kwargs},
+            {
+                "xranges": list(xranges),
+                "yrange": yrange,
+                "layer": layer,
+                "plot_type": "broken_barh",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
@@ -262,14 +281,26 @@ class LinePlot:
     def stem(self, x, y, layer=0, **kwargs):
         """Add a stem plot."""
         self._add(
-            {"x": np.array(x), "y": np.array(y), "layer": layer, "plot_type": "stem", "kwargs": kwargs},
+            {
+                "x": np.array(x),
+                "y": np.array(y),
+                "layer": layer,
+                "plot_type": "stem",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def stackplot(self, x, *ys, layer=0, **kwargs):
         """Add a stacked area plot."""
         self._add(
-            {"x": np.array(x), "ys": [np.array(y) for y in ys], "layer": layer, "plot_type": "stackplot", "kwargs": kwargs},
+            {
+                "x": np.array(x),
+                "ys": [np.array(y) for y in ys],
+                "layer": layer,
+                "plot_type": "stackplot",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
@@ -283,84 +314,227 @@ class LinePlot:
     def violinplot(self, dataset, layer=0, **kwargs):
         """Add a violin plot."""
         self._add(
-            {"dataset": dataset, "layer": layer, "plot_type": "violinplot", "kwargs": kwargs},
+            {
+                "dataset": dataset,
+                "layer": layer,
+                "plot_type": "violinplot",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def eventplot(self, positions, layer=0, **kwargs):
         """Add an event/rug plot."""
         self._add(
-            {"positions": positions, "layer": layer, "plot_type": "eventplot", "kwargs": kwargs},
+            {
+                "positions": positions,
+                "layer": layer,
+                "plot_type": "eventplot",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def contour(self, x, y, z, layer=0, **kwargs):
         """Add contour lines for a 2D scalar field."""
         self._add(
-            {"x": x, "y": y, "z": np.asarray(z), "layer": layer, "plot_type": "contour", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "contour",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def contourf(self, x, y, z, layer=0, **kwargs):
         """Add filled contours for a 2D scalar field."""
         self._add(
-            {"x": x, "y": y, "z": np.asarray(z), "layer": layer, "plot_type": "contourf", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "contourf",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def pcolormesh(self, x, y, z, layer=0, **kwargs):
         """Add a pseudocolor mesh."""
         self._add(
-            {"x": x, "y": y, "z": np.asarray(z), "layer": layer, "plot_type": "pcolormesh", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "pcolormesh",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def hexbin(self, x, y, layer=0, **kwargs):
         """Add a hexagonal bin density plot."""
         self._add(
-            {"x": np.asarray(x), "y": np.asarray(y), "layer": layer, "plot_type": "hexbin", "kwargs": kwargs},
+            {
+                "x": np.asarray(x),
+                "y": np.asarray(y),
+                "layer": layer,
+                "plot_type": "hexbin",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def matshow(self, data, layer=0, **kwargs):
         """Display a matrix with matrix-oriented axes."""
         self._add(
-            {"data": np.asarray(data), "layer": layer, "plot_type": "matshow", "kwargs": kwargs},
+            {
+                "data": np.asarray(data),
+                "layer": layer,
+                "plot_type": "matshow",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def quiver(self, x, y, u, v, layer=0, **kwargs):
         """Add a vector field."""
         self._add(
-            {"x": x, "y": y, "u": u, "v": v, "layer": layer, "plot_type": "quiver", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "u": u,
+                "v": v,
+                "layer": layer,
+                "plot_type": "quiver",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def triplot(self, x, y, triangles=None, layer=0, **kwargs):
         """Add an unstructured triangular grid."""
         self._add(
-            {"x": x, "y": y, "triangles": triangles, "layer": layer, "plot_type": "triplot", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "triangles": triangles,
+                "layer": layer,
+                "plot_type": "triplot",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def tripcolor(self, x, y, c, triangles=None, layer=0, **kwargs):
         """Add a colored unstructured triangular grid."""
         self._add(
-            {"x": x, "y": y, "c": c, "triangles": triangles, "layer": layer, "plot_type": "tripcolor", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "c": c,
+                "triangles": triangles,
+                "layer": layer,
+                "plot_type": "tripcolor",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def tricontour(self, x, y, z, triangles=None, layer=0, **kwargs):
         """Add contour lines on an unstructured triangular grid."""
         self._add(
-            {"x": x, "y": y, "z": z, "triangles": triangles, "layer": layer, "plot_type": "tricontour", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "z": z,
+                "triangles": triangles,
+                "layer": layer,
+                "plot_type": "tricontour",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def tricontourf(self, x, y, z, triangles=None, layer=0, **kwargs):
         """Add filled contours on an unstructured triangular grid."""
         self._add(
-            {"x": x, "y": y, "z": z, "triangles": triangles, "layer": layer, "plot_type": "tricontourf", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "z": z,
+                "triangles": triangles,
+                "layer": layer,
+                "plot_type": "tricontourf",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def streamplot(self, x, y, u, v, layer=0, **kwargs):
+        """Add streamlines for a 2D vector field."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "u": u,
+                "v": v,
+                "layer": layer,
+                "plot_type": "streamplot",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def pcolor(self, x, y, z, layer=0, **kwargs):
+        """Add a pseudocolor plot."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "pcolor",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def pcolorfast(self, x, y, z, layer=0, **kwargs):
+        """Add a fast pseudocolor plot."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "pcolorfast",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def spy(self, matrix, layer=0, **kwargs):
+        """Visualize the sparsity pattern of a matrix."""
+        self._add(
+            {"matrix": matrix, "layer": layer, "plot_type": "spy", "kwargs": kwargs},
+            layer,
+        )
+
+    def table(self, cellText=None, layer=0, **kwargs):
+        """Add a table annotation to the axes."""
+        self._add(
+            {
+                "cellText": cellText,
+                "layer": layer,
+                "plot_type": "table",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
@@ -655,28 +829,55 @@ class LinePlot:
     def axvspan(self, xmin, xmax, layer=0, **kwargs):
         """Add a vertical shaded span across the axes."""
         self._add(
-            {"xmin": xmin, "xmax": xmax, "layer": layer, "plot_type": "axvspan", "kwargs": kwargs},
+            {
+                "xmin": xmin,
+                "xmax": xmax,
+                "layer": layer,
+                "plot_type": "axvspan",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def axhspan(self, ymin, ymax, layer=0, **kwargs):
         """Add a horizontal shaded span across the axes."""
         self._add(
-            {"ymin": ymin, "ymax": ymax, "layer": layer, "plot_type": "axhspan", "kwargs": kwargs},
+            {
+                "ymin": ymin,
+                "ymax": ymax,
+                "layer": layer,
+                "plot_type": "axhspan",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def arrow(self, x, y, dx, dy, layer=0, **kwargs):
         """Add an arrow to the axes."""
         self._add(
-            {"x": x, "y": y, "dx": dx, "dy": dy, "layer": layer, "plot_type": "arrow", "kwargs": kwargs},
+            {
+                "x": x,
+                "y": y,
+                "dx": dx,
+                "dy": dy,
+                "layer": layer,
+                "plot_type": "arrow",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
     def axline(self, xy1, xy2=None, slope=None, layer=0, **kwargs):
         """Add an infinitely extending line through one or two points."""
         self._add(
-            {"xy1": xy1, "xy2": xy2, "slope": slope, "layer": layer, "plot_type": "axline", "kwargs": kwargs},
+            {
+                "xy1": xy1,
+                "xy2": xy2,
+                "slope": slope,
+                "layer": layer,
+                "plot_type": "axline",
+                "kwargs": kwargs,
+            },
             layer,
         )
 
@@ -834,7 +1035,9 @@ class LinePlot:
                 elif line["plot_type"] == "matshow":
                     ax.matshow(line["data"], **line["kwargs"])
                 elif line["plot_type"] == "quiver":
-                    ax.quiver(line["x"], line["y"], line["u"], line["v"], **line["kwargs"])
+                    ax.quiver(
+                        line["x"], line["y"], line["u"], line["v"], **line["kwargs"]
+                    )
                 elif line["plot_type"] == "triplot":
                     import matplotlib.tri as mtri
 
@@ -863,6 +1066,18 @@ class LinePlot:
                         line["x"], line["y"], triangles=line["triangles"]
                     )
                     ax.tricontourf(triangulation, line["z"], **line["kwargs"])
+                elif line["plot_type"] == "streamplot":
+                    ax.streamplot(
+                        line["x"], line["y"], line["u"], line["v"], **line["kwargs"]
+                    )
+                elif line["plot_type"] == "pcolor":
+                    ax.pcolor(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] == "pcolorfast":
+                    ax.pcolorfast(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] == "spy":
+                    ax.spy(line["matrix"], **line["kwargs"])
+                elif line["plot_type"] == "table":
+                    ax.table(cellText=line["cellText"], **line["kwargs"])
                 elif line["plot_type"] == "gantt":
                     tasks = line["tasks"]
                     start_times = (line["start_times"] + self._xshift) * self._xscale
@@ -1415,14 +1630,20 @@ class LinePlot:
                             y=ty(next_cumulative),
                             mode="lines",
                             stackgroup="one",
-                            name=(kwargs.get("labels", [])[index] if index < len(kwargs.get("labels", [])) else ""),
+                            name=(
+                                kwargs.get("labels", [])[index]
+                                if index < len(kwargs.get("labels", []))
+                                else ""
+                            ),
                             showlegend=bool(self._legend),
                         )
                     )
                     cumulative = next_cumulative
             elif plot_type == "boxplot":
                 kwargs = line["kwargs"]
-                datasets = line["x"] if isinstance(line["x"], (list, tuple)) else [line["x"]]
+                datasets = (
+                    line["x"] if isinstance(line["x"], (list, tuple)) else [line["x"]]
+                )
                 for index, values in enumerate(datasets):
                     showfliers = kwargs.get("showfliers", True)
                     boxpoints = "outliers" if showfliers else False
@@ -1495,12 +1716,16 @@ class LinePlot:
                     go.Histogram2d(
                         x=tx(line["x"]),
                         y=ty(line["y"]),
-                        nbinsx=kwargs.get("gridsize", 30)
-                        if np.isscalar(kwargs.get("gridsize", 30))
-                        else 30,
-                        nbinsy=kwargs.get("gridsize", 30)
-                        if np.isscalar(kwargs.get("gridsize", 30))
-                        else 30,
+                        nbinsx=(
+                            kwargs.get("gridsize", 30)
+                            if np.isscalar(kwargs.get("gridsize", 30))
+                            else 30
+                        ),
+                        nbinsy=(
+                            kwargs.get("gridsize", 30)
+                            if np.isscalar(kwargs.get("gridsize", 30))
+                            else 30
+                        ),
                         colorscale=kwargs.get("cmap", "Viridis"),
                     )
                 )
@@ -1753,9 +1978,7 @@ class LinePlot:
                         )
             elif plot_type in ("axvspan", "axhspan"):
                 kwargs = line["kwargs"]
-                color = plotly_color(
-                    kwargs.get("color", kwargs.get("facecolor", None))
-                )
+                color = plotly_color(kwargs.get("color", kwargs.get("facecolor", None)))
                 span_shape = dict(
                     type="rect",
                     fillcolor=color,
