@@ -549,6 +549,27 @@ def test_show_canvas_script_invokes_canvas_show(monkeypatch):
     assert calls == [((), {"backend": "tikzfigure", "verbose": True})]
 
 
+def test_tikzfigure_show_does_not_return_repr_in_jupyter(monkeypatch):
+    import sys
+    import types
+
+    from maxplotlib import Canvas
+
+    ipython = types.ModuleType("IPython")
+    ipython.get_ipython = lambda: types.SimpleNamespace(config={"IPKernelApp": {}})
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+
+    class FakeTikzFigure:
+        def show(self, **kwargs):
+            self.show_kwargs = kwargs
+
+    figure = FakeTikzFigure()
+    monkeypatch.setattr(Canvas, "plot_tikzfigure", lambda *args, **kwargs: figure)
+
+    assert Canvas().show(backend="tikzfigure") is None
+    assert figure.show_kwargs == {"transparent": False}
+
+
 def test_canvas_plot_uses_screen_dpi_when_not_saving():
     import matplotlib.pyplot as plt
     import pytest

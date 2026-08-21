@@ -42,17 +42,26 @@ def _parse_bool_env_var(name: str, default: bool = False) -> bool:
 def _display_matplotlib_figure_in_notebook(fig) -> bool:
     """Display a Matplotlib figure through IPython when running in Jupyter."""
     try:
-        from IPython import get_ipython
         from IPython.display import display
     except ImportError:
         return False
 
-    shell = get_ipython()
-    if shell is None or "IPKernelApp" not in getattr(shell, "config", {}):
+    if not _running_in_jupyter():
         return False
 
     display(fig)
     return True
+
+
+def _running_in_jupyter() -> bool:
+    """Return whether the current process is running in a Jupyter kernel."""
+    try:
+        from IPython import get_ipython
+    except ImportError:
+        return False
+
+    shell = get_ipython()
+    return shell is not None and "IPKernelApp" in getattr(shell, "config", {})
 
 
 def _apply_matplotlib_customizations(fig, axes, customizations) -> None:
@@ -1102,7 +1111,10 @@ class Canvas:
             fig = self.plot_tikzfigure(savefig=False, verbose=verbose)
             # TikzFigure handles all rendering (single or multi-subplot)
             fig.show(transparent=False)
-            return fig
+            # TikzFigure.__repr__ returns the generated TikZ source. Returning
+            # it from a notebook cell would therefore print the source after
+            # TikzFigure has already displayed the rendered image.
+            return None if _running_in_jupyter() else fig
         else:
             raise ValueError("Invalid backend")
 
