@@ -448,6 +448,30 @@ def test_canvas_tick_label_rotation_is_forwarded_to_matplotlib():
     plt.close(fig)
 
 
+def test_axis_label_and_tick_settings_are_forwarded_to_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    canvas.set_xlabel("Time", fontsize=14, fontweight="bold", labelpad=12)
+    canvas.set_ylabel("Value", color="crimson")
+    canvas.set_title("Results", fontsize=16, color="navy")
+    canvas.tick_params(axis="both", labelsize=12, colors="darkgreen", length=7)
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert matplotlib_axis.xaxis.label.get_fontsize() == 14
+    assert matplotlib_axis.xaxis.label.get_fontweight() == "bold"
+    assert matplotlib_axis.xaxis.labelpad == 12
+    assert matplotlib_axis.yaxis.label.get_color() == "crimson"
+    assert matplotlib_axis.title.get_fontsize() == 16
+    assert matplotlib_axis.xaxis.majorTicks[0].tick1line.get_markersize() == 7
+    assert matplotlib_axis.xaxis.get_ticklabels()[0].get_fontsize() == 12
+    plt.close(fig)
+
+
 def test_matplotlib_postprocess_can_customize_figure_and_axes():
     from matplotlib.colors import to_rgba
     import matplotlib.pyplot as plt

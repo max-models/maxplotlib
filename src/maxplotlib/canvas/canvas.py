@@ -547,17 +547,35 @@ class Canvas:
             labels, parents, values, start_times=start_times, layer=layer, **kwargs
         )
 
-    def set_xlabel(self, label: str, row: int | None = None, col: int | None = None):
-        """Set the x-axis label for a subplot (default top-left)."""
-        self._get_or_create_subplot(row, col).set_xlabel(label)
+    def set_xlabel(
+        self,
+        label: str,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Set the x-axis label and text properties for a subplot."""
+        self._get_or_create_subplot(row, col).set_xlabel(label, **kwargs)
 
-    def set_ylabel(self, label: str, row: int | None = None, col: int | None = None):
-        """Set the y-axis label for a subplot (default top-left)."""
-        self._get_or_create_subplot(row, col).set_ylabel(label)
+    def set_ylabel(
+        self,
+        label: str,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Set the y-axis label and text properties for a subplot."""
+        self._get_or_create_subplot(row, col).set_ylabel(label, **kwargs)
 
-    def set_title(self, title: str, row: int | None = None, col: int | None = None):
-        """Set the title for a subplot (default top-left)."""
-        self._get_or_create_subplot(row, col).set_title(title)
+    def set_title(
+        self,
+        title: str,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Set the title and text properties for a subplot."""
+        self._get_or_create_subplot(row, col).set_title(title, **kwargs)
 
     def set_xlim(
         self, left=None, right=None, row: int | None = None, col: int | None = None
@@ -582,6 +600,12 @@ class Canvas:
     ):
         """Show or hide the legend for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_legend(visible)
+
+    def tick_params(
+        self, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Configure major/minor tick appearance for a subplot."""
+        self._get_or_create_subplot(row, col).tick_params(**kwargs)
 
     def set_xscale(self, scale: str, row: int | None = None, col: int | None = None):
         """Set x-axis scale ('linear', 'log', 'symlog') for a subplot."""

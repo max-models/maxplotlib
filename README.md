@@ -76,6 +76,24 @@ def customize(fig, axes):
 canvas.plot(matplotlib_customizations=customize)
 ```
 
+### Axis Label and Tick Styling
+
+Axis labels, titles, and tick appearance accept Matplotlib-style keyword
+arguments:
+
+``` python
+canvas.set_xlabel("Time", fontsize=12, fontweight="bold", labelpad=10)
+canvas.set_ylabel("Duration", color="darkblue")
+canvas.set_title("Runtime", fontsize=14, color="navy")
+canvas.tick_params(
+    axis="both",
+    which="major",
+    labelsize=10,
+    colors="darkgreen",
+    length=6,
+)
+```
+
 Render the same line graph directly in the terminal with the `plotext`
 backend:
 
@@ -84,28 +102,28 @@ terminal_fig = canvas.plot(backend="plotext")
 print(terminal_fig.build(keep_colors=False))
 ```
 
+                                           Runtime                                  
          ┌─────────────────────────────────────────────────────────────────────────┐
-     1.00┤             ▗▄▟▀▀▀▀▀▙▄                                                  │
-         │           ▄▞▘         ▀▚▖                                               │
-         │         ▄▛              ▝▚▖                                             │
-     0.67┤       ▗▞                  ▝▚▖                                           │
-         │      ▄▀                     ▀▖                                          │
-         │    ▗▞▘                       ▝▚                                         │
-     0.33┤   ▗▀                           ▀▖                                       │
-         │  ▞▘                             ▀▖                                      │
-         │▗▞▘                               ▝▚                                     │
+     1.00┤             ▗▄▞▀▀▀▀▀▙▄▖                                                 │
+         │          ▗▄▀▘         ▝▀▄                                               │
+         │        ▗▞▘               ▀▄                                             │
+     0.67┤       ▟▀                   ▀▄                                           │
+         │     ▄▛                       ▚▖                                         │
+     0.33┤   ▗▞                          ▝▄                                        │
+         │  ▄▀                             ▚▖                                      │
+         │▗▞▘                               ▀▄                                     │
      0.00┤▀                                  ▝▚▖                                  ▞│
-         │                                     ▚▖                               ▗▞▘│
-         │                                      ▝▄                             ▗▞  │
-    -0.33┤                                       ▝▄                           ▄▘   │
-         │                                         ▚▖                       ▗▞▘    │
-         │                                          ▝▄                     ▄▀      │
-    -0.67┤                                           ▝▚▖                  ▞▘       │
-         │                                             ▝▚▖              ▟▀         │
-         │                                               ▝▚▄         ▗▞▀           │
-    -1.00┤                                                  ▀▜▄▄▄▄▄▛▀▘             │
+         │                                     ▀▄                               ▗▞▘│
+         │                                      ▝▚                             ▄▀  │
+    -0.33┤                                        ▀▖                          ▞▘   │
+         │                                         ▝▚                       ▟▀     │
+    -0.67┤                                           ▀▄                   ▄▛       │
+         │                                             ▀▄               ▗▞▘        │
+         │                                               ▀▄▖         ▗▄▀▘          │
+    -1.00┤                                                 ▝▀▜▄▄▄▄▄▞▀▘             │
          └┬─────────────────┬─────────────────┬─────────────────┬─────────────────┬┘
          0.0               1.6               3.1               4.7              6.3 
+    Duration                                Time                                    
 
 Or plot with the TikZ backend:
 
@@ -113,7 +131,7 @@ Or plot with the TikZ backend:
 canvas.show(backend="tikzfigure")
 ```
 
-![](README_files/figure-commonmark/cell-7-output-1.png)
+![](README_files/figure-commonmark/cell-8-output-1.png)
 
 ### Horizontal Subplots with TikZ Backend
 
@@ -194,7 +212,7 @@ canvas.show(backend="plotext")
         1.0               1.8                3.2               5.6             10.0 
     y                                         x                                     
 
-    <maxplotlib.backends.plotext.figure.PlotextFigure at 0x10fd6d310>
+    <maxplotlib.backends.plotext.figure.PlotextFigure at 0x1102cd310>
 
 ### Layers
 
@@ -230,7 +248,7 @@ Show layer 0 only, then layers 0 and 1, then everything:
 canvas.show(layers=[0])
 ```
 
-![](README_files/figure-commonmark/cell-11-output-1.png)
+![](README_files/figure-commonmark/cell-12-output-1.png)
 
     (<Figure size 590.551x324.803 with 1 Axes>,
      array([[<Axes: xlabel='x'>]], dtype=object))
@@ -241,7 +259,7 @@ Show all layers:
 canvas.show()
 ```
 
-![](README_files/figure-commonmark/cell-12-output-1.png)
+![](README_files/figure-commonmark/cell-13-output-1.png)
 
     (<Figure size 590.551x324.803 with 1 Axes>,
      array([[<Axes: xlabel='x'>]], dtype=object))

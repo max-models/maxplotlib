@@ -76,6 +76,10 @@ class LinePlot:
         self._ymax = ymax
         self._xlabel = xlabel
         self._ylabel = ylabel
+        self._xlabel_kwargs: dict = {}
+        self._ylabel_kwargs: dict = {}
+        self._title_kwargs: dict = {}
+        self._tick_params: dict = {}
         self._xscale = xscale
         self._yscale = yscale
         self._xshift = xshift
@@ -265,17 +269,20 @@ class LinePlot:
         }
         self._add(ld, layer)
 
-    def set_xlabel(self, label: str):
-        """Set the x-axis label."""
+    def set_xlabel(self, label: str, **kwargs):
+        """Set the x-axis label and its text properties."""
         self._xlabel = label
+        self._xlabel_kwargs = dict(kwargs)
 
-    def set_ylabel(self, label: str):
-        """Set the y-axis label."""
+    def set_ylabel(self, label: str, **kwargs):
+        """Set the y-axis label and its text properties."""
         self._ylabel = label
+        self._ylabel_kwargs = dict(kwargs)
 
-    def set_title(self, title: str):
-        """Set the subplot title."""
+    def set_title(self, title: str, **kwargs):
+        """Set the subplot title and its text properties."""
         self._title = title
+        self._title_kwargs = dict(kwargs)
 
     def set_xlim(self, left=None, right=None):
         """Set the x-axis limits."""
@@ -294,6 +301,10 @@ class LinePlot:
     def set_grid(self, visible: bool = True):
         """Show or hide the grid."""
         self._grid = visible
+
+    def tick_params(self, **kwargs):
+        """Configure tick appearance using Matplotlib-style keyword arguments."""
+        self._tick_params = dict(kwargs)
 
     def set_legend(self, visible: bool = True):
         """Show or hide the legend."""
@@ -641,11 +652,11 @@ class LinePlot:
                     plt.colorbar(im, cax=cax, label="Potential (V)")
 
         if self._title:
-            ax.set_title(self._title)
+            ax.set_title(self._title, **self._title_kwargs)
         if self._xlabel:
-            ax.set_xlabel(self._xlabel)
+            ax.set_xlabel(self._xlabel, **self._xlabel_kwargs)
         if self._ylabel:
-            ax.set_ylabel(self._ylabel)
+            ax.set_ylabel(self._ylabel, **self._ylabel_kwargs)
         if self._legend and len(self.line_data) > 0:
             ax.legend()
         if self._grid:
@@ -674,6 +685,8 @@ class LinePlot:
                 labels=self._yticklabels,
                 **self._ytick_kwargs,
             )
+        if self._tick_params:
+            ax.tick_params(**self._tick_params)
         if self._aspect is not None:
             ax.set_aspect(self._aspect)
 

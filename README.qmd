@@ -74,6 +74,25 @@ def customize(fig, axes):
 canvas.plot(matplotlib_customizations=customize)
 ```
 
+### Axis Label and Tick Styling
+
+Axis labels, titles, and tick appearance accept Matplotlib-style keyword
+arguments:
+
+```{python}
+#| output: false
+canvas.set_xlabel("Time", fontsize=12, fontweight="bold", labelpad=10)
+canvas.set_ylabel("Duration", color="darkblue")
+canvas.set_title("Runtime", fontsize=14, color="navy")
+canvas.tick_params(
+    axis="both",
+    which="major",
+    labelsize=10,
+    colors="darkgreen",
+    length=6,
+)
+```
+
 Render the same line graph directly in the terminal with the `plotext` backend:
 
 ```{python}
