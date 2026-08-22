@@ -38,10 +38,6 @@ extensions = [
     "sphinx.ext.autodoc",
 ]
 
-# Tutorials are documentation examples; interactive/rendering cells should be
-# run by readers in their own environment, not during the docs build.
-nbsphinx_execute = "never"
-
 templates_path = ["_templates"]
 
 
