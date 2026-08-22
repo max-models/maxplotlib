@@ -38,9 +38,8 @@ extensions = [
     "sphinx.ext.autodoc",
 ]
 
-# Tutorials are documentation examples; interactive/rendering cells should be
-# run by readers in their own environment, not during the docs build.
-nbsphinx_execute = "never"
+# Execute every tutorial notebook when building the documentation.
+nbsphinx_execute = "always"
 
 templates_path = ["_templates"]
 
