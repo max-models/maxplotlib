@@ -411,6 +411,27 @@ def test_canvas_show_uses_matplotlib_show(monkeypatch):
     assert axes is not None
 
 
+def test_canvas_show_plotly_does_not_return_displayed_figure_in_jupyter(monkeypatch):
+    import maxplotlib.canvas.canvas as canvas_module
+    from maxplotlib import Canvas
+
+    class FakePlotlyFigure:
+        def __init__(self):
+            self.show_calls = 0
+
+        def show(self):
+            self.show_calls += 1
+
+    figure = FakePlotlyFigure()
+    monkeypatch.setattr(Canvas, "plot_plotly", lambda *args, **kwargs: figure)
+    monkeypatch.setattr(canvas_module, "_running_in_jupyter", lambda: True)
+
+    result = Canvas().show(backend="plotly")
+
+    assert result is None
+    assert figure.show_calls == 1
+
+
 def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):
     import sys
     import types

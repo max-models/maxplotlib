@@ -2059,7 +2059,9 @@ class Canvas:
                 allow_unsupported=allow_unsupported,
             )
             fig.show()
-            return fig
+            # Plotly has already displayed the figure. Returning it from a
+            # notebook cell would trigger a second implicit rich display.
+            return None if _running_in_jupyter() else fig
         elif backend == "plotext":
             figure = self.plot_plotext(
                 savefig=False,
