@@ -42,6 +42,11 @@ Plot the figure with the default (matplotlib) backend:
 canvas.show()
 ```
 
+Use `canvas.plot(x, y)` to add data directly to a canvas. When you want to
+explicitly render an already-built canvas, use `canvas.render(...)`. The older
+`canvas.plot(backend=...)` spelling is still supported for compatibility, but
+emits a `FutureWarning`.
+
 For Matplotlib-specific customization, pass method calls declaratively. Figure
 methods run once and axes methods run for every subplot, providing access to
 any Matplotlib API without requiring a maxplotlib wrapper:
