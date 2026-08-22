@@ -313,12 +313,20 @@ class Canvas:
         self._supylabel_kwargs: dict = {}
         self._subplots_adjust_kwargs: dict = {}
         self._tight_layout_kwargs: dict | None = None
+        self._set_tight_layout = None
+        self._align_labels = False
+        self._align_titles = False
+        self._align_xlabels = False
+        self._align_ylabels = False
+        self._autofmt_xdate_kwargs: dict | None = None
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
         self._subplots = {}
         self._twinx_subplots = {}
+        self._twiny_subplots = {}
         self._matplotlib_twin_axes = {}
+        self._matplotlib_twiny_axes = {}
         self._num_subplots = 0
 
         self._subplot_matrix = [[None] * self.ncols for _ in range(self.nrows)]
@@ -396,6 +404,9 @@ class Canvas:
         for (row, col), subplot in self._subplot_dict.items():
             layers.extend(subplot.layers)
             twin_subplot = self._twinx_subplots.get((row, col))
+            if twin_subplot is not None:
+                layers.extend(twin_subplot.layers)
+            twin_subplot = self._twiny_subplots.get((row, col))
             if twin_subplot is not None:
                 layers.extend(twin_subplot.layers)
         return list(set(layers))
@@ -608,6 +619,10 @@ class Canvas:
     def set_box_aspect(self, aspect, row=None, col=None):
         """Set the physical height-to-width ratio of a subplot."""
         self._get_or_create_subplot(row, col).set_box_aspect(aspect)
+
+    def set_aspect(self, aspect, row=None, col=None):
+        """Set the data aspect ratio of a subplot."""
+        self._get_or_create_subplot(row, col).set_aspect(aspect)
 
     def secondary_xaxis(
         self, location="top", functions=None, row=None, col=None, **kwargs
@@ -877,6 +892,16 @@ class Canvas:
             cellText=cellText, layer=layer, **kwargs
         )
 
+    def add_table(self, cellText=None, layer=0, row=None, col=None, **kwargs):
+        """Matplotlib-style alias for ``table``."""
+        self._get_or_create_subplot(row, col).add_table(
+            cellText=cellText, layer=layer, **kwargs
+        )
+
+    def add_caption(self, caption):
+        """Set the figure caption."""
+        self._caption = caption
+
     def gantt(
         self,
         tasks,
@@ -983,6 +1008,9 @@ class Canvas:
         """Show or hide the legend for a subplot (default top-left)."""
         self._get_or_create_subplot(row, col).set_legend(visible)
 
+    def legend(self, row=None, col=None, **kwargs):
+        self._get_or_create_subplot(row, col).set_legend(**kwargs)
+
     def tick_params(self, row: int | None = None, col: int | None = None, **kwargs):
         """Configure major/minor tick appearance for a subplot."""
         self._get_or_create_subplot(row, col).tick_params(**kwargs)
@@ -1010,6 +1038,108 @@ class Canvas:
     def set_facecolor(self, color, row: int | None = None, col: int | None = None):
         """Set a subplot's background color."""
         self._get_or_create_subplot(row, col).set_facecolor(color)
+
+    def set_fc(self, color, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_fc(color)
+
+    def set_adjustable(self, adjustable, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_adjustable(adjustable)
+
+    def set_anchor(self, anchor, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_anchor(anchor)
+
+    def set(self, row=None, col=None, **kwargs):
+        return self._get_or_create_subplot(row, col).set(**kwargs)
+
+    def update(self, kwargs, row=None, col=None):
+        return self._get_or_create_subplot(row, col).update(kwargs)
+
+    def xaxis_inverted(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).xaxis_inverted()
+
+    def yaxis_inverted(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).yaxis_inverted()
+
+    def set_frame_on(self, state=True, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_frame_on(state)
+
+    def set_visible(self, state=True, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_visible(state)
+
+    def set_alpha(self, alpha, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_alpha(alpha)
+
+    def set_zorder(self, zorder, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_zorder(zorder)
+
+    def set_rasterized(self, rasterized=True, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_rasterized(rasterized)
+
+    def set_autoscale_on(self, enable=True, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_autoscale_on(enable)
+
+    def set_autoscalex_on(self, enable=True, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_autoscalex_on(enable)
+
+    def set_autoscaley_on(self, enable=True, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_autoscaley_on(enable)
+
+    def set_xbound(self, lower=None, upper=None, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_xbound(lower, upper)
+
+    def set_ybound(self, lower=None, upper=None, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_ybound(lower, upper)
+
+    def set_xmargin(self, margin, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_xmargin(margin)
+
+    def set_ymargin(self, margin, row=None, col=None):
+        self._get_or_create_subplot(row, col).set_ymargin(margin)
+
+    def get_adjustable(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_adjustable()
+
+    def get_anchor(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_anchor()
+
+    def get_alpha(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_alpha()
+
+    def get_box_aspect(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_box_aspect()
+
+    def get_facecolor(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_facecolor()
+
+    def get_frame_on(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_frame_on()
+
+    def get_legend(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_legend()
+
+    def get_rasterization_zorder(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_rasterization_zorder()
+
+    def get_rasterized(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_rasterized()
+
+    def get_visible(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_visible()
+
+    def get_zorder(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_zorder()
+
+    def get_xbound(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_xbound()
+
+    def get_ybound(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_ybound()
+
+    def get_xmargin(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_xmargin()
+
+    def get_ymargin(self, row=None, col=None):
+        return self._get_or_create_subplot(row, col).get_ymargin()
 
     def margins(self, *args, row: int | None = None, col: int | None = None, **kwargs):
         """Set x/y data margins for a subplot."""
@@ -1244,6 +1374,12 @@ class Canvas:
         """Add an image/matrix plot to a subplot."""
         self._get_or_create_subplot(row, col).add_imshow(data, layer=layer, **kwargs)
 
+    def add_image(
+        self, data, layer=0, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Matplotlib-style alias for ``imshow``."""
+        self._get_or_create_subplot(row, col).add_image(data, layer=layer, **kwargs)
+
     def add_patch(
         self,
         patch,
@@ -1267,6 +1403,10 @@ class Canvas:
         self._get_or_create_subplot(row, col).add_colorbar(
             label=label, layer=layer, **kwargs
         )
+
+    def add_colorbar(self, label: str = "", layer=0, row=None, col=None, **kwargs):
+        """Alias for ``colorbar``."""
+        self.colorbar(label=label, layer=layer, row=row, col=col, **kwargs)
 
     # ------------------------------------------------------------------
     # Multi-subplot helpers
@@ -1301,10 +1441,25 @@ class Canvas:
             self._twinx_subplots[key] = LinePlot()
         return self._twinx_subplots[key]
 
+    def twiny(self, row: int | None = None, col: int | None = None) -> LinePlot:
+        """Create or return a secondary x-axis sharing a subplot's y-axis."""
+        self._get_or_create_subplot(row, col)
+        if row is None:
+            row, col = 0, 0
+        key = (row, col)
+        if key not in self._twiny_subplots:
+            self._twiny_subplots[key] = LinePlot()
+        return self._twiny_subplots[key]
+
     @property
     def twinx_axes(self):
         """Return materialized Matplotlib secondary axes by ``(row, col)``."""
         return dict(self._matplotlib_twin_axes)
+
+    @property
+    def twiny_axes(self):
+        """Return materialized Matplotlib secondary x-axes by ``(row, col)``."""
+        return dict(self._matplotlib_twiny_axes)
 
     def iter_subplots(self):
         """Yield (row, col, subplot) for every initialized subplot, row-major."""
@@ -1342,6 +1497,91 @@ class Canvas:
     def tight_layout(self, **kwargs):
         """Apply Matplotlib's automatic tight layout after plotting."""
         self._tight_layout_kwargs = dict(kwargs)
+
+    def set_tight_layout(self, tight=True, **kwargs):
+        self._set_tight_layout = (tight, dict(kwargs))
+        if tight:
+            self._tight_layout_kwargs = dict(kwargs)
+
+    def align_labels(self, **kwargs):
+        self._align_labels = True
+
+    def align_titles(self, **kwargs):
+        self._align_titles = True
+
+    def align_xlabels(self, **kwargs):
+        self._align_xlabels = True
+
+    def align_ylabels(self, **kwargs):
+        self._align_ylabels = True
+
+    def autofmt_xdate(self, **kwargs):
+        self._autofmt_xdate_kwargs = dict(kwargs)
+
+    def get_axes(self):
+        """Return rendered Matplotlib axes, or the current subplot models."""
+        if self._matplotlib_fig is not None:
+            return self._matplotlib_fig.get_axes()
+        return list(self._subplot_dict.values())
+
+    def get_suptitle(self):
+        return self._suptitle
+
+    def get_supxlabel(self):
+        return self._supxlabel
+
+    def get_supylabel(self):
+        return self._supylabel
+
+    def set_size_inches(self, w, h=None, forward=True):
+        """Set the figure size in inches, matching Matplotlib."""
+        if h is None:
+            try:
+                w, h = w
+            except (TypeError, ValueError) as exc:
+                raise ValueError("set_size_inches expects (width, height)") from exc
+        self._figsize = (float(w), float(h))
+        self._width = None
+        if forward and self._matplotlib_fig is not None:
+            self._matplotlib_fig.set_size_inches(self._figsize, forward=True)
+
+    def get_size_inches(self):
+        """Return the figure size as ``(width, height)`` in inches."""
+        if self._matplotlib_fig is not None:
+            return self._matplotlib_fig.get_size_inches()
+        if self._figsize is not None:
+            return np.asarray(self._figsize, dtype=float)
+        return np.asarray((6.4, 4.8), dtype=float)
+
+    def set_figwidth(self, w):
+        """Set the figure width in inches."""
+        _, height = self.get_size_inches()
+        self.set_size_inches(w, height)
+
+    def set_figheight(self, h):
+        """Set the figure height in inches."""
+        width, _ = self.get_size_inches()
+        self.set_size_inches(width, h)
+
+    def get_figwidth(self):
+        """Return the figure width in inches."""
+        return float(self.get_size_inches()[0])
+
+    def get_figheight(self):
+        """Return the figure height in inches."""
+        return float(self.get_size_inches()[1])
+
+    def set_dpi(self, dpi):
+        """Set the figure DPI used for rendering and export."""
+        self._dpi = dpi
+        if self._matplotlib_fig is not None:
+            self._matplotlib_fig.set_dpi(dpi)
+
+    def get_dpi(self):
+        """Return the configured or rendered figure DPI."""
+        if self._matplotlib_fig is not None:
+            return self._matplotlib_fig.get_dpi()
+        return self._dpi
 
     def add_tikzfigure(
         self,
@@ -1782,6 +2022,16 @@ class Canvas:
             fig.subplots_adjust(**self._subplots_adjust_kwargs)
         if self._tight_layout_kwargs is not None:
             fig.tight_layout(**self._tight_layout_kwargs)
+        if self._align_labels:
+            fig.align_labels()
+        if self._align_titles:
+            fig.align_titles()
+        if self._align_xlabels:
+            fig.align_xlabels()
+        if self._align_ylabels:
+            fig.align_ylabels()
+        if self._autofmt_xdate_kwargs is not None:
+            fig.autofmt_xdate(**self._autofmt_xdate_kwargs)
 
         if verbose:
             print("Set suptitle.")
@@ -1795,6 +2045,11 @@ class Canvas:
             twin_axis = axes[row][col].twinx()
             twin_subplot.plot_matplotlib(twin_axis, layers=layers)
             self._matplotlib_twin_axes[(row, col)] = twin_axis
+        self._matplotlib_twiny_axes = {}
+        for (row, col), twin_subplot in self._twiny_subplots.items():
+            twin_axis = axes[row][col].twiny()
+            twin_subplot.plot_matplotlib(twin_axis, layers=layers)
+            self._matplotlib_twiny_axes[(row, col)] = twin_axis
         if matplotlib_customizations is not None:
             _apply_matplotlib_customizations(fig, axes, matplotlib_customizations)
         if matplotlib_postprocess is not None:
@@ -2021,6 +2276,10 @@ class Canvas:
                     "secondary_xaxis and secondary_yaxis are currently supported "
                     "only by the matplotlib backend"
                 )
+        if self._twiny_subplots:
+            raise NotImplementedError(
+                "twiny is currently supported only by the matplotlib backend"
+            )
 
         setup_tex_fonts(
             fontsize=self.fontsize,

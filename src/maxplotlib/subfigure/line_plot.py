@@ -70,6 +70,7 @@ class LinePlot:
         self._caption = None
         self._grid = grid
         self._legend = legend
+        self._legend_kwargs: dict = {}
         self._xmin = xmin
         self._xmax = xmax
         self._ymin = ymin
@@ -107,6 +108,18 @@ class LinePlot:
         self._box_aspect = None
         self._secondary_xaxis_settings: dict | None = None
         self._secondary_yaxis_settings: dict | None = None
+        self._frame_on = None
+        self._visible = None
+        self._alpha = None
+        self._zorder = None
+        self._rasterized = None
+        self._autoscale_on = None
+        self._autoscalex_on = None
+        self._autoscaley_on = None
+        self._xmargin = None
+        self._ymargin = None
+        self._adjustable = None
+        self._anchor = None
 
         # Custom tick positions and labels
         self._xticks: list | None = None
@@ -557,6 +570,10 @@ class LinePlot:
             layer,
         )
 
+    def add_table(self, cellText=None, layer=0, **kwargs):
+        """Matplotlib-style alias for ``table``."""
+        self.table(cellText=cellText, layer=layer, **kwargs)
+
     def gantt(self, tasks, start_times, durations, layer=0, **kwargs):
         """
         Add a Gantt chart to the subplot.
@@ -672,9 +689,10 @@ class LinePlot:
         """Configure tick appearance using Matplotlib-style keyword arguments."""
         self._tick_params = dict(kwargs)
 
-    def set_legend(self, visible: bool = True):
+    def set_legend(self, visible: bool = True, **kwargs):
         """Show or hide the legend."""
         self._legend = visible
+        self._legend_kwargs = dict(kwargs)
 
     def set_xscale(self, scale: str):
         """Set the x-axis scale type: 'linear', 'log', or 'symlog'."""
@@ -699,6 +717,87 @@ class LinePlot:
     def set_facecolor(self, color):
         """Set the subplot background color."""
         self._facecolor = color
+
+    def set_frame_on(self, state):
+        self._frame_on = state
+
+    def set_visible(self, state):
+        self._visible = state
+
+    def set_alpha(self, alpha):
+        self._alpha = alpha
+
+    def set_zorder(self, zorder):
+        self._zorder = zorder
+
+    def set_rasterized(self, rasterized):
+        self._rasterized = rasterized
+
+    def set_autoscale_on(self, enable):
+        self._autoscale_on = enable
+
+    def set_autoscalex_on(self, enable):
+        self._autoscalex_on = enable
+
+    def set_autoscaley_on(self, enable):
+        self._autoscaley_on = enable
+
+    def set_xbound(self, lower=None, upper=None):
+        self.set_xlim(lower, upper)
+
+    def set_ybound(self, lower=None, upper=None):
+        self.set_ylim(lower, upper)
+
+    def set_xmargin(self, margin):
+        self._xmargin = margin
+
+    def set_ymargin(self, margin):
+        self._ymargin = margin
+
+    def get_adjustable(self):
+        return self._adjustable
+
+    def get_anchor(self):
+        return self._anchor
+
+    def get_alpha(self):
+        return self._alpha
+
+    def get_box_aspect(self):
+        return self._box_aspect
+
+    def get_facecolor(self):
+        return self._facecolor
+
+    def get_frame_on(self):
+        return self._frame_on
+
+    def get_legend(self):
+        return self._legend
+
+    def get_rasterization_zorder(self):
+        return self._rasterization_zorder
+
+    def get_rasterized(self):
+        return self._rasterized
+
+    def get_visible(self):
+        return self._visible
+
+    def get_zorder(self):
+        return self._zorder
+
+    def get_xbound(self):
+        return self._xmin, self._xmax
+
+    def get_ybound(self):
+        return self._ymin, self._ymax
+
+    def get_xmargin(self):
+        return self._xmargin
+
+    def get_ymargin(self):
+        return self._ymargin
 
     def margins(self, *args, **kwargs):
         """Set x/y data margins using Matplotlib-style arguments."""
@@ -748,6 +847,49 @@ class LinePlot:
     def set_aspect(self, aspect):
         """Set the axes aspect ratio: 'equal', 'auto', or a float."""
         self._aspect = aspect
+
+    def set_adjustable(self, adjustable):
+        self._adjustable = adjustable
+
+    def set_anchor(self, anchor):
+        self._anchor = anchor
+
+    def set_fc(self, color):
+        self.set_facecolor(color)
+
+    def set(self, **kwargs):
+        """Set common axes properties using Matplotlib-style names."""
+        handlers = {
+            "title": self.set_title,
+            "xlabel": self.set_xlabel,
+            "ylabel": self.set_ylabel,
+            "xlim": lambda value: self.set_xlim(*value),
+            "ylim": lambda value: self.set_ylim(*value),
+            "xscale": self.set_xscale,
+            "yscale": self.set_yscale,
+            "facecolor": self.set_facecolor,
+            "fc": self.set_fc,
+            "aspect": self.set_aspect,
+            "adjustable": self.set_adjustable,
+            "anchor": self.set_anchor,
+            "visible": self.set_visible,
+            "alpha": self.set_alpha,
+            "zorder": self.set_zorder,
+        }
+        for name, value in kwargs.items():
+            if name not in handlers:
+                raise AttributeError(f"Unknown LinePlot property: {name}")
+            handlers[name](value)
+        return kwargs
+
+    def update(self, kwargs):
+        return self.set(**dict(kwargs))
+
+    def xaxis_inverted(self):
+        return self._invert_xaxis
+
+    def yaxis_inverted(self):
+        return self._invert_yaxis
 
     def axis(self, *args, **kwargs):
         """Set Matplotlib-style axis limits or modes."""
@@ -1024,6 +1166,10 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
+
+    def add_image(self, data, layer=0, **kwargs):
+        """Matplotlib-style alias for ``imshow``."""
+        self.add_imshow(data, layer=layer, **kwargs)
 
     def add_patch(self, patch, layer=0, **kwargs):
         ld = {
@@ -1343,7 +1489,7 @@ class LinePlot:
         if self._ylabel:
             ax.set_ylabel(self._ylabel, **self._ylabel_kwargs)
         if self._legend and len(self.line_data) > 0:
-            ax.legend()
+            ax.legend(**self._legend_kwargs)
         if self._grid:
             ax.grid()
         if self._axis_settings:
@@ -1382,12 +1528,36 @@ class LinePlot:
             ax.tick_params(**self._tick_params)
         if self._aspect is not None:
             ax.set_aspect(self._aspect)
+        if self._adjustable is not None:
+            ax.set_adjustable(self._adjustable)
+        if self._anchor is not None:
+            ax.set_anchor(self._anchor)
         if self._box_aspect is not None:
             ax.set_box_aspect(self._box_aspect)
         if self._axisbelow is not None:
             ax.set_axisbelow(self._axisbelow)
         if self._facecolor is not None:
             ax.set_facecolor(self._facecolor)
+        if self._frame_on is not None:
+            ax.set_frame_on(self._frame_on)
+        if self._visible is not None:
+            ax.set_visible(self._visible)
+        if self._alpha is not None:
+            ax.set_alpha(self._alpha)
+        if self._zorder is not None:
+            ax.set_zorder(self._zorder)
+        if self._rasterized is not None:
+            ax.set_rasterized(self._rasterized)
+        if self._autoscale_on is not None:
+            ax.set_autoscale_on(self._autoscale_on)
+        if self._autoscalex_on is not None:
+            ax.set_autoscalex_on(self._autoscalex_on)
+        if self._autoscaley_on is not None:
+            ax.set_autoscaley_on(self._autoscaley_on)
+        if self._xmargin is not None:
+            ax.set_xmargin(self._xmargin)
+        if self._ymargin is not None:
+            ax.set_ymargin(self._ymargin)
         if self._margins:
             margin_settings = dict(self._margins)
             margin_args = margin_settings.pop("args", ())
