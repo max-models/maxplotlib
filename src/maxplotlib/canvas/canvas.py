@@ -1781,7 +1781,7 @@ class Canvas:
             if verbose:
                 print(f"Saved {filename}")
 
-    def plot(
+    def _render(
         self,
         backend: Backends = "matplotlib",
         savefig: bool = False,
@@ -1843,6 +1843,42 @@ class Canvas:
             return self.plot_tikzfigure(savefig=savefig, verbose=verbose)
         else:
             raise ValueError(f"Invalid backend: {backend}")
+
+    def plot(self, *args, backend=None, **kwargs):
+        """Add a line, or render when called with backend options.
+
+        ``canvas.plot(x, y, **style)`` is the convenient direct plotting form.
+        Rendering is named explicitly by ``canvas.render(...)``; the legacy
+        ``canvas.plot(backend=...)`` form remains supported.
+        """
+        if args and not isinstance(args[0], str):
+            if len(args) < 2:
+                raise TypeError("plot(x, y) requires both x and y data")
+            if len(args) > 2:
+                raise TypeError("plot() accepts only x and y positional data")
+            layer = kwargs.pop("layer", 0)
+            row = kwargs.pop("row", None)
+            col = kwargs.pop("col", None)
+            self.add_line(args[0], args[1], layer=layer, row=row, col=col, **kwargs)
+            return self
+        if args:
+            if len(args) > 1:
+                raise TypeError("plot() accepts at most one backend positional argument")
+            if backend is not None:
+                raise TypeError("backend was provided both positionally and by keyword")
+            backend = args[0]
+        if backend is None:
+            backend = "matplotlib"
+        return self._render(backend=backend, **kwargs)
+
+    def render(self, *args, **kwargs):
+        """Render the canvas using the selected backend.
+
+        This is the explicit name for the operation historically exposed as
+        ``Canvas.plot(backend=...)``. The latter remains available for
+        backwards compatibility.
+        """
+        return self._render(*args, **kwargs)
 
     def show(
         self,
