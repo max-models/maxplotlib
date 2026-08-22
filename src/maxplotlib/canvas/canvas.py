@@ -459,6 +459,47 @@ class Canvas:
             **kwargs,
         )
 
+    def plot_many(
+        self,
+        series,
+        labels=None,
+        layer=0,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
+    ):
+        """Add several lines to the canvas and return the canvas.
+
+        ``series`` is an iterable of ``(x, y)`` pairs. Shared line keyword
+        arguments are passed through ``kwargs``; individual labels can be
+        supplied with ``labels``.
+        """
+        if labels is not None:
+            labels = list(labels)
+        count = 0
+        for index, values in enumerate(series):
+            count += 1
+            try:
+                x, y = values
+            except (TypeError, ValueError) as exc:
+                raise ValueError("each series entry must be an (x, y) pair") from exc
+            line_kwargs = dict(kwargs)
+            if labels is not None:
+                if index >= len(labels):
+                    raise ValueError("labels must contain one label per series")
+                line_kwargs["label"] = labels[index]
+            self.add_line(
+                x,
+                y,
+                layer=layer,
+                row=row,
+                col=col,
+                **line_kwargs,
+            )
+        if labels is not None and len(labels) != count:
+            raise ValueError("labels must contain one label per series")
+        return self
+
     def _get_or_create_subplot(self, row, col):
         """Return the subplot at (row, col), creating it if needed."""
         if row is not None and col is not None:
@@ -984,6 +1025,60 @@ class Canvas:
     ):
         """Set the title and text properties for a subplot."""
         self._get_or_create_subplot(row, col).set_title(title, **kwargs)
+
+    def configure(
+        self,
+        *,
+        title=None,
+        xlabel=None,
+        ylabel=None,
+        grid=None,
+        facecolor=None,
+        axisbelow=None,
+        margins=None,
+        xscale=None,
+        yscale=None,
+        xlim=None,
+        ylim=None,
+        tight_layout=False,
+        row: int | None = None,
+        col: int | None = None,
+    ):
+        """Apply common figure and axis settings, returning the canvas.
+
+        ``title``, ``xlabel``, and ``ylabel`` are figure-level settings. Axis
+        settings are applied to the selected subplot, or the default subplot
+        when ``row`` and ``col`` are omitted. Use ``tight_layout=True`` for a
+        final layout pass before rendering.
+        """
+        if title is not None:
+            self.suptitle(title)
+        if xlabel is not None:
+            self.supxlabel(xlabel)
+        if ylabel is not None:
+            self.supylabel(ylabel)
+        if grid is not None:
+            self.set_grid(grid, row=row, col=col)
+        if facecolor is not None:
+            self.set_facecolor(facecolor, row=row, col=col)
+        if axisbelow is not None:
+            self.set_axisbelow(axisbelow, row=row, col=col)
+        if margins is not None:
+            if isinstance(margins, dict):
+                self.margins(row=row, col=col, **margins)
+            else:
+                self.margins(margins, row=row, col=col)
+        if xscale is not None:
+            self.set_xscale(xscale, row=row, col=col)
+        if yscale is not None:
+            self.set_yscale(yscale, row=row, col=col)
+        if xlim is not None:
+            self.set_xlim(*xlim, row=row, col=col)
+        if ylim is not None:
+            self.set_ylim(*ylim, row=row, col=col)
+        if tight_layout:
+            self.tight_layout()
+        return self
 
     def set_xlim(
         self, left=None, right=None, row: int | None = None, col: int | None = None

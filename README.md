@@ -50,6 +50,28 @@ to explicitly render an already-built canvas, use `canvas.render(...)`.
 The older `canvas.plot(backend=...)` spelling is still supported for
 compatibility, but emits a `FutureWarning`.
 
+Add several lines at once with shared styling:
+
+``` python
+canvas.plot_many(
+    [(x, np.sin(x)), (x, np.cos(x))],
+    labels=["sin(x)", "cos(x)"],
+    linewidth=2,
+)
+```
+
+Common figure and axis settings can be grouped with `configure()`:
+
+``` python
+canvas.configure(
+    title="Trigonometry",
+    xlabel="Angle",
+    ylabel="Value",
+    grid=True,
+    facecolor="whitesmoke",
+)
+```
+
 For Matplotlib-specific customization, pass method calls declaratively.
 Figure methods run once and axes methods run for every subplot,
 providing access to any Matplotlib API without requiring a maxplotlib
@@ -165,26 +187,27 @@ terminal_fig = canvas.render(backend="plotext")
 print(terminal_fig.build(keep_colors=False))
 ```
 
+    Trigonometry
                                            Runtime                                  
-         ┌─────────────────────────────────────────────────────────────────────────┐
-     1.00┤             ▗▄▞▀▀▀▀▀▙▄▖                                                 │
-         │          ▗▄▀▘         ▝▀▄                                               │
-         │        ▗▞▘               ▀▄                                             │
-     0.67┤       ▟▀                   ▀▄                                           │
-         │     ▄▛                       ▚▖                                         │
-     0.33┤   ▗▞                          ▝▄                                        │
-         │  ▄▀                             ▚▖                                      │
-         │▗▞▘                               ▀▄                                     │
-     0.00┤▀                                  ▝▚▖                                  ▞│
-         │                                     ▀▄                               ▗▞▘│
-         │                                      ▝▚                             ▄▀  │
-    -0.33┤                                        ▀▖                          ▞▘   │
-         │                                         ▝▚                       ▟▀     │
-    -0.67┤                                           ▀▄                   ▄▛       │
-         │                                             ▀▄               ▗▞▘        │
-         │                                               ▀▄▖         ▗▄▀▘          │
-    -1.00┤                                                 ▝▀▜▄▄▄▄▄▞▀▘             │
-         └┬─────────────────┬─────────────────┬─────────────────┬─────────────────┬┘
+         ┌┬─────────────────┬─────────────────┬─────────────────┬─────────────────┬┐
+     1.00┼ ▞▞ sin(x) ──▗▄▞▀▀▀▀▀▙▄▖────────────┼─────────────────┼─────────────▄▄▀▀▀┤
+         │ ▞▞ cos(x) ▄▀▘    │    ▝▀▄          │                 │          ▄▞▀    ││
+         ││       ▜▄▘       │       ▀▄        │                 │        ▄▛       ││
+     0.67┼┼──────▟▀─▀▄──────┼─────────▀▄──────┼─────────────────┼──────▄▀─────────┼┤
+         ││    ▄▛    ▝▚▖    │           ▚▖    │                 │    ▗▞▘          ││
+     0.33┼┼──▗▞────────▀▖───┼────────────▝▄───┼─────────────────┼───▗▀────────────┼┤
+         ││ ▄▀          ▝▚  │              ▚▖ │                 │  ▞▘             ││
+         │▗▞▘             ▀▖│               ▀▄│                 │▗▀               ││
+     0.00┼▞────────────────▝▙────────────────▝▚▖────────────────▟▘────────────────▄┤
+         ││                 │▜▖               │▀▄             ▗▛│               ▗▞▘│
+         ││                 │ ▝▙              │ ▝▚           ▟▘ │              ▄▀ ││
+    -0.33┼┼─────────────────┼───▚▖────────────┼───▀▖───────▗▞───┼─────────────▞▘──┼┤
+         ││                 │    ▝▄▖          │    ▝▚    ▗▄▘    │           ▟▀    ││
+    -0.67┼┼─────────────────┼──────▀▖─────────┼──────▀▄─▗▀──────┼─────────▄▛──────┼┤
+         ││                 │       ▝▜▄       │       ▄▛▘       │       ▗▞▘       ││
+         ││                 │          ▀▄▖    │    ▗▄▀   ▀▄▖    │    ▗▄▀▘         ││
+    -1.00┼┼─────────────────┼────────────▝▀▚▄▄▄▄▄▞▀▘───────▝▀▜▄▄▄▄▄▞▀▘────────────┼┤
+         └┼─────────────────┼─────────────────┼─────────────────┼─────────────────┼┘
          0.0               1.6               3.1               4.7              6.3 
     Duration                                Time                                    
 
@@ -194,7 +217,7 @@ Or plot with the TikZ backend:
 canvas.show(backend="tikzfigure")
 ```
 
-![](README_files/figure-commonmark/cell-12-output-1.png)
+![](README_files/figure-commonmark/cell-14-output-1.png)
 
 ### Horizontal Subplots with TikZ Backend
 
@@ -275,7 +298,7 @@ canvas.show(backend="plotext")
         1.0               1.8                3.2               5.6             10.0 
     y                                         x                                     
 
-    <maxplotlib.backends.plotext.figure.PlotextFigure at 0x10ee1ce10>
+    <maxplotlib.backends.plotext.figure.PlotextFigure at 0x1102a0690>
 
 ### Layers
 
@@ -311,7 +334,7 @@ Show layer 0 only, then layers 0 and 1, then everything:
 canvas.show(layers=[0])
 ```
 
-![](README_files/figure-commonmark/cell-16-output-1.png)
+![](README_files/figure-commonmark/cell-18-output-1.png)
 
     (<Figure size 590.551x324.803 with 1 Axes>,
      array([[<Axes: xlabel='x'>]], dtype=object))
@@ -322,7 +345,7 @@ Show all layers:
 canvas.show()
 ```
 
-![](README_files/figure-commonmark/cell-17-output-1.png)
+![](README_files/figure-commonmark/cell-19-output-1.png)
 
     (<Figure size 590.551x324.803 with 1 Axes>,
      array([[<Axes: xlabel='x'>]], dtype=object))

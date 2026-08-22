@@ -27,7 +27,7 @@ def test_canvas_plot_plotext_builds_terminal_output():
     ax.set_legend(True)
     canvas.suptitle("Plotext demo")
 
-    figure = canvas.plot(backend="plotext")
+    figure = canvas.render(backend="plotext")
     output = strip_ansi(figure.build())
 
     assert isinstance(figure, PlotextFigure)
@@ -57,7 +57,7 @@ def test_canvas_plot_plotext_supports_scalar_errorbars():
     ax.set_xscale("log")
     ax.set_title("Log errors")
 
-    output = strip_ansi(canvas.plot(backend="plotext").build())
+    output = strip_ansi(canvas.render(backend="plotext").build())
 
     assert "Log errors" in output
 
@@ -72,7 +72,7 @@ def test_canvas_plot_plotext_supports_fill_between_curves_and_annotations():
     ax.set_title("Filled band")
     ax.set_legend(True)
 
-    output = strip_ansi(canvas.plot(backend="plotext").build())
+    output = strip_ansi(canvas.render(backend="plotext").build())
 
     assert "Filled band" in output
     assert "band" in output
@@ -88,7 +88,7 @@ def test_canvas_plot_plotext_supports_matrix_plots_and_patches():
     ax.add_patch(mpatches.Circle((1.8, 1.8), 0.4, fill=False, edgecolor="cyan"))
     ax.set_title("Matrix plot")
 
-    output = strip_ansi(canvas.plot(backend="plotext").build())
+    output = strip_ansi(canvas.render(backend="plotext").build())
 
     assert "Matrix plot" in output
 
@@ -98,7 +98,7 @@ def test_canvas_plot_plotext_supports_colorbar_notes_symlog_aspect_and_generic_p
     ax.add_imshow(np.eye(3))
     ax.add_colorbar(label="scale")
     ax.set_title("Heatmap")
-    output = strip_ansi(canvas.plot(backend="plotext").build())
+    output = strip_ansi(canvas.render(backend="plotext").build())
 
     assert "Heatmap" in output
     assert "scale:" in output
@@ -111,7 +111,7 @@ def test_canvas_plot_plotext_supports_colorbar_notes_symlog_aspect_and_generic_p
     ax.set_aspect("equal")
     ax.add_caption("caption text")
     ax.set_title("Symlog view")
-    output = strip_ansi(canvas.plot(backend="plotext").build())
+    output = strip_ansi(canvas.render(backend="plotext").build())
 
     assert "Symlog view" in output
     assert "caption text" in output
@@ -129,7 +129,7 @@ def test_canvas_plot_plotext_supports_colorbar_notes_symlog_aspect_and_generic_p
     )
     ax.set_title("Generic patch")
     ax.set_legend(True)
-    output = strip_ansi(canvas.plot(backend="plotext").build())
+    output = strip_ansi(canvas.render(backend="plotext").build())
 
     assert "Generic patch" in output
     assert "ellipse" in output
