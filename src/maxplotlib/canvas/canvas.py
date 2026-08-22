@@ -1863,7 +1863,9 @@ class Canvas:
             return self
         if args:
             if len(args) > 1:
-                raise TypeError("plot() accepts at most one backend positional argument")
+                raise TypeError(
+                    "plot() accepts at most one backend positional argument"
+                )
             if backend is not None:
                 raise TypeError("backend was provided both positionally and by keyword")
             backend = args[0]
