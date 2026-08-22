@@ -620,6 +620,10 @@ class Canvas:
         """Set the physical height-to-width ratio of a subplot."""
         self._get_or_create_subplot(row, col).set_box_aspect(aspect)
 
+    def set_aspect(self, aspect, row=None, col=None):
+        """Set the data aspect ratio of a subplot."""
+        self._get_or_create_subplot(row, col).set_aspect(aspect)
+
     def secondary_xaxis(
         self, location="top", functions=None, row=None, col=None, **kwargs
     ):
@@ -893,6 +897,10 @@ class Canvas:
         self._get_or_create_subplot(row, col).add_table(
             cellText=cellText, layer=layer, **kwargs
         )
+
+    def add_caption(self, caption):
+        """Set the figure caption."""
+        self._caption = caption
 
     def gantt(
         self,
@@ -1395,6 +1403,12 @@ class Canvas:
         self._get_or_create_subplot(row, col).add_colorbar(
             label=label, layer=layer, **kwargs
         )
+
+    def add_colorbar(
+        self, label: str = "", layer=0, row=None, col=None, **kwargs
+    ):
+        """Alias for ``colorbar``."""
+        self.colorbar(label=label, layer=layer, row=row, col=col, **kwargs)
 
     # ------------------------------------------------------------------
     # Multi-subplot helpers
