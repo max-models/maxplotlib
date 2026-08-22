@@ -1,5 +1,6 @@
 import numpy as np
 
+
 def test_plotly_backend_supports_common_primitives():
     from maxplotlib import Canvas
 
@@ -278,7 +279,9 @@ def test_plotly_backend_supports_quiver():
 
     fig = canvas.plot(backend="plotly")
 
-    arrows = [annotation for annotation in fig.layout.annotations if annotation.showarrow]
+    arrows = [
+        annotation for annotation in fig.layout.annotations if annotation.showarrow
+    ]
     assert len(arrows) == 2
     assert arrows[0].arrowcolor == "purple"
 

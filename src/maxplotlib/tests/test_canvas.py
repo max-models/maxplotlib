@@ -713,8 +713,12 @@ def test_secondary_axes_are_supported_by_matplotlib():
 
     canvas, axis = Canvas.subplots()
     axis.plot([0, 1], [0, 1])
-    axis.secondary_xaxis("top", functions=(lambda x: x * 2, lambda x: x / 2), label="double")
-    axis.secondary_yaxis("right", functions=(lambda y: y + 1, lambda y: y - 1), label="offset")
+    axis.secondary_xaxis(
+        "top", functions=(lambda x: x * 2, lambda x: x / 2), label="double"
+    )
+    axis.secondary_yaxis(
+        "right", functions=(lambda y: y + 1, lambda y: y - 1), label="offset"
+    )
 
     fig, axes = canvas.plot(backend="matplotlib")
 

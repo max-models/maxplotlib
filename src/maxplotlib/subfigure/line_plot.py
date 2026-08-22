@@ -1998,8 +1998,12 @@ class LinePlot:
                     indices = [*triangle, triangle[0]]
                     x_values.extend(x_data[indices].tolist() + [None])
                     y_values.extend(y_data[indices].tolist() + [None])
-                transformed_x = [None if value is None else txs(value) for value in x_values]
-                transformed_y = [None if value is None else tys(value) for value in y_values]
+                transformed_x = [
+                    None if value is None else txs(value) for value in x_values
+                ]
+                transformed_y = [
+                    None if value is None else tys(value) for value in y_values
+                ]
                 traces.append(
                     go.Scatter(
                         x=transformed_x,
@@ -2033,7 +2037,10 @@ class LinePlot:
                     c_data
                     if c_data.size == len(triangulation.triangles)
                     else np.asarray(
-                        [np.mean(c_data[triangle]) for triangle in triangulation.triangles]
+                        [
+                            np.mean(c_data[triangle])
+                            for triangle in triangulation.triangles
+                        ]
                     )
                 )
                 finite_values = triangle_values[np.isfinite(triangle_values)]
@@ -2711,8 +2718,8 @@ class LinePlot:
                     marker=dict(opacity=0),
                     showlegend=False,
                     hoverinfo="skip",
-                        )
-                    )
+                )
+            )
 
         if self._bar_label_kwargs:
             label_kwargs = self._bar_label_kwargs
@@ -2730,7 +2737,12 @@ class LinePlot:
                     x_values = np.asarray(line["x"])
                     heights = np.asarray(line["height"])
                     bottom = np.asarray(line["kwargs"].get("bottom", 0))
-                    for x_value, height, base in zip(x_values, heights, np.broadcast_to(bottom, heights.shape), strict=False):
+                    for x_value, height, base in zip(
+                        x_values,
+                        heights,
+                        np.broadcast_to(bottom, heights.shape),
+                        strict=False,
+                    ):
                         edge = base + height
                         annotations.append(
                             dict(
@@ -2745,7 +2757,12 @@ class LinePlot:
                     y_values = np.asarray(line["y"])
                     widths = np.asarray(line["width"])
                     left = np.asarray(line["kwargs"].get("left", 0))
-                    for y_value, width, start in zip(y_values, widths, np.broadcast_to(left, widths.shape), strict=False):
+                    for y_value, width, start in zip(
+                        y_values,
+                        widths,
+                        np.broadcast_to(left, widths.shape),
+                        strict=False,
+                    ):
                         edge = start + width
                         annotations.append(
                             dict(

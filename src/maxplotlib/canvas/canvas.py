@@ -609,13 +609,17 @@ class Canvas:
         """Set the physical height-to-width ratio of a subplot."""
         self._get_or_create_subplot(row, col).set_box_aspect(aspect)
 
-    def secondary_xaxis(self, location="top", functions=None, row=None, col=None, **kwargs):
+    def secondary_xaxis(
+        self, location="top", functions=None, row=None, col=None, **kwargs
+    ):
         """Configure a secondary x-axis for a subplot."""
         self._get_or_create_subplot(row, col).secondary_xaxis(
             location, functions, **kwargs
         )
 
-    def secondary_yaxis(self, location="right", functions=None, row=None, col=None, **kwargs):
+    def secondary_yaxis(
+        self, location="right", functions=None, row=None, col=None, **kwargs
+    ):
         """Configure a secondary y-axis for a subplot."""
         self._get_or_create_subplot(row, col).secondary_yaxis(
             location, functions, **kwargs
@@ -2214,17 +2218,11 @@ class Canvas:
                     fig.update_xaxes(visible=False, row=row + 1, col=col + 1)
                     fig.update_yaxes(visible=False, row=row + 1, col=col + 1)
                 elif axis_args and axis_args[0] == "equal":
-                    fig.update_yaxes(
-                        scaleanchor=xref, row=row + 1, col=col + 1
-                    )
+                    fig.update_yaxes(scaleanchor=xref, row=row + 1, col=col + 1)
                 elif axis_args and len(axis_args[0]) == 4:
                     xmin, xmax, ymin, ymax = axis_args[0]
-                    fig.update_xaxes(
-                        range=[xmin, xmax], row=row + 1, col=col + 1
-                    )
-                    fig.update_yaxes(
-                        range=[ymin, ymax], row=row + 1, col=col + 1
-                    )
+                    fig.update_xaxes(range=[xmin, xmax], row=row + 1, col=col + 1)
+                    fig.update_yaxes(range=[ymin, ymax], row=row + 1, col=col + 1)
 
             # Aspect ratio
             if line_plot._aspect == "equal":
