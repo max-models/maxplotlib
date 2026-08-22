@@ -1404,9 +1404,7 @@ class Canvas:
             label=label, layer=layer, **kwargs
         )
 
-    def add_colorbar(
-        self, label: str = "", layer=0, row=None, col=None, **kwargs
-    ):
+    def add_colorbar(self, label: str = "", layer=0, row=None, col=None, **kwargs):
         """Alias for ``colorbar``."""
         self.colorbar(label=label, layer=layer, row=row, col=col, **kwargs)
 
