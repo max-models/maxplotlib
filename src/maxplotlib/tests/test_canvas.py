@@ -94,6 +94,62 @@ def test_canvas_plot_tikzfigure_vertical_not_supported():
     assert "nrows > 1" in str(exc_info.value)
 
 
+def test_tikzfigure_supports_scatter_bars_fills_and_errorbars():
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.arange(3)
+    canvas = Canvas()
+    canvas.scatter(x, [1, 2, 1], color="red")
+    canvas.bar(x, [1, 2, 1], color="blue")
+    canvas.fill_between(x, [1, 2, 1], 0, color="green", alpha=0.2)
+    canvas.errorbar(x, [1, 2, 1], yerr=0.1, color="black")
+
+    tikz = canvas.render(backend="tikzfigure").generate_tikz()
+
+    assert "mark=*" in tikz
+    assert "fill=blue" in tikz
+    assert "fill=green" in tikz
+    assert tikz.count("coordinates") >= 4
+
+
+def test_tikzfigure_rejects_unsupported_plot_types_explicitly():
+    import numpy as np
+    import pytest
+
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.imshow(np.ones((2, 2)))
+
+    with pytest.raises(NotImplementedError, match="imshow"):
+        canvas.render(backend="tikzfigure")
+
+
+def test_tikzfigure_supports_step_stem_reference_lines_spans_and_fill():
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.arange(4)
+    canvas = Canvas()
+    canvas.step(x, [1, 2, 1, 3], color="black")
+    canvas.stem(x, [1, 2, 1, 3], color="purple")
+    canvas.hlines([1, 2], 0, 3, color="gray")
+    canvas.vlines([1, 2], 0, 3, color="gray")
+    canvas.axvspan(1, 2, color="orange", alpha=0.2)
+    canvas.axhspan(1, 2, color="green", alpha=0.2)
+    canvas.fill(x, [0, 1, 0, 1], color="cyan", alpha=0.2)
+
+    tikz = canvas.render(backend="tikzfigure").generate_tikz()
+
+    assert "mark=*" in tikz
+    assert "fill=orange" in tikz
+    assert "fill=cyan" in tikz
+    assert tikz.count("coordinates") >= 10
+
+
 def test_canvas_matplotlib_gridspec_kw_affects_row_spacing():
     """Test that hspace changes the vertical spacing between rows."""
     import matplotlib.pyplot as plt
@@ -353,6 +409,27 @@ def test_canvas_show_uses_matplotlib_show(monkeypatch):
     assert calls == [((), {"block": True})]
     assert fig is not None
     assert axes is not None
+
+
+def test_canvas_show_plotly_does_not_return_displayed_figure_in_jupyter(monkeypatch):
+    import maxplotlib.canvas.canvas as canvas_module
+    from maxplotlib import Canvas
+
+    class FakePlotlyFigure:
+        def __init__(self):
+            self.show_calls = 0
+
+        def show(self):
+            self.show_calls += 1
+
+    figure = FakePlotlyFigure()
+    monkeypatch.setattr(Canvas, "plot_plotly", lambda *args, **kwargs: figure)
+    monkeypatch.setattr(canvas_module, "_running_in_jupyter", lambda: True)
+
+    result = Canvas().show(backend="plotly")
+
+    assert result is None
+    assert figure.show_calls == 1
 
 
 def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):

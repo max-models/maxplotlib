@@ -18,7 +18,13 @@ from maxplotlib.backends.matplotlib.utils import (
 from maxplotlib.backends.plotext import PlotextFigure, create_plotext_figure
 from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
-from maxplotlib.subfigure.line_plot import LinePlot
+from maxplotlib.subfigure.line_plot import (
+    _TIKZ_SUPPORTED_PLOT_TYPES,
+    LinePlot,
+    _tikz_error_bounds,
+    _tikz_step_coordinates,
+    _tikz_style_kwargs,
+)
 from maxplotlib.utils.options import Backends
 
 
@@ -2053,7 +2059,9 @@ class Canvas:
                 allow_unsupported=allow_unsupported,
             )
             fig.show()
-            return fig
+            # Plotly has already displayed the figure. Returning it from a
+            # notebook cell would trigger a second implicit rich display.
+            return None if _running_in_jupyter() else fig
         elif backend == "plotext":
             figure = self.plot_plotext(
                 savefig=False,
@@ -2269,7 +2277,12 @@ class Canvas:
 
             # Add each plot line to the subfigure
             for line_data in line_plot.line_data:
-                if line_data.get("plot_type") == "plot":
+                plot_type = line_data.get("plot_type")
+                if plot_type not in _TIKZ_SUPPORTED_PLOT_TYPES:
+                    raise NotImplementedError(
+                        f"{plot_type} is not supported by the tikzfigure backend"
+                    )
+                if plot_type == "plot":
                     # Extract and transform x, y data
                     x = (line_data["x"] + line_plot._xshift) * line_plot._xscale
                     y = (line_data["y"] + line_plot._yshift) * line_plot._yscale
@@ -2280,11 +2293,182 @@ class Canvas:
                     ax.add_plot(
                         x=x,
                         y=y,
-                        # label=kwargs.get("label", ""),
-                        color=kwargs.get("color", "black"),
-                        line_width=kwargs.get("linewidth", 1.0),
+                        **_tikz_style_kwargs(kwargs),
                     )
-                elif line_data.get("plot_type") == "gantt":
+                elif plot_type == "scatter":
+                    x = (line_data["x"] + line_plot._xshift) * line_plot._xscale
+                    y = (line_data["y"] + line_plot._yshift) * line_plot._yscale
+                    kwargs = _tikz_style_kwargs(line_data.get("kwargs", {}))
+                    kwargs.setdefault("mark", "*")
+                    kwargs["line_width"] = 0
+                    ax.add_plot(x=x, y=y, **kwargs)
+                elif plot_type in {"bar", "barh"}:
+                    source_kwargs = line_data.get("kwargs", {})
+                    kwargs = _tikz_style_kwargs(source_kwargs)
+                    kwargs["fill"] = source_kwargs.get("color", "blue")
+                    kwargs["fill_opacity"] = source_kwargs.get("alpha", 1.0)
+                    kwargs["line_width"] = source_kwargs.get("linewidth", 0)
+                    if plot_type == "bar":
+                        width = source_kwargs.get("width", 0.8)
+                        for x, height in zip(line_data["x"], line_data["height"]):
+                            ax.add_plot(
+                                x=[
+                                    x - width / 2,
+                                    x + width / 2,
+                                    x + width / 2,
+                                    x - width / 2,
+                                ],
+                                y=[0, 0, height, height],
+                                cycle=True,
+                                **kwargs,
+                            )
+                    else:
+                        height = source_kwargs.get("height", 0.8)
+                        for y, width in zip(line_data["y"], line_data["width"]):
+                            ax.add_plot(
+                                x=[0, width, width, 0],
+                                y=[
+                                    y - height / 2,
+                                    y - height / 2,
+                                    y + height / 2,
+                                    y + height / 2,
+                                ],
+                                cycle=True,
+                                **kwargs,
+                            )
+                elif plot_type == "fill_between":
+                    x = line_data["x"]
+                    y1 = np.asarray(line_data["y1"])
+                    y2 = np.broadcast_to(line_data["y2"], y1.shape)
+                    source_kwargs = line_data.get("kwargs", {})
+                    kwargs = _tikz_style_kwargs(source_kwargs)
+                    kwargs["fill"] = source_kwargs.get("color", "blue")
+                    kwargs["fill_opacity"] = source_kwargs.get("alpha", 0.25)
+                    ax.add_plot(
+                        x=list(x) + list(x[::-1]),
+                        y=list(y1) + list(y2[::-1]),
+                        cycle=True,
+                        **kwargs,
+                    )
+                elif plot_type == "errorbar":
+                    x = line_data["x"]
+                    y = line_data["y"]
+                    kwargs = _tikz_style_kwargs(line_data.get("kwargs", {}))
+                    ax.add_plot(x=x, y=y, **kwargs)
+                    y_bounds = _tikz_error_bounds(line_data["yerr"], y)
+                    if y_bounds is not None:
+                        lower, upper = y_bounds
+                        for xi, low, high in zip(x, y - lower, y + upper):
+                            ax.add_plot(x=[xi, xi], y=[low, high], **kwargs)
+                    x_bounds = _tikz_error_bounds(line_data["xerr"], x)
+                    if x_bounds is not None:
+                        lower, upper = x_bounds
+                        for yi, low, high in zip(y, x - lower, x + upper):
+                            ax.add_plot(x=[low, high], y=[yi, yi], **kwargs)
+                elif plot_type in {"step", "stairs"}:
+                    source_kwargs = line_data.get("kwargs", {})
+                    if plot_type == "step":
+                        x = line_data["x"]
+                        y = line_data["y"]
+                        where = source_kwargs.get("where", "pre")
+                    else:
+                        values = line_data["values"]
+                        edges = line_data["edges"]
+                        if edges is None:
+                            edges = np.arange(len(values) + 1)
+                        x = edges
+                        y = np.r_[values, values[-1]]
+                        where = "post"
+                    x, y = _tikz_step_coordinates(x, y, where=where)
+                    ax.add_plot(
+                        x=x,
+                        y=y,
+                        **_tikz_style_kwargs(source_kwargs),
+                    )
+                elif plot_type == "stem":
+                    x = line_data["x"]
+                    y = line_data["y"]
+                    source_kwargs = line_data.get("kwargs", {})
+                    style = _tikz_style_kwargs(source_kwargs)
+                    marker_style = dict(style)
+                    marker_style.update(
+                        mark=source_kwargs.get("marker", "*"), line_width=0
+                    )
+                    ax.add_plot(x=x, y=y, **marker_style)
+                    for xi, yi in zip(x, y):
+                        ax.add_plot(x=[xi, xi], y=[0, yi], **style)
+                elif plot_type in {"hlines", "vlines"}:
+                    style = _tikz_style_kwargs(line_data.get("kwargs", {}))
+                    if plot_type == "hlines":
+                        for yi, left, right in zip(
+                            np.atleast_1d(line_data["y"]),
+                            np.atleast_1d(line_data["xmin"]),
+                            np.atleast_1d(line_data["xmax"]),
+                        ):
+                            ax.add_plot(x=[left, right], y=[yi, yi], **style)
+                    else:
+                        for xi, bottom, top in zip(
+                            np.atleast_1d(line_data["x"]),
+                            np.atleast_1d(line_data["ymin"]),
+                            np.atleast_1d(line_data["ymax"]),
+                        ):
+                            ax.add_plot(x=[xi, xi], y=[bottom, top], **style)
+                elif plot_type in {"axvspan", "axhspan"}:
+                    source_kwargs = line_data.get("kwargs", {})
+                    style = _tikz_style_kwargs(source_kwargs)
+                    style["fill"] = source_kwargs.get("color", "blue")
+                    style["fill_opacity"] = source_kwargs.get("alpha", 0.2)
+                    if plot_type == "axvspan":
+                        xmin, xmax = line_data["xmin"], line_data["xmax"]
+                        ymin, ymax = line_plot._ymin or 0, line_plot._ymax or 1
+                        x = [xmin, xmax, xmax, xmin]
+                        y = [ymin, ymin, ymax, ymax]
+                    else:
+                        ymin, ymax = line_data["ymin"], line_data["ymax"]
+                        xmin, xmax = line_plot._xmin or 0, line_plot._xmax or 1
+                        x = [xmin, xmax, xmax, xmin]
+                        y = [ymin, ymin, ymax, ymax]
+                    ax.add_plot(x=x, y=y, cycle=True, **style)
+                elif plot_type == "fill":
+                    if len(line_data["args"]) < 2:
+                        raise ValueError("tikzfigure fill requires x and y coordinates")
+                    x, y = line_data["args"][:2]
+                    source_kwargs = line_data.get("kwargs", {})
+                    style = _tikz_style_kwargs(source_kwargs)
+                    style["fill"] = source_kwargs.get("color", "blue")
+                    style["fill_opacity"] = source_kwargs.get("alpha", 0.25)
+                    ax.add_plot(x=x, y=y, cycle=True, **style)
+                elif plot_type == "flame_chart":
+                    labels = line_data["labels"]
+                    parents = line_data["parents"]
+                    values = line_data["values"] * line_plot._xscale
+                    start_times = line_data["start_times"]
+                    depths = np.zeros(len(labels), dtype=int)
+                    if start_times is None:
+                        start_times = np.zeros(len(labels))
+                    else:
+                        start_times = (
+                            start_times + line_plot._xshift
+                        ) * line_plot._xscale
+                    for index, parent in enumerate(parents):
+                        if parent is not None:
+                            parent_index = (
+                                parent
+                                if isinstance(parent, int)
+                                else labels.index(parent)
+                            )
+                            depths[index] = depths[parent_index] + 1
+                    colors = ["red", "blue", "green", "orange", "purple", "cyan"]
+                    for index, (start, value) in enumerate(zip(start_times, values)):
+                        y = depths[index]
+                        ax.add_plot(
+                            x=[start, start + value, start + value, start],
+                            y=[y - 0.4, y - 0.4, y + 0.4, y + 0.4],
+                            cycle=True,
+                            fill=colors[y % len(colors)],
+                            line_width=0,
+                        )
+                elif plot_type == "gantt":
                     tasks = line_data["tasks"]
                     start_times = (
                         line_data["start_times"] + line_plot._xshift
