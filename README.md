@@ -45,6 +45,11 @@ canvas.show()
 
 ![](README_files/figure-commonmark/cell-3-output-1.png)
 
+Use `canvas.plot(x, y)` to add data directly to a canvas. When you want
+to explicitly render an already-built canvas, use `canvas.render(...)`.
+The older `canvas.plot(backend=...)` spelling is still supported for
+compatibility, but emits a `FutureWarning`.
+
 For Matplotlib-specific customization, pass method calls declaratively.
 Figure methods run once and axes methods run for every subplot,
 providing access to any Matplotlib API without requiring a maxplotlib
@@ -149,14 +154,14 @@ parts of a mixed canvas, explicitly opt into skipping unsupported
 primitives:
 
 ``` python
-plotly_canvas.plot(backend="plotly", allow_unsupported=True)
+plotly_canvas.render(backend="plotly", allow_unsupported=True)
 ```
 
 Render the same line graph directly in the terminal with the `plotext`
 backend:
 
 ``` python
-terminal_fig = canvas.plot(backend="plotext")
+terminal_fig = canvas.render(backend="plotext")
 print(terminal_fig.build(keep_colors=False))
 ```
 
@@ -270,7 +275,7 @@ canvas.show(backend="plotext")
         1.0               1.8                3.2               5.6             10.0 
     y                                         x                                     
 
-    <maxplotlib.backends.plotext.figure.PlotextFigure at 0x110a30550>
+    <maxplotlib.backends.plotext.figure.PlotextFigure at 0x10ee1ce10>
 
 ### Layers
 

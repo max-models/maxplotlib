@@ -376,7 +376,7 @@ def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):
     monkeypatch.setitem(sys.modules, "IPython", ipython)
     monkeypatch.setitem(sys.modules, "IPython.display", ipython_display)
     monkeypatch.setattr(plt, "close", lambda value: closed.append(value))
-    monkeypatch.setattr(Canvas, "plot", lambda *args, **kwargs: (fig, object()))
+    monkeypatch.setattr(Canvas, "_render", lambda *args, **kwargs: (fig, object()))
     monkeypatch.setattr(plt, "show", lambda: pytest.fail("pyplot.show was called"))
 
     canvas = Canvas()
@@ -878,6 +878,39 @@ def test_axis_getters_reflect_configured_state():
     assert canvas.get_ybound() == (-2, 3)
     assert canvas.get_xmargin() == 0.1
     assert canvas.get_ymargin() == 0.2
+
+
+def test_render_is_the_explicit_rendering_alias():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.add_line([0, 1], [0, 1])
+
+    rendered = canvas.render(backend="plotly")
+
+    assert rendered is not None
+
+
+def test_plot_adds_line_data_when_given_x_and_y():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    result = canvas.plot([0, 1], [1, 2], color="purple", label="line")
+
+    assert result is canvas
+    assert canvas.render(backend="plotly").data[0].name == "line"
+
+
+def test_legacy_plot_backend_form_warns():
+    import pytest
+
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.add_line([0, 1], [0, 1])
+
+    with pytest.warns(FutureWarning, match=r"canvas\.render"):
+        canvas.plot(backend="plotly")
 
 
 def test_matplotlib_postprocess_can_customize_figure_and_axes():

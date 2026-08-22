@@ -1,5 +1,6 @@
 import os
 import re
+import warnings
 from dataclasses import dataclass
 from typing import Mapping
 
@@ -1686,7 +1687,7 @@ class Canvas:
                 layers = []
                 for layer in self.layers:
                     layers.append(layer)
-                    fig, axs = self.plot(
+                    fig, axs = self._render(
                         show=False,
                         backend="matplotlib",
                         savefig=True,
@@ -1707,7 +1708,7 @@ class Canvas:
                     savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
                     self._matplotlib_fig.savefig(full_filepath, **savefig_kwargs)
                 else:
-                    fig, axs = self.plot(
+                    fig, axs = self._render(
                         backend="matplotlib",
                         savefig=True,
                         layers=layers,
@@ -1721,7 +1722,7 @@ class Canvas:
                 layers = []
                 for layer in self.layers:
                     layers.append(layer)
-                    figure = self.plot(
+                    figure = self._render(
                         backend="plotext",
                         savefig=False,
                         layers=layers,
@@ -1735,7 +1736,7 @@ class Canvas:
                     full_filepath = filename
                 else:
                     full_filepath = f"{filename_no_extension}_{layers}.{extension}"
-                figure = self.plot(
+                figure = self._render(
                     backend="plotext",
                     savefig=False,
                     layers=layers,
@@ -1749,7 +1750,7 @@ class Canvas:
                 for layer in self.layers:
                     layers.append(layer)
                     full_filepath = f"{filename_no_extension}_{layers}{extension}"
-                    fig = self.plot(
+                    fig = self._render(
                         backend="plotly",
                         savefig=False,
                         layers=layers,
@@ -1763,7 +1764,7 @@ class Canvas:
                     full_filepath = filename
                 else:
                     full_filepath = f"{filename_no_extension}_{layers}{extension}"
-                fig = self.plot(
+                fig = self._render(
                     backend="plotly",
                     savefig=False,
                     layers=layers,
@@ -1776,12 +1777,12 @@ class Canvas:
                 raise NotImplementedError(
                     "Layer-by-layer rendering is not supported for tikzfigure backend"
                 )
-            fig = self.plot(backend="tikzfigure", savefig=False)
+            fig = self._render(backend="tikzfigure", savefig=False)
             fig.savefig(filename)
             if verbose:
                 print(f"Saved {filename}")
 
-    def plot(
+    def _render(
         self,
         backend: Backends = "matplotlib",
         savefig: bool = False,
@@ -1844,6 +1845,52 @@ class Canvas:
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
+    def plot(self, *args, backend=None, **kwargs):
+        """Add a line, or render when called with backend options.
+
+        ``canvas.plot(x, y, **style)`` is the convenient direct plotting form.
+        Rendering is named explicitly by ``canvas.render(...)``; the legacy
+        ``canvas.plot(backend=...)`` form remains supported.
+        """
+        explicit_render = backend is not None or (args and isinstance(args[0], str))
+        if args and not isinstance(args[0], str):
+            if len(args) < 2:
+                raise TypeError("plot(x, y) requires both x and y data")
+            if len(args) > 2:
+                raise TypeError("plot() accepts only x and y positional data")
+            layer = kwargs.pop("layer", 0)
+            row = kwargs.pop("row", None)
+            col = kwargs.pop("col", None)
+            self.add_line(args[0], args[1], layer=layer, row=row, col=col, **kwargs)
+            return self
+        if args:
+            if len(args) > 1:
+                raise TypeError(
+                    "plot() accepts at most one backend positional argument"
+                )
+            if backend is not None:
+                raise TypeError("backend was provided both positionally and by keyword")
+            backend = args[0]
+        if backend is None:
+            backend = "matplotlib"
+        if explicit_render:
+            warnings.warn(
+                "canvas.plot(backend=...) is deprecated; use "
+                "canvas.render(backend=...) instead",
+                FutureWarning,
+                stacklevel=2,
+            )
+        return self._render(backend=backend, **kwargs)
+
+    def render(self, *args, **kwargs):
+        """Render the canvas using the selected backend.
+
+        This is the explicit name for the operation historically exposed as
+        ``Canvas.plot(backend=...)``. The latter remains available for
+        backwards compatibility.
+        """
+        return self._render(*args, **kwargs)
+
     def show(
         self,
         backend: Backends = "matplotlib",
@@ -1883,7 +1930,7 @@ class Canvas:
         if backend == "matplotlib":
             if verbose:
                 print("Generating Matplotlib figure for display...")
-            fig, axes = self.plot(
+            fig, axes = self._render(
                 backend="matplotlib",
                 savefig=False,
                 layers=layers,
@@ -2621,5 +2668,5 @@ if __name__ == "__main__":
     c = Canvas(ncols=2, nrows=2)
     sp = c.add_subplot()
     sp.plot([0, 1, 2, 3], [0, 1, 4, 9], label="Line 1")
-    c.plot(backend="matplotlib")
+    c.render(backend="matplotlib")
     print("done")
