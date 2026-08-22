@@ -726,6 +726,162 @@ def test_secondary_axes_are_supported_by_matplotlib():
     plt.close(fig)
 
 
+def test_twiny_is_supported_by_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    secondary = canvas.twiny()
+    axis.plot([0, 1], [0, 1])
+    secondary.plot([10, 20], [0, 1], color="red")
+
+    fig, axes = canvas.plot(backend="matplotlib")
+
+    assert canvas.twiny_axes[(0, 0)] is not axes[0, 0]
+    plt.close(fig)
+
+
+def test_axis_state_setter_aliases_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    axis.set_frame_on(False)
+    axis.set_visible(True)
+    axis.set_alpha(0.8)
+    axis.set_zorder(3)
+    axis.set_rasterized(True)
+    axis.set_autoscale_on(True)
+    axis.set_autoscalex_on(False)
+    axis.set_autoscaley_on(True)
+    axis.set_autoscale_on(False)
+    axis.set_xbound(-1, 2)
+    axis.set_ybound(-2, 3)
+
+    fig, axes = canvas.plot(backend="matplotlib")
+    matplotlib_axis = axes[0, 0]
+
+    assert matplotlib_axis.get_frame_on() is False
+    assert matplotlib_axis.get_visible() is True
+    assert matplotlib_axis.get_alpha() == 0.8
+    assert matplotlib_axis.get_zorder() == 3
+    assert matplotlib_axis.get_rasterized() is True
+    assert matplotlib_axis.get_xlim() == (-1, 2)
+    assert matplotlib_axis.get_ylim() == (-2, 3)
+    plt.close(fig)
+
+
+def test_figure_size_and_dpi_setters_are_supported():
+    import pytest
+
+    from maxplotlib import Canvas
+
+    canvas, _ = Canvas.subplots(figsize=(4, 3), dpi=120)
+    assert canvas.get_size_inches() == pytest.approx([4, 3])
+    assert canvas.get_figwidth() == 4
+    assert canvas.get_figheight() == 3
+    assert canvas.get_dpi() == 120
+
+    canvas.set_figwidth(5)
+    canvas.set_figheight(2)
+    canvas.set_dpi(150)
+
+    assert canvas.get_size_inches() == pytest.approx([5, 2])
+    assert canvas.get_dpi() == 150
+
+
+def test_generic_axis_setters_and_metadata_getters_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    canvas.suptitle("Figure title")
+    canvas.supxlabel("Shared x")
+    canvas.supylabel("Shared y")
+    axis.plot([0, 1], [0, 1])
+    axis.set(fc="lavender", adjustable="box", anchor="C")
+    axis.update({"aspect": "equal"})
+    axis.invert_xaxis()
+
+    fig, axes = canvas.plot(backend="matplotlib")
+    matplotlib_axis = axes[0, 0]
+
+    assert canvas.get_suptitle() == "Figure title"
+    assert canvas.get_supxlabel() == "Shared x"
+    assert canvas.get_supylabel() == "Shared y"
+    assert len(canvas.get_axes()) == 1
+    assert canvas.xaxis_inverted() is True
+    assert matplotlib_axis.get_adjustable() == "box"
+    assert matplotlib_axis.get_anchor() == "C"
+    plt.close(fig)
+
+
+def test_figure_layout_helpers_and_aliases_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1], label="line")
+    axis.set_legend(loc="upper left")
+    axis.add_table(cellText=[["A"]])
+    axis.add_image([[1, 2], [3, 4]])
+    canvas.set_tight_layout(True)
+    canvas.align_labels()
+    canvas.align_titles()
+    canvas.align_xlabels()
+    canvas.align_ylabels()
+    canvas.autofmt_xdate(rotation=20)
+
+    fig, axes = canvas.plot(backend="matplotlib")
+
+    assert axes[0, 0].get_legend() is not None
+    assert len(axes[0, 0].tables) == 1
+    assert len(axes[0, 0].images) == 1
+    plt.close(fig)
+
+
+def test_axis_getters_reflect_configured_state():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.set_adjustable("datalim")
+    axis.set_anchor("SW")
+    axis.set_alpha(0.5)
+    axis.set_box_aspect(1.2)
+    axis.set_facecolor("pink")
+    axis.set_frame_on(False)
+    axis.set_legend(True)
+    axis.set_rasterization_zorder(4)
+    axis.set_rasterized(True)
+    axis.set_visible(False)
+    axis.set_zorder(7)
+    axis.set_xbound(-1, 2)
+    axis.set_ybound(-2, 3)
+    axis.set_xmargin(0.1)
+    axis.set_ymargin(0.2)
+
+    assert canvas.get_adjustable() == "datalim"
+    assert canvas.get_anchor() == "SW"
+    assert canvas.get_alpha() == 0.5
+    assert canvas.get_box_aspect() == 1.2
+    assert canvas.get_facecolor() == "pink"
+    assert canvas.get_frame_on() is False
+    assert canvas.get_legend() is True
+    assert canvas.get_rasterization_zorder() == 4
+    assert canvas.get_rasterized() is True
+    assert canvas.get_visible() is False
+    assert canvas.get_zorder() == 7
+    assert canvas.get_xbound() == (-1, 2)
+    assert canvas.get_ybound() == (-2, 3)
+    assert canvas.get_xmargin() == 0.1
+    assert canvas.get_ymargin() == 0.2
+
+
 def test_matplotlib_postprocess_can_customize_figure_and_axes():
     import matplotlib.pyplot as plt
     from matplotlib.colors import to_rgba
