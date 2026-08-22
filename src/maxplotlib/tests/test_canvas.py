@@ -658,6 +658,67 @@ def test_stream_matrix_and_table_primitives_are_supported():
     matplotlib_axis = axes[0][0]
     assert len(matplotlib_axis.collections) > 0
     assert len(matplotlib_axis.tables) == 1
+
+
+def test_contour_labels_and_rasterization_zorder_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 5)
+    xx, yy = np.meshgrid(x, x)
+    canvas, axis = Canvas.subplots()
+    axis.contour(x, x, xx**2 + yy**2)
+    axis.clabel(inline=True, fontsize=8)
+    axis.set_rasterization_zorder(2)
+
+    fig, axes = canvas.plot(backend="matplotlib")
+
+    assert len(axes[0, 0].texts) > 0
+    assert axes[0, 0].get_rasterization_zorder() == 2
+    plt.close(fig)
+
+
+def test_axis_layout_and_log_shortcuts_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.fill([1, 2, 3], [1, 4, 1], alpha=0.2)
+    axis.loglog([1, 2, 4], [1, 4, 16])
+    axis.axis([1, 4, 1, 16])
+    axis.autoscale_view(tight=True)
+    axis.relim()
+    axis.set_box_aspect(1)
+    axis.set_xticklabels(["one", "two", "four"], rotation=30)
+    axis.set_yticklabels(["low", "high"], color="navy")
+
+    fig, axes = canvas.plot(backend="matplotlib")
+    matplotlib_axis = axes[0, 0]
+
+    assert matplotlib_axis.get_xscale() == "log"
+    assert matplotlib_axis.get_yscale() == "log"
+    assert matplotlib_axis.get_box_aspect() == 1
+    assert len(matplotlib_axis.patches) == 1
+    plt.close(fig)
+
+
+def test_secondary_axes_are_supported_by_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    axis.secondary_xaxis("top", functions=(lambda x: x * 2, lambda x: x / 2), label="double")
+    axis.secondary_yaxis("right", functions=(lambda y: y + 1, lambda y: y - 1), label="offset")
+
+    fig, axes = canvas.plot(backend="matplotlib")
+
+    assert len(axes[0, 0].child_axes) == 2
     plt.close(fig)
 
 

@@ -573,6 +573,64 @@ class Canvas:
         """Add labels to bar containers in the Matplotlib backend."""
         self._get_or_create_subplot(row, col).bar_label(**kwargs)
 
+    def fill(self, *args, layer=0, row=None, col=None, **kwargs):
+        """Fill one or more polygonal regions on a subplot."""
+        self._get_or_create_subplot(row, col).fill(*args, layer=layer, **kwargs)
+
+    def semilogx(self, x, y, layer=0, row=None, col=None, **kwargs):
+        """Add a line with a logarithmic x-axis."""
+        self._get_or_create_subplot(row, col).semilogx(x, y, layer=layer, **kwargs)
+
+    def semilogy(self, x, y, layer=0, row=None, col=None, **kwargs):
+        """Add a line with a logarithmic y-axis."""
+        self._get_or_create_subplot(row, col).semilogy(x, y, layer=layer, **kwargs)
+
+    def loglog(self, x, y, layer=0, row=None, col=None, **kwargs):
+        """Add a line with logarithmic x- and y-axes."""
+        self._get_or_create_subplot(row, col).loglog(x, y, layer=layer, **kwargs)
+
+    def axis(self, *args, row=None, col=None, **kwargs):
+        """Set Matplotlib-style axis limits or modes."""
+        self._get_or_create_subplot(row, col).axis(*args, **kwargs)
+
+    def autoscale(self, enable=True, axis="both", tight=None, row=None, col=None):
+        """Configure autoscaling for a subplot."""
+        self._get_or_create_subplot(row, col).autoscale(enable, axis, tight)
+
+    def autoscale_view(self, tight=None, scalex=True, scaley=True, row=None, col=None):
+        """Configure view-limit autoscaling for a subplot."""
+        self._get_or_create_subplot(row, col).autoscale_view(tight, scalex, scaley)
+
+    def relim(self, visible_only=False, row=None, col=None):
+        """Recompute a subplot's data limits."""
+        self._get_or_create_subplot(row, col).relim(visible_only)
+
+    def set_box_aspect(self, aspect, row=None, col=None):
+        """Set the physical height-to-width ratio of a subplot."""
+        self._get_or_create_subplot(row, col).set_box_aspect(aspect)
+
+    def secondary_xaxis(self, location="top", functions=None, row=None, col=None, **kwargs):
+        """Configure a secondary x-axis for a subplot."""
+        self._get_or_create_subplot(row, col).secondary_xaxis(
+            location, functions, **kwargs
+        )
+
+    def secondary_yaxis(self, location="right", functions=None, row=None, col=None, **kwargs):
+        """Configure a secondary y-axis for a subplot."""
+        self._get_or_create_subplot(row, col).secondary_yaxis(
+            location, functions, **kwargs
+        )
+
+    def clabel(self, row: int | None = None, col: int | None = None, **kwargs):
+        """Label contour levels in a subplot."""
+        self._get_or_create_subplot(row, col).clabel(**kwargs)
+
+    def set_rasterization_zorder(
+        self, z, row: int | None = None, col: int | None = None
+    ):
+        """Rasterize Matplotlib artists below the given z-order."""
+        self._get_or_create_subplot(row, col).set_rasterization_zorder(z)
+
     def stem(
         self, x, y, layer=0, row: int | None = None, col: int | None = None, **kwargs
     ):
@@ -1000,6 +1058,14 @@ class Canvas:
     ):
         """Set y-axis ticks and optional label properties for a subplot."""
         self._get_or_create_subplot(row, col).set_yticks(ticks, labels, **kwargs)
+
+    def set_xticklabels(self, labels, row=None, col=None, **kwargs):
+        """Set x-axis tick labels and text properties."""
+        self._get_or_create_subplot(row, col).set_xticklabels(labels, **kwargs)
+
+    def set_yticklabels(self, labels, row=None, col=None, **kwargs):
+        """Set y-axis tick labels and text properties."""
+        self._get_or_create_subplot(row, col).set_yticklabels(labels, **kwargs)
 
     def fill_between(
         self,
@@ -1942,6 +2008,16 @@ class Canvas:
 
         resolved_usetex = self._usetex if usetex is None else usetex
 
+        for subplot in self._subplot_dict.values():
+            if (
+                subplot._secondary_xaxis_settings is not None
+                or subplot._secondary_yaxis_settings is not None
+            ):
+                raise NotImplementedError(
+                    "secondary_xaxis and secondary_yaxis are currently supported "
+                    "only by the matplotlib backend"
+                )
+
         setup_tex_fonts(
             fontsize=self.fontsize,
             usetex=resolved_usetex,
@@ -1970,7 +2046,7 @@ class Canvas:
                 layers=layers, allow_unsupported=allow_unsupported
             )
             for trace in traces:
-                if trace.type == "pie":
+                if trace.type in ("pie", "table"):
                     fig.add_trace(trace)
                 else:
                     fig.add_trace(trace, row=row + 1, col=col + 1)
@@ -1986,7 +2062,7 @@ class Canvas:
                     layers=layers, allow_unsupported=allow_unsupported
                 )
                 for trace in twin_traces:
-                    if trace.type == "pie":
+                    if trace.type in ("pie", "table"):
                         fig.add_trace(trace)
                     else:
                         fig.add_trace(
@@ -2106,6 +2182,49 @@ class Canvas:
                     row=row + 1,
                     col=col + 1,
                 )
+
+            if line_plot._xticklabels is not None and line_plot._xticks is None:
+                fig.update_xaxes(
+                    tickmode="array",
+                    ticktext=line_plot._xticklabels,
+                    tickfont={
+                        key: line_plot._xticklabel_kwargs[key]
+                        for key in ("size", "color", "family")
+                        if key in line_plot._xticklabel_kwargs
+                    },
+                    row=row + 1,
+                    col=col + 1,
+                )
+            if line_plot._yticklabels is not None and line_plot._yticks is None:
+                fig.update_yaxes(
+                    tickmode="array",
+                    ticktext=line_plot._yticklabels,
+                    tickfont={
+                        key: line_plot._yticklabel_kwargs[key]
+                        for key in ("size", "color", "family")
+                        if key in line_plot._yticklabel_kwargs
+                    },
+                    row=row + 1,
+                    col=col + 1,
+                )
+
+            if line_plot._axis_settings:
+                axis_args = line_plot._axis_settings.get("args", ())
+                if axis_args and axis_args[0] == "off":
+                    fig.update_xaxes(visible=False, row=row + 1, col=col + 1)
+                    fig.update_yaxes(visible=False, row=row + 1, col=col + 1)
+                elif axis_args and axis_args[0] == "equal":
+                    fig.update_yaxes(
+                        scaleanchor=xref, row=row + 1, col=col + 1
+                    )
+                elif axis_args and len(axis_args[0]) == 4:
+                    xmin, xmax, ymin, ymax = axis_args[0]
+                    fig.update_xaxes(
+                        range=[xmin, xmax], row=row + 1, col=col + 1
+                    )
+                    fig.update_yaxes(
+                        range=[ymin, ymax], row=row + 1, col=col + 1
+                    )
 
             # Aspect ratio
             if line_plot._aspect == "equal":

@@ -1,8 +1,5 @@
 import numpy as np
 
-import pytest
-
-
 def test_plotly_backend_supports_common_primitives():
     from maxplotlib import Canvas
 
@@ -131,6 +128,37 @@ def test_plotly_backend_supports_scientific_field_plots():
     assert any(trace.type == "histogram2d" for trace in fig.data)
 
 
+def test_plotly_backend_supports_contour_labels():
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 5)
+    xx, yy = np.meshgrid(x, x)
+    canvas, axis = Canvas.subplots()
+    axis.contour(x, x, xx**2 + yy**2)
+    axis.clabel(fontsize=10, color="black")
+
+    fig = canvas.plot(backend="plotly")
+
+    assert fig.data[0].contours.showlabels is True
+    assert fig.data[0].contours.labelfont.size == 10
+
+
+def test_plotly_backend_supports_fill_log_scales_and_ticklabels():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.fill([1, 2, 4], [1, 4, 1], color="orange", alpha=0.3)
+    axis.loglog([1, 2, 4], [1, 4, 16])
+    axis.set_xticklabels(["one", "two", "four"], color="navy")
+
+    fig = canvas.plot(backend="plotly")
+
+    assert any(trace.fill == "toself" for trace in fig.data)
+    assert fig.layout.xaxis.type == "log"
+    assert fig.layout.yaxis.type == "log"
+    assert fig.layout.xaxis.ticktext == ("one", "two", "four")
+
+
 def test_plotly_backend_respects_layers():
     from maxplotlib import Canvas
 
@@ -189,29 +217,119 @@ def test_plotly_backend_supports_common_patches_and_symlog():
     assert fig2 is not None
 
 
-def test_plotly_backend_reports_unsupported_primitives_and_allows_override():
+def test_plotly_backend_renders_mixed_vector_primitives():
     from maxplotlib import Canvas
 
     canvas, axis = Canvas.subplots()
     axis.plot([0, 1], [0, 1])
-    axis.quiver([0], [0], [1], [1])
+    axis.streamplot(
+        np.linspace(0, 1, 3),
+        np.linspace(0, 1, 3),
+        np.ones((3, 3)),
+        np.ones((3, 3)),
+    )
 
-    with pytest.raises(NotImplementedError, match="quiver"):
-        canvas.plot(backend="plotly")
-
-    fig = canvas.plot(backend="plotly", allow_unsupported=True)
-    assert len(fig.data) == 1
+    fig = canvas.plot(backend="plotly")
+    assert len(fig.data) > 1
 
 
-def test_plotly_backend_reports_matplotlib_only_bar_labels():
+def test_plotly_backend_supports_bar_labels():
     from maxplotlib import Canvas
 
     canvas, axis = Canvas.subplots()
     axis.bar([0, 1], [2, 3])
     axis.bar_label(fmt="%d")
 
-    with pytest.raises(NotImplementedError, match="bar_label"):
-        canvas.plot(backend="plotly")
+    fig = canvas.plot(backend="plotly")
+    labels = [annotation.text for annotation in fig.layout.annotations]
+    assert labels[-2:] == ["2", "3"]
 
-    fig = canvas.plot(backend="plotly", allow_unsupported=True)
-    assert len(fig.data) == 1
+
+def test_plotly_backend_supports_pseudocolor_spy_table_and_triplot():
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 4)
+    y = np.linspace(-1, 1, 4)
+    xx, yy = np.meshgrid(x, y)
+    z = xx**2 + yy**2
+    points_x = np.array([0.0, 1.0, 0.0, 1.0])
+    points_y = np.array([0.0, 0.0, 1.0, 1.0])
+    triangles = np.array([[0, 1, 2], [1, 3, 2]])
+
+    canvas, axis = Canvas.subplots()
+    axis.pcolor(x, y, z)
+    axis.pcolorfast(x, y, z)
+    axis.spy([[1, 0], [0, 2]])
+    axis.table(cellText=[["A", "B"], ["1", "2"]])
+    axis.triplot(points_x, points_y, triangles=triangles)
+
+    fig = canvas.plot(backend="plotly")
+
+    assert sum(trace.type == "heatmap" for trace in fig.data) >= 3
+    assert any(trace.type == "table" for trace in fig.data)
+    assert any(trace.type == "scatter" for trace in fig.data)
+
+
+def test_plotly_backend_supports_quiver():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.quiver([0, 1], [0, 1], [1, -1], [1, 1], color="purple", alpha=0.5)
+
+    fig = canvas.plot(backend="plotly")
+
+    arrows = [annotation for annotation in fig.layout.annotations if annotation.showarrow]
+    assert len(arrows) == 2
+    assert arrows[0].arrowcolor == "purple"
+
+
+def test_plotly_backend_supports_tripcolor():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.tripcolor(
+        [0, 1, 0, 1],
+        [0, 0, 1, 1],
+        [0, 1, 2, 3],
+        triangles=[[0, 1, 2], [1, 3, 2]],
+    )
+
+    fig = canvas.plot(backend="plotly")
+
+    assert sum(trace.fill == "toself" for trace in fig.data) == 2
+
+
+def test_plotly_backend_supports_triangulated_contours():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    x = [0, 1, 0, 1]
+    y = [0, 0, 1, 1]
+    triangles = [[0, 1, 2], [1, 3, 2]]
+    values = [0, 1, 2, 3]
+    axis.tricontour(x, y, values, triangles=triangles, levels=3)
+    axis.tricontourf(x, y, values, triangles=triangles, levels=3)
+
+    fig = canvas.plot(backend="plotly")
+
+    assert any(trace.fill is None for trace in fig.data)
+    assert any(trace.fill == "toself" for trace in fig.data)
+
+
+def test_plotly_backend_supports_streamplot():
+    from maxplotlib import Canvas
+
+    coordinates = np.linspace(0, 1, 5)
+    canvas, axis = Canvas.subplots()
+    axis.streamplot(
+        coordinates,
+        coordinates,
+        np.ones((5, 5)),
+        np.ones((5, 5)),
+        color="darkgreen",
+    )
+
+    fig = canvas.plot(backend="plotly")
+
+    assert len(fig.data) > 0
+    assert all(trace.type == "scatter" for trace in fig.data)

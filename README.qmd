@@ -128,6 +128,30 @@ twin_canvas.show()
 Secondary y-axes are currently supported by the Matplotlib and Plotly
 backends.
 
+### Plotly field plots and tables
+
+Several Matplotlib field and annotation APIs map directly to interactive
+Plotly traces, including pseudocolor plots, sparsity patterns, triangular
+grids, and tables:
+
+```{python}
+#| output: false
+plotly_canvas, plotly_ax = Canvas.subplots()
+plotly_ax.pcolor(x, x, np.outer(np.sin(x), np.cos(x)))
+plotly_ax.spy([[1, 0, 1], [0, 1, 0], [1, 0, 1]])
+plotly_ax.table(cellText=[["A", "B"], ["1", "2"]])
+plotly_canvas.show(backend="plotly")
+```
+
+Plotly raises `NotImplementedError` for primitives without a faithful
+equivalent instead of silently dropping them. To render the supported parts
+of a mixed canvas, explicitly opt into skipping unsupported primitives:
+
+```{python}
+#| output: false
+plotly_canvas.plot(backend="plotly", allow_unsupported=True)
+```
+
 Render the same line graph directly in the terminal with the `plotext` backend:
 
 ```{python}

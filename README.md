@@ -129,6 +129,29 @@ twin_canvas.show()
 Secondary y-axes are currently supported by the Matplotlib and Plotly
 backends.
 
+### Plotly field plots and tables
+
+Several Matplotlib field and annotation APIs map directly to interactive
+Plotly traces, including pseudocolor plots, sparsity patterns,
+triangular grids, and tables:
+
+``` python
+plotly_canvas, plotly_ax = Canvas.subplots()
+plotly_ax.pcolor(x, x, np.outer(np.sin(x), np.cos(x)))
+plotly_ax.spy([[1, 0, 1], [0, 1, 0], [1, 0, 1]])
+plotly_ax.table(cellText=[["A", "B"], ["1", "2"]])
+plotly_canvas.show(backend="plotly")
+```
+
+Plotly raises `NotImplementedError` for primitives without a faithful
+equivalent instead of silently dropping them. To render the supported
+parts of a mixed canvas, explicitly opt into skipping unsupported
+primitives:
+
+``` python
+plotly_canvas.plot(backend="plotly", allow_unsupported=True)
+```
+
 Render the same line graph directly in the terminal with the `plotext`
 backend:
 
@@ -166,7 +189,7 @@ Or plot with the TikZ backend:
 canvas.show(backend="tikzfigure")
 ```
 
-![](README_files/figure-commonmark/cell-10-output-1.png)
+![](README_files/figure-commonmark/cell-12-output-1.png)
 
 ### Horizontal Subplots with TikZ Backend
 
@@ -247,7 +270,7 @@ canvas.show(backend="plotext")
         1.0               1.8                3.2               5.6             10.0 
     y                                         x                                     
 
-    <maxplotlib.backends.plotext.figure.PlotextFigure at 0x110802710>
+    <maxplotlib.backends.plotext.figure.PlotextFigure at 0x110a30550>
 
 ### Layers
 
@@ -283,7 +306,7 @@ Show layer 0 only, then layers 0 and 1, then everything:
 canvas.show(layers=[0])
 ```
 
-![](README_files/figure-commonmark/cell-14-output-1.png)
+![](README_files/figure-commonmark/cell-16-output-1.png)
 
     (<Figure size 590.551x324.803 with 1 Axes>,
      array([[<Axes: xlabel='x'>]], dtype=object))
@@ -294,7 +317,7 @@ Show all layers:
 canvas.show()
 ```
 
-![](README_files/figure-commonmark/cell-15-output-1.png)
+![](README_files/figure-commonmark/cell-17-output-1.png)
 
     (<Figure size 590.551x324.803 with 1 Axes>,
      array([[<Axes: xlabel='x'>]], dtype=object))
