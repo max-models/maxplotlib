@@ -923,7 +923,10 @@ def test_plot_many_adds_labeled_lines_and_returns_canvas():
     )
 
     assert result is canvas
-    assert [line["kwargs"]["label"] for line in canvas._subplot_matrix[0][0].layered_line_data[0]] == [
+    assert [
+        line["kwargs"]["label"]
+        for line in canvas._subplot_matrix[0][0].layered_line_data[0]
+    ] == [
         "up",
         "down",
     ]
