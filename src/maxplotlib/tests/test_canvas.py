@@ -636,7 +636,6 @@ def test_vector_and_triangulated_plot_primitives_are_supported():
 
 
 def test_stream_matrix_and_table_primitives_are_supported():
-    import matplotlib.pyplot as plt
     import numpy as np
 
     from maxplotlib import Canvas
@@ -682,7 +681,6 @@ def test_contour_labels_and_rasterization_zorder_are_supported():
 
 def test_axis_layout_and_log_shortcuts_are_supported():
     import matplotlib.pyplot as plt
-    import numpy as np
 
     from maxplotlib import Canvas
 
