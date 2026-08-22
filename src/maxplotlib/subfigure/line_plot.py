@@ -4,7 +4,6 @@ import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tikzfigure import TikzFigure
 
-
 _TIKZ_SUPPORTED_PLOT_TYPES = {
     "plot",
     "scatter",

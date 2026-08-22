@@ -19,8 +19,8 @@ from maxplotlib.backends.plotext import PlotextFigure, create_plotext_figure
 from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
 from maxplotlib.subfigure.line_plot import (
-    LinePlot,
     _TIKZ_SUPPORTED_PLOT_TYPES,
+    LinePlot,
     _tikz_error_bounds,
     _tikz_step_coordinates,
     _tikz_style_kwargs,
@@ -2310,7 +2310,12 @@ class Canvas:
                         width = source_kwargs.get("width", 0.8)
                         for x, height in zip(line_data["x"], line_data["height"]):
                             ax.add_plot(
-                                x=[x - width / 2, x + width / 2, x + width / 2, x - width / 2],
+                                x=[
+                                    x - width / 2,
+                                    x + width / 2,
+                                    x + width / 2,
+                                    x - width / 2,
+                                ],
                                 y=[0, 0, height, height],
                                 cycle=True,
                                 **kwargs,
@@ -2320,7 +2325,12 @@ class Canvas:
                         for y, width in zip(line_data["y"], line_data["width"]):
                             ax.add_plot(
                                 x=[0, width, width, 0],
-                                y=[y - height / 2, y - height / 2, y + height / 2, y + height / 2],
+                                y=[
+                                    y - height / 2,
+                                    y - height / 2,
+                                    y + height / 2,
+                                    y + height / 2,
+                                ],
                                 cycle=True,
                                 **kwargs,
                             )
@@ -2379,7 +2389,9 @@ class Canvas:
                     source_kwargs = line_data.get("kwargs", {})
                     style = _tikz_style_kwargs(source_kwargs)
                     marker_style = dict(style)
-                    marker_style.update(mark=source_kwargs.get("marker", "*"), line_width=0)
+                    marker_style.update(
+                        mark=source_kwargs.get("marker", "*"), line_width=0
+                    )
                     ax.add_plot(x=x, y=y, **marker_style)
                     for xi, yi in zip(x, y):
                         ax.add_plot(x=[xi, xi], y=[0, yi], **style)
