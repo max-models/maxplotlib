@@ -47,6 +47,30 @@ explicitly render an already-built canvas, use `canvas.render(...)`. The older
 `canvas.plot(backend=...)` spelling is still supported for compatibility, but
 emits a `FutureWarning`.
 
+Add several lines at once with shared styling:
+
+```{python}
+#| output: false
+canvas.plot_many(
+    [(x, np.sin(x)), (x, np.cos(x))],
+    labels=["sin(x)", "cos(x)"],
+    linewidth=2,
+)
+```
+
+Common figure and axis settings can be grouped with `configure()`:
+
+```{python}
+#| output: false
+canvas.configure(
+    title="Trigonometry",
+    xlabel="Angle",
+    ylabel="Value",
+    grid=True,
+    facecolor="whitesmoke",
+)
+```
+
 For Matplotlib-specific customization, pass method calls declaratively. Figure
 methods run once and axes methods run for every subplot, providing access to
 any Matplotlib API without requiring a maxplotlib wrapper:

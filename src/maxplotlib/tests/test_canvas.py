@@ -160,7 +160,7 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_line_spacing():
         for ax in row_axes:
             ax.plot(x, (idx + 1) * x)
             idx += 1
-    tight_fig, tight_matplotlib_axes = tight_canvas.plot(backend="matplotlib")
+    tight_fig, tight_matplotlib_axes = tight_canvas.render(backend="matplotlib")
     tight_hgap = (
         tight_matplotlib_axes[0, 1].get_position().x0
         - tight_matplotlib_axes[0, 0].get_position().x1
@@ -183,7 +183,7 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_line_spacing():
         for ax in row_axes:
             ax.plot(x, (idx + 1) * x)
             idx += 1
-    loose_fig, loose_matplotlib_axes = loose_canvas.plot(backend="matplotlib")
+    loose_fig, loose_matplotlib_axes = loose_canvas.render(backend="matplotlib")
     loose_hgap = (
         loose_matplotlib_axes[0, 1].get_position().x0
         - loose_matplotlib_axes[0, 0].get_position().x1
@@ -222,7 +222,7 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_imshow_spacing():
             ax.add_imshow(data + idx, cmap="viridis")
             ax.set_title(f"Heatmap {idx + 1}")
             idx += 1
-    tight_fig, tight_matplotlib_axes = tight_canvas.plot(backend="matplotlib")
+    tight_fig, tight_matplotlib_axes = tight_canvas.render(backend="matplotlib")
     tight_hgap = (
         tight_matplotlib_axes[0, 1].get_position().x0
         - tight_matplotlib_axes[0, 0].get_position().x1
@@ -246,7 +246,7 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_imshow_spacing():
             ax.add_imshow(data + idx, cmap="viridis")
             ax.set_title(f"Heatmap {idx + 1}")
             idx += 1
-    loose_fig, loose_matplotlib_axes = loose_canvas.plot(backend="matplotlib")
+    loose_fig, loose_matplotlib_axes = loose_canvas.render(backend="matplotlib")
     loose_hgap = (
         loose_matplotlib_axes[0, 1].get_position().x0
         - loose_matplotlib_axes[0, 0].get_position().x1
@@ -672,7 +672,7 @@ def test_contour_labels_and_rasterization_zorder_are_supported():
     axis.clabel(inline=True, fontsize=8)
     axis.set_rasterization_zorder(2)
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
 
     assert len(axes[0, 0].texts) > 0
     assert axes[0, 0].get_rasterization_zorder() == 2
@@ -694,7 +694,7 @@ def test_axis_layout_and_log_shortcuts_are_supported():
     axis.set_xticklabels(["one", "two", "four"], rotation=30)
     axis.set_yticklabels(["low", "high"], color="navy")
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
     matplotlib_axis = axes[0, 0]
 
     assert matplotlib_axis.get_xscale() == "log"
@@ -718,7 +718,7 @@ def test_secondary_axes_are_supported_by_matplotlib():
         "right", functions=(lambda y: y + 1, lambda y: y - 1), label="offset"
     )
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
 
     assert len(axes[0, 0].child_axes) == 2
     plt.close(fig)
@@ -734,7 +734,7 @@ def test_twiny_is_supported_by_matplotlib():
     axis.plot([0, 1], [0, 1])
     secondary.plot([10, 20], [0, 1], color="red")
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
 
     assert canvas.twiny_axes[(0, 0)] is not axes[0, 0]
     plt.close(fig)
@@ -759,7 +759,7 @@ def test_axis_state_setter_aliases_are_supported():
     axis.set_xbound(-1, 2)
     axis.set_ybound(-2, 3)
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
     matplotlib_axis = axes[0, 0]
 
     assert matplotlib_axis.get_frame_on() is False
@@ -805,7 +805,7 @@ def test_generic_axis_setters_and_metadata_getters_are_supported():
     axis.update({"aspect": "equal"})
     axis.invert_xaxis()
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
     matplotlib_axis = axes[0, 0]
 
     assert canvas.get_suptitle() == "Figure title"
@@ -835,7 +835,7 @@ def test_figure_layout_helpers_and_aliases_are_supported():
     canvas.align_ylabels()
     canvas.autofmt_xdate(rotation=20)
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
 
     assert axes[0, 0].get_legend() is not None
     assert len(axes[0, 0].tables) == 1
@@ -911,6 +911,46 @@ def test_legacy_plot_backend_form_warns():
 
     with pytest.warns(FutureWarning, match=r"canvas\.render"):
         canvas.plot(backend="plotly")
+
+
+def test_plot_many_adds_labeled_lines_and_returns_canvas():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    result = canvas.plot_many(
+        [([0, 1], [0, 1]), ([0, 1], [1, 0])],
+        labels=["up", "down"],
+    )
+
+    assert result is canvas
+    assert [line["kwargs"]["label"] for line in canvas._subplot_matrix[0][0].layered_line_data[0]] == [
+        "up",
+        "down",
+    ]
+
+
+def test_configure_applies_common_canvas_settings():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.plot([0, 1], [0, 1]).configure(
+        title="Example",
+        xlabel="Time",
+        ylabel="Value",
+        grid=True,
+        facecolor="whitesmoke",
+        xlim=(0, 2),
+        ylim=(-1, 2),
+    )
+
+    subplot = canvas._subplot_matrix[0][0]
+    assert canvas._suptitle == "Example"
+    assert canvas._supxlabel == "Time"
+    assert canvas._supylabel == "Value"
+    assert subplot._grid is True
+    assert subplot._facecolor == "whitesmoke"
+    assert (subplot._xmin, subplot._xmax) == (0, 2)
+    assert (subplot._ymin, subplot._ymax) == (-1, 2)
 
 
 def test_matplotlib_postprocess_can_customize_figure_and_axes():
@@ -995,7 +1035,7 @@ def test_matplotlib_postprocess_rejects_non_matplotlib_backends():
     from maxplotlib import Canvas
 
     with pytest.raises(ValueError, match="only supported with the matplotlib backend"):
-        Canvas().plot(backend="plotly", matplotlib_postprocess=lambda fig, axes: None)
+        Canvas().render(backend="plotly", matplotlib_postprocess=lambda fig, axes: None)
 
 
 def test_show_canvas_script_invokes_canvas_show(monkeypatch):
