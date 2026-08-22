@@ -5,6 +5,84 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tikzfigure import TikzFigure
 
 
+_TIKZ_SUPPORTED_PLOT_TYPES = {
+    "plot",
+    "scatter",
+    "bar",
+    "barh",
+    "fill_between",
+    "errorbar",
+    "step",
+    "stairs",
+    "stem",
+    "hlines",
+    "vlines",
+    "axvspan",
+    "axhspan",
+    "fill",
+    "gantt",
+    "flame_chart",
+}
+
+
+def _tikz_style_kwargs(kwargs, *, default_color="black"):
+    """Translate common Matplotlib-style options to pgfplots/TikZ options."""
+    kwargs = dict(kwargs)
+    style = {}
+    if kwargs.get("color") is not None:
+        style["color"] = kwargs["color"]
+    else:
+        style["color"] = default_color
+    if kwargs.get("linewidth") is not None:
+        style["line_width"] = kwargs["linewidth"]
+    if kwargs.get("alpha") is not None:
+        style["opacity"] = kwargs["alpha"]
+    if kwargs.get("linestyle") in {"--", "dashed"}:
+        style["dash_pattern"] = "on 4pt off 2pt"
+    elif kwargs.get("linestyle") in {":", "dotted"}:
+        style["dash_pattern"] = "on 1pt off 2pt"
+    elif kwargs.get("linestyle") == "-.":
+        style["dash_pattern"] = "on 4pt off 2pt on 1pt off 2pt"
+    if kwargs.get("marker") is not None:
+        style["mark"] = kwargs["marker"]
+    if kwargs.get("markersize") is not None:
+        style["mark_size"] = f"{kwargs['markersize']}pt"
+    return style
+
+
+def _tikz_error_bounds(error, values):
+    """Return lower and upper error arrays in Matplotlib's common formats."""
+    if error is None:
+        return None
+    error = np.asarray(error, dtype=float)
+    values = np.asarray(values, dtype=float)
+    if error.ndim == 0:
+        error = np.full(values.shape, error.item())
+    if error.ndim == 2 and error.shape[0] == 2:
+        return error[0], error[1]
+    return error, error
+
+
+def _tikz_step_coordinates(x, y, where="pre"):
+    """Expand line data into explicit coordinates for a stepped path."""
+    x = np.asarray(x)
+    y = np.asarray(y)
+    if len(x) < 2:
+        return x, y
+    if where == "post":
+        step_x = np.repeat(x, 2)[1:]
+        step_y = np.repeat(y, 2)[:-1]
+    elif where == "mid":
+        mids = (x[:-1] + x[1:]) / 2
+        step_x = np.ravel(np.column_stack((x[:-1], mids, mids, x[1:])))
+        step_y = np.ravel(np.column_stack((y[:-1], y[:-1], y[1:], y[1:])))
+        return step_x, step_y
+    else:
+        step_x = np.repeat(x, 2)[:-1]
+        step_y = np.repeat(y, 2)[1:]
+    return step_x, step_y
+
+
 class Node:
     def __init__(self, x, y, label="", content="", layer=0, **kwargs):
         self.x = x
@@ -1620,12 +1698,176 @@ class LinePlot:
             if layers and layer_name not in layers:
                 continue
             for line in layer_lines:
-                if line["plot_type"] == "plot":
+                plot_type = line["plot_type"]
+                if plot_type not in _TIKZ_SUPPORTED_PLOT_TYPES:
+                    raise NotImplementedError(
+                        f"{plot_type} is not supported by the tikzfigure backend"
+                    )
+                if plot_type == "plot":
                     x = (line["x"] + self._xshift) * self._xscale
                     y = (line["y"] + self._yshift) * self._yscale
 
                     nodes = [[xi, yi] for xi, yi in zip(x, y)]
-                    tikz_figure.draw(nodes=nodes, **line["kwargs"])
+                    tikz_figure.draw(
+                        nodes=nodes,
+                        **_tikz_style_kwargs(line["kwargs"]),
+                    )
+                elif plot_type == "scatter":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y = (line["y"] + self._yshift) * self._yscale
+                    style = _tikz_style_kwargs(line["kwargs"])
+                    style.setdefault("mark", "*")
+                    style["line_width"] = 0
+                    tikz_figure.draw(
+                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
+                        **style,
+                    )
+                elif plot_type in {"bar", "barh"}:
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    style["fill"] = kwargs.get("color", "blue")
+                    style["fill_opacity"] = kwargs.get("alpha", 1.0)
+                    style["line_width"] = kwargs.get("linewidth", 0)
+                    if plot_type == "bar":
+                        width = kwargs.get("width", 0.8)
+                        for x, height in zip(line["x"], line["height"]):
+                            x = (x + self._xshift) * self._xscale
+                            height = height * self._yscale
+                            tikz_figure.draw(
+                                nodes=[
+                                    [x - width / 2, 0],
+                                    [x + width / 2, 0],
+                                    [x + width / 2, height],
+                                    [x - width / 2, height],
+                                ],
+                                cycle=True,
+                                **style,
+                            )
+                    else:
+                        height = kwargs.get("height", 0.8)
+                        for y, width in zip(line["y"], line["width"]):
+                            y = (y + self._yshift) * self._yscale
+                            width = width * self._xscale
+                            tikz_figure.draw(
+                                nodes=[
+                                    [0, y - height / 2],
+                                    [width, y - height / 2],
+                                    [width, y + height / 2],
+                                    [0, y + height / 2],
+                                ],
+                                cycle=True,
+                                **style,
+                            )
+                elif plot_type == "fill_between":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y1 = np.asarray(line["y1"])
+                    y2 = np.broadcast_to(line["y2"], y1.shape)
+                    nodes = [[xi, yi] for xi, yi in zip(x, y1)]
+                    nodes.extend([[xi, yi] for xi, yi in zip(x[::-1], y2[::-1])])
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    style["fill"] = kwargs.get("color", "blue")
+                    style["fill_opacity"] = kwargs.get("alpha", 0.25)
+                    tikz_figure.draw(nodes=nodes, cycle=True, **style)
+                elif plot_type == "errorbar":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y = (line["y"] + self._yshift) * self._yscale
+                    style = _tikz_style_kwargs(line["kwargs"])
+                    tikz_figure.draw(nodes=[[xi, yi] for xi, yi in zip(x, y)], **style)
+                    y_bounds = _tikz_error_bounds(line["yerr"], y)
+                    if y_bounds is not None:
+                        lower, upper = y_bounds
+                        for xi, low, high in zip(x, y - lower, y + upper):
+                            tikz_figure.draw(nodes=[[xi, low], [xi, high]], **style)
+                    x_bounds = _tikz_error_bounds(line["xerr"], x)
+                    if x_bounds is not None:
+                        lower, upper = x_bounds
+                        for yi, low, high in zip(y, x - lower, x + upper):
+                            tikz_figure.draw(nodes=[[low, yi], [high, yi]], **style)
+                elif plot_type in {"step", "stairs"}:
+                    kwargs = line["kwargs"]
+                    if plot_type == "step":
+                        x = line["x"]
+                        y = line["y"]
+                        where = kwargs.get("where", "pre")
+                    else:
+                        values = line["values"]
+                        edges = line["edges"]
+                        if edges is None:
+                            edges = np.arange(len(values) + 1)
+                        x = edges
+                        y = np.r_[values, values[-1]]
+                        where = "post"
+                    x, y = _tikz_step_coordinates(x, y, where=where)
+                    x = (x + self._xshift) * self._xscale
+                    y = (y + self._yshift) * self._yscale
+                    tikz_figure.draw(
+                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
+                        **_tikz_style_kwargs(kwargs),
+                    )
+                elif plot_type == "stem":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y = (line["y"] + self._yshift) * self._yscale
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    marker_style = dict(style)
+                    marker_style.update(mark=kwargs.get("marker", "*"), line_width=0)
+                    tikz_figure.draw(
+                        nodes=[[xi, yi] for xi, yi in zip(x, y)], **marker_style
+                    )
+                    for xi, yi in zip(x, y):
+                        tikz_figure.draw(nodes=[[xi, 0], [xi, yi]], **style)
+                elif plot_type in {"hlines", "vlines"}:
+                    kwargs = _tikz_style_kwargs(line["kwargs"])
+                    if plot_type == "hlines":
+                        for yi, left, right in zip(
+                            np.atleast_1d(line["y"]),
+                            np.atleast_1d(line["xmin"]),
+                            np.atleast_1d(line["xmax"]),
+                        ):
+                            tikz_figure.draw(nodes=[[left, yi], [right, yi]], **kwargs)
+                    else:
+                        for xi, bottom, top in zip(
+                            np.atleast_1d(line["x"]),
+                            np.atleast_1d(line["ymin"]),
+                            np.atleast_1d(line["ymax"]),
+                        ):
+                            tikz_figure.draw(nodes=[[xi, bottom], [xi, top]], **kwargs)
+                elif plot_type in {"axvspan", "axhspan"}:
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    style["fill"] = kwargs.get("color", "blue")
+                    style["fill_opacity"] = kwargs.get("alpha", 0.2)
+                    if plot_type == "axvspan":
+                        ymin, ymax = self._ymin or 0, self._ymax or 1
+                        nodes = [
+                            [line["xmin"], ymin],
+                            [line["xmax"], ymin],
+                            [line["xmax"], ymax],
+                            [line["xmin"], ymax],
+                        ]
+                    else:
+                        xmin, xmax = self._xmin or 0, self._xmax or 1
+                        nodes = [
+                            [xmin, line["ymin"]],
+                            [xmax, line["ymin"]],
+                            [xmax, line["ymax"]],
+                            [xmin, line["ymax"]],
+                        ]
+                    tikz_figure.draw(nodes=nodes, cycle=True, **style)
+                elif plot_type == "fill":
+                    if len(line["args"]) < 2:
+                        raise ValueError("tikzfigure fill requires x and y coordinates")
+                    x, y = line["args"][:2]
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    style["fill"] = kwargs.get("color", "blue")
+                    style["fill_opacity"] = kwargs.get("alpha", 0.25)
+                    tikz_figure.draw(
+                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
+                        cycle=True,
+                        **style,
+                    )
                 elif line["plot_type"] == "gantt":
                     tasks = line["tasks"]
                     start_times = (line["start_times"] + self._xshift) * self._xscale
