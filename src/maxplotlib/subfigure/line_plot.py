@@ -76,6 +76,10 @@ class LinePlot:
         self._ymax = ymax
         self._xlabel = xlabel
         self._ylabel = ylabel
+        self._xlabel_kwargs: dict = {}
+        self._ylabel_kwargs: dict = {}
+        self._title_kwargs: dict = {}
+        self._tick_params: dict = {}
         self._xscale = xscale
         self._yscale = yscale
         self._xshift = xshift
@@ -84,12 +88,35 @@ class LinePlot:
         # Axis scale type ('linear', 'log', 'symlog')
         self._xaxis_scale: str | None = None
         self._yaxis_scale: str | None = None
+        self._axis_off = False
+        self._axisbelow = None
+        self._facecolor = None
+        self._margins: dict = {}
+        self._invert_xaxis = False
+        self._invert_yaxis = False
+        self._minorticks = None
+        self._locator_params: dict = {}
+        self._ticklabel_format: dict = {}
+        self._bar_label_kwargs: dict | None = None
+        self._clabel_kwargs: dict | None = None
+        self._rasterization_zorder = None
+        self._axis_settings: dict = {}
+        self._autoscale_settings: dict | None = None
+        self._autoscale_view_settings: dict | None = None
+        self._relim_settings: dict | None = None
+        self._box_aspect = None
+        self._secondary_xaxis_settings: dict | None = None
+        self._secondary_yaxis_settings: dict | None = None
 
         # Custom tick positions and labels
         self._xticks: list | None = None
         self._xticklabels: list | None = None
+        self._xtick_kwargs: dict = {}
+        self._xticklabel_kwargs: dict = {}
         self._yticks: list | None = None
         self._yticklabels: list | None = None
+        self._ytick_kwargs: dict = {}
+        self._yticklabel_kwargs: dict = {}
 
         # Aspect ratio
         self._aspect = None
@@ -185,6 +212,351 @@ class LinePlot:
         }
         self._add(ld, layer)
 
+    def barh(self, y, width, layer=0, **kwargs):
+        """Add a horizontal bar chart."""
+        self._add(
+            {
+                "y": np.array(y),
+                "width": np.array(width),
+                "layer": layer,
+                "plot_type": "barh",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def hist(self, x, bins=10, layer=0, **kwargs):
+        """Add a histogram."""
+        self._add(
+            {
+                "x": np.array(x),
+                "bins": bins,
+                "layer": layer,
+                "plot_type": "hist",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def step(self, x, y, layer=0, **kwargs):
+        """Add a step plot."""
+        self._add(
+            {
+                "x": np.array(x),
+                "y": np.array(y),
+                "layer": layer,
+                "plot_type": "step",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def stairs(self, values, edges=None, baseline=0, layer=0, **kwargs):
+        """Add a stairs plot."""
+        self._add(
+            {
+                "values": np.array(values),
+                "edges": edges,
+                "baseline": baseline,
+                "layer": layer,
+                "plot_type": "stairs",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def broken_barh(self, xranges, yrange, layer=0, **kwargs):
+        """Add horizontal bars with gaps between x ranges."""
+        self._add(
+            {
+                "xranges": list(xranges),
+                "yrange": yrange,
+                "layer": layer,
+                "plot_type": "broken_barh",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def pie(self, x, layer=0, **kwargs):
+        """Add a pie chart."""
+        self._add(
+            {"x": np.array(x), "layer": layer, "plot_type": "pie", "kwargs": kwargs},
+            layer,
+        )
+
+    def bar_label(self, **kwargs):
+        """Add labels to bar containers in the Matplotlib backend."""
+        self._bar_label_kwargs = dict(kwargs)
+
+    def clabel(self, **kwargs):
+        """Label contour lines and filled contour levels."""
+        self._clabel_kwargs = dict(kwargs)
+
+    def set_rasterization_zorder(self, z):
+        """Rasterize artists below the given z-order when exporting."""
+        self._rasterization_zorder = z
+
+    def stem(self, x, y, layer=0, **kwargs):
+        """Add a stem plot."""
+        self._add(
+            {
+                "x": np.array(x),
+                "y": np.array(y),
+                "layer": layer,
+                "plot_type": "stem",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def stackplot(self, x, *ys, layer=0, **kwargs):
+        """Add a stacked area plot."""
+        self._add(
+            {
+                "x": np.array(x),
+                "ys": [np.array(y) for y in ys],
+                "layer": layer,
+                "plot_type": "stackplot",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def boxplot(self, x, layer=0, **kwargs):
+        """Add a box-and-whisker plot."""
+        self._add(
+            {"x": x, "layer": layer, "plot_type": "boxplot", "kwargs": kwargs},
+            layer,
+        )
+
+    def violinplot(self, dataset, layer=0, **kwargs):
+        """Add a violin plot."""
+        self._add(
+            {
+                "dataset": dataset,
+                "layer": layer,
+                "plot_type": "violinplot",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def eventplot(self, positions, layer=0, **kwargs):
+        """Add an event/rug plot."""
+        self._add(
+            {
+                "positions": positions,
+                "layer": layer,
+                "plot_type": "eventplot",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def contour(self, x, y, z, layer=0, **kwargs):
+        """Add contour lines for a 2D scalar field."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "contour",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def contourf(self, x, y, z, layer=0, **kwargs):
+        """Add filled contours for a 2D scalar field."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "contourf",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def pcolormesh(self, x, y, z, layer=0, **kwargs):
+        """Add a pseudocolor mesh."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "pcolormesh",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def hexbin(self, x, y, layer=0, **kwargs):
+        """Add a hexagonal bin density plot."""
+        self._add(
+            {
+                "x": np.asarray(x),
+                "y": np.asarray(y),
+                "layer": layer,
+                "plot_type": "hexbin",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def matshow(self, data, layer=0, **kwargs):
+        """Display a matrix with matrix-oriented axes."""
+        self._add(
+            {
+                "data": np.asarray(data),
+                "layer": layer,
+                "plot_type": "matshow",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def quiver(self, x, y, u, v, layer=0, **kwargs):
+        """Add a vector field."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "u": u,
+                "v": v,
+                "layer": layer,
+                "plot_type": "quiver",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def triplot(self, x, y, triangles=None, layer=0, **kwargs):
+        """Add an unstructured triangular grid."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "triangles": triangles,
+                "layer": layer,
+                "plot_type": "triplot",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def tripcolor(self, x, y, c, triangles=None, layer=0, **kwargs):
+        """Add a colored unstructured triangular grid."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "c": c,
+                "triangles": triangles,
+                "layer": layer,
+                "plot_type": "tripcolor",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def tricontour(self, x, y, z, triangles=None, layer=0, **kwargs):
+        """Add contour lines on an unstructured triangular grid."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": z,
+                "triangles": triangles,
+                "layer": layer,
+                "plot_type": "tricontour",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def tricontourf(self, x, y, z, triangles=None, layer=0, **kwargs):
+        """Add filled contours on an unstructured triangular grid."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": z,
+                "triangles": triangles,
+                "layer": layer,
+                "plot_type": "tricontourf",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def streamplot(self, x, y, u, v, layer=0, **kwargs):
+        """Add streamlines for a 2D vector field."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "u": u,
+                "v": v,
+                "layer": layer,
+                "plot_type": "streamplot",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def pcolor(self, x, y, z, layer=0, **kwargs):
+        """Add a pseudocolor plot."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "pcolor",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def pcolorfast(self, x, y, z, layer=0, **kwargs):
+        """Add a fast pseudocolor plot."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "z": np.asarray(z),
+                "layer": layer,
+                "plot_type": "pcolorfast",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def spy(self, matrix, layer=0, **kwargs):
+        """Visualize the sparsity pattern of a matrix."""
+        self._add(
+            {"matrix": matrix, "layer": layer, "plot_type": "spy", "kwargs": kwargs},
+            layer,
+        )
+
+    def table(self, cellText=None, layer=0, **kwargs):
+        """Add a table annotation to the axes."""
+        self._add(
+            {
+                "cellText": cellText,
+                "layer": layer,
+                "plot_type": "table",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
     def gantt(self, tasks, start_times, durations, layer=0, **kwargs):
         """
         Add a Gantt chart to the subplot.
@@ -263,17 +635,20 @@ class LinePlot:
         }
         self._add(ld, layer)
 
-    def set_xlabel(self, label: str):
-        """Set the x-axis label."""
+    def set_xlabel(self, label: str, **kwargs):
+        """Set the x-axis label and its text properties."""
         self._xlabel = label
+        self._xlabel_kwargs = dict(kwargs)
 
-    def set_ylabel(self, label: str):
-        """Set the y-axis label."""
+    def set_ylabel(self, label: str, **kwargs):
+        """Set the y-axis label and its text properties."""
         self._ylabel = label
+        self._ylabel_kwargs = dict(kwargs)
 
-    def set_title(self, title: str):
-        """Set the subplot title."""
+    def set_title(self, title: str, **kwargs):
+        """Set the subplot title and its text properties."""
         self._title = title
+        self._title_kwargs = dict(kwargs)
 
     def set_xlim(self, left=None, right=None):
         """Set the x-axis limits."""
@@ -293,6 +668,10 @@ class LinePlot:
         """Show or hide the grid."""
         self._grid = visible
 
+    def tick_params(self, **kwargs):
+        """Configure tick appearance using Matplotlib-style keyword arguments."""
+        self._tick_params = dict(kwargs)
+
     def set_legend(self, visible: bool = True):
         """Show or hide the legend."""
         self._legend = visible
@@ -305,19 +684,140 @@ class LinePlot:
         """Set the y-axis scale type: 'linear', 'log', or 'symlog'."""
         self._yaxis_scale = scale
 
-    def set_xticks(self, ticks, labels=None):
-        """Set x-axis tick positions and optional labels."""
+    def set_axis_off(self):
+        """Hide the axis frame, ticks, and labels."""
+        self._axis_off = True
+
+    def set_axis_on(self):
+        """Show the axis frame, ticks, and labels."""
+        self._axis_off = False
+
+    def set_axisbelow(self, state=True):
+        """Set whether axis gridlines and ticks are drawn below plot data."""
+        self._axisbelow = state
+
+    def set_facecolor(self, color):
+        """Set the subplot background color."""
+        self._facecolor = color
+
+    def margins(self, *args, **kwargs):
+        """Set x/y data margins using Matplotlib-style arguments."""
+        self._margins = {"args": args, **kwargs}
+
+    def invert_xaxis(self):
+        """Invert the x-axis direction."""
+        self._invert_xaxis = True
+
+    def invert_yaxis(self):
+        """Invert the y-axis direction."""
+        self._invert_yaxis = True
+
+    def minorticks_on(self):
+        """Enable minor ticks."""
+        self._minorticks = True
+
+    def minorticks_off(self):
+        """Disable minor ticks."""
+        self._minorticks = False
+
+    def locator_params(self, **kwargs):
+        """Set axis locator parameters."""
+        self._locator_params = dict(kwargs)
+
+    def ticklabel_format(self, **kwargs):
+        """Configure tick-label numeric formatting."""
+        self._ticklabel_format = dict(kwargs)
+
+    def set_xticks(self, ticks, labels=None, **kwargs):
+        """Set x-axis tick positions, labels, and label properties.
+
+        Keyword arguments are forwarded to the plotting backend. For example,
+        ``rotation=45`` rotates the tick labels in the Matplotlib and Plotly
+        backends.
+        """
         self._xticks = list(ticks)
         self._xticklabels = list(labels) if labels is not None else None
+        self._xtick_kwargs = dict(kwargs)
 
-    def set_yticks(self, ticks, labels=None):
-        """Set y-axis tick positions and optional labels."""
+    def set_yticks(self, ticks, labels=None, **kwargs):
+        """Set y-axis tick positions, labels, and label properties."""
         self._yticks = list(ticks)
         self._yticklabels = list(labels) if labels is not None else None
+        self._ytick_kwargs = dict(kwargs)
 
     def set_aspect(self, aspect):
         """Set the axes aspect ratio: 'equal', 'auto', or a float."""
         self._aspect = aspect
+
+    def axis(self, *args, **kwargs):
+        """Set Matplotlib-style axis limits or modes."""
+        self._axis_settings = {"args": args, **kwargs}
+
+    def autoscale(self, enable=True, axis="both", tight=None):
+        """Configure autoscaling of one or both axes."""
+        self._autoscale_settings = {
+            "enable": enable,
+            "axis": axis,
+            "tight": tight,
+        }
+
+    def autoscale_view(self, tight=None, scalex=True, scaley=True):
+        """Configure autoscaling using the current data limits."""
+        self._autoscale_view_settings = {
+            "tight": tight,
+            "scalex": scalex,
+            "scaley": scaley,
+        }
+
+    def relim(self, visible_only=False):
+        """Recompute data limits before autoscaling."""
+        self._relim_settings = {"visible_only": visible_only}
+
+    def set_box_aspect(self, aspect):
+        """Set the physical height-to-width ratio of the axes box."""
+        self._box_aspect = aspect
+
+    def secondary_xaxis(self, location="top", functions=None, **kwargs):
+        """Add a Matplotlib secondary x-axis using forward/inverse functions."""
+        self._secondary_xaxis_settings = {
+            "location": location,
+            "functions": functions,
+            "kwargs": kwargs,
+        }
+
+    def secondary_yaxis(self, location="right", functions=None, **kwargs):
+        """Add a Matplotlib secondary y-axis using forward/inverse functions."""
+        self._secondary_yaxis_settings = {
+            "location": location,
+            "functions": functions,
+            "kwargs": kwargs,
+        }
+
+    def semilogx(self, x, y, layer=0, **kwargs):
+        """Add a line while using a logarithmic x-axis."""
+        self.set_xscale("log")
+        self.plot(x, y, layer=layer, **kwargs)
+
+    def semilogy(self, x, y, layer=0, **kwargs):
+        """Add a line while using a logarithmic y-axis."""
+        self.set_yscale("log")
+        self.plot(x, y, layer=layer, **kwargs)
+
+    def loglog(self, x, y, layer=0, **kwargs):
+        """Add a line while using logarithmic x- and y-axes."""
+        self.set_xscale("log")
+        self.set_yscale("log")
+        self.plot(x, y, layer=layer, **kwargs)
+
+    def set_xticklabels(self, labels, **kwargs):
+        """Set x tick labels and their text properties."""
+        self._xticklabels = list(labels)
+        self._xticklabel_kwargs = dict(kwargs)
+
+    def set_yticklabels(self, labels, **kwargs):
+        """Set y tick labels and their text properties."""
+        self._yticklabels = list(labels)
+        self._yticklabel_kwargs = dict(kwargs)
 
     def fill_between(self, x, y1, y2=0, layer=0, **kwargs):
         """
@@ -339,6 +839,27 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
+
+    def fill(self, *args, layer=0, **kwargs):
+        """Fill one or more polygonal regions."""
+        self._add(
+            {"args": args, "layer": layer, "plot_type": "fill", "kwargs": kwargs},
+            layer,
+        )
+
+    def fill_betweenx(self, y, x1, x2=0, layer=0, **kwargs):
+        """Fill the area between two x-boundaries along y."""
+        self._add(
+            {
+                "y": np.array(y),
+                "x1": np.array(x1) if not np.isscalar(x1) else x1,
+                "x2": np.array(x2) if not np.isscalar(x2) else x2,
+                "layer": layer,
+                "plot_type": "fill_betweenx",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
 
     def errorbar(self, x, y, yerr=None, xerr=None, layer=0, **kwargs):
         """
@@ -400,6 +921,61 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
+
+    def axvspan(self, xmin, xmax, layer=0, **kwargs):
+        """Add a vertical shaded span across the axes."""
+        self._add(
+            {
+                "xmin": xmin,
+                "xmax": xmax,
+                "layer": layer,
+                "plot_type": "axvspan",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def axhspan(self, ymin, ymax, layer=0, **kwargs):
+        """Add a horizontal shaded span across the axes."""
+        self._add(
+            {
+                "ymin": ymin,
+                "ymax": ymax,
+                "layer": layer,
+                "plot_type": "axhspan",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def arrow(self, x, y, dx, dy, layer=0, **kwargs):
+        """Add an arrow to the axes."""
+        self._add(
+            {
+                "x": x,
+                "y": y,
+                "dx": dx,
+                "dy": dy,
+                "layer": layer,
+                "plot_type": "arrow",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
+
+    def axline(self, xy1, xy2=None, slope=None, layer=0, **kwargs):
+        """Add an infinitely extending line through one or two points."""
+        self._add(
+            {
+                "xy1": xy1,
+                "xy2": xy2,
+                "slope": slope,
+                "layer": layer,
+                "plot_type": "axline",
+                "kwargs": kwargs,
+            },
+            layer,
+        )
 
     def annotate(self, text, xy, xytext=None, layer=0, **kwargs):
         """
@@ -487,6 +1063,7 @@ class LinePlot:
         ax (matplotlib.axes.Axes): Axis on which to plot the lines.
         """
         im = None
+        contour_sets = []
         for layer_name, layer_lines in self.layered_line_data.items():
             if layers and layer_name not in layers:
                 continue
@@ -509,6 +1086,99 @@ class LinePlot:
                         line["height"] * self._yscale,
                         **line["kwargs"],
                     )
+                elif line["plot_type"] == "barh":
+                    ax.barh(
+                        line["y"],
+                        line["width"] * self._xscale,
+                        **line["kwargs"],
+                    )
+                elif line["plot_type"] == "hist":
+                    ax.hist(line["x"], bins=line["bins"], **line["kwargs"])
+                elif line["plot_type"] == "step":
+                    ax.step(
+                        (line["x"] + self._xshift) * self._xscale,
+                        (line["y"] + self._yshift) * self._yscale,
+                        **line["kwargs"],
+                    )
+                elif line["plot_type"] == "stairs":
+                    ax.stairs(
+                        line["values"],
+                        edges=line["edges"],
+                        baseline=line["baseline"],
+                        **line["kwargs"],
+                    )
+                elif line["plot_type"] == "broken_barh":
+                    ax.broken_barh(line["xranges"], line["yrange"], **line["kwargs"])
+                elif line["plot_type"] == "pie":
+                    ax.pie(line["x"], **line["kwargs"])
+                elif line["plot_type"] == "stem":
+                    ax.stem(line["x"], line["y"], **line["kwargs"])
+                elif line["plot_type"] == "stackplot":
+                    ax.stackplot(line["x"], *line["ys"], **line["kwargs"])
+                elif line["plot_type"] == "boxplot":
+                    ax.boxplot(line["x"], **line["kwargs"])
+                elif line["plot_type"] == "violinplot":
+                    ax.violinplot(line["dataset"], **line["kwargs"])
+                elif line["plot_type"] == "eventplot":
+                    ax.eventplot(line["positions"], **line["kwargs"])
+                elif line["plot_type"] == "contour":
+                    contour_sets.append(
+                        ax.contour(line["x"], line["y"], line["z"], **line["kwargs"])
+                    )
+                elif line["plot_type"] == "contourf":
+                    contour_sets.append(
+                        ax.contourf(line["x"], line["y"], line["z"], **line["kwargs"])
+                    )
+                elif line["plot_type"] == "pcolormesh":
+                    ax.pcolormesh(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] == "hexbin":
+                    ax.hexbin(line["x"], line["y"], **line["kwargs"])
+                elif line["plot_type"] == "matshow":
+                    ax.matshow(line["data"], **line["kwargs"])
+                elif line["plot_type"] == "quiver":
+                    ax.quiver(
+                        line["x"], line["y"], line["u"], line["v"], **line["kwargs"]
+                    )
+                elif line["plot_type"] == "triplot":
+                    import matplotlib.tri as mtri
+
+                    triangulation = mtri.Triangulation(
+                        line["x"], line["y"], triangles=line["triangles"]
+                    )
+                    ax.triplot(triangulation, **line["kwargs"])
+                elif line["plot_type"] == "tripcolor":
+                    import matplotlib.tri as mtri
+
+                    triangulation = mtri.Triangulation(
+                        line["x"], line["y"], triangles=line["triangles"]
+                    )
+                    ax.tripcolor(triangulation, line["c"], **line["kwargs"])
+                elif line["plot_type"] == "tricontour":
+                    import matplotlib.tri as mtri
+
+                    triangulation = mtri.Triangulation(
+                        line["x"], line["y"], triangles=line["triangles"]
+                    )
+                    ax.tricontour(triangulation, line["z"], **line["kwargs"])
+                elif line["plot_type"] == "tricontourf":
+                    import matplotlib.tri as mtri
+
+                    triangulation = mtri.Triangulation(
+                        line["x"], line["y"], triangles=line["triangles"]
+                    )
+                    ax.tricontourf(triangulation, line["z"], **line["kwargs"])
+                elif line["plot_type"] == "streamplot":
+                    ax.streamplot(
+                        line["x"], line["y"], line["u"], line["v"], **line["kwargs"]
+                    )
+                elif line["plot_type"] == "pcolor":
+                    ax.pcolor(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] == "pcolorfast":
+                    ax.pcolorfast(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] == "spy":
+                    ax.spy(line["matrix"], **line["kwargs"])
+                elif line["plot_type"] == "table":
+                    ax.table(cellText=line["cellText"], **line["kwargs"])
                 elif line["plot_type"] == "gantt":
                     tasks = line["tasks"]
                     start_times = (line["start_times"] + self._xshift) * self._xscale
@@ -595,6 +1265,22 @@ class LinePlot:
                         ),
                         **line["kwargs"],
                     )
+                elif line["plot_type"] == "fill_betweenx":
+                    y = (line["y"] + self._yshift) * self._yscale
+                    x1 = line["x1"]
+                    x2 = line["x2"]
+                    if np.isscalar(x1):
+                        x1 = np.full_like(y, x1, dtype=float)
+                    if np.isscalar(x2):
+                        x2 = np.full_like(y, x2, dtype=float)
+                    ax.fill_betweenx(
+                        y,
+                        (np.asarray(x1) + self._xshift) * self._xscale,
+                        (np.asarray(x2) + self._xshift) * self._xscale,
+                        **line["kwargs"],
+                    )
+                elif line["plot_type"] == "fill":
+                    ax.fill(*line["args"], **line["kwargs"])
                 elif line["plot_type"] == "errorbar":
                     ax.errorbar(
                         (line["x"] + self._xshift) * self._xscale,
@@ -607,6 +1293,25 @@ class LinePlot:
                     ax.hlines(line["y"], line["xmin"], line["xmax"], **line["kwargs"])
                 elif line["plot_type"] == "vlines":
                     ax.vlines(line["x"], line["ymin"], line["ymax"], **line["kwargs"])
+                elif line["plot_type"] == "axvspan":
+                    ax.axvspan(line["xmin"], line["xmax"], **line["kwargs"])
+                elif line["plot_type"] == "axhspan":
+                    ax.axhspan(line["ymin"], line["ymax"], **line["kwargs"])
+                elif line["plot_type"] == "arrow":
+                    ax.arrow(
+                        line["x"],
+                        line["y"],
+                        line["dx"],
+                        line["dy"],
+                        **line["kwargs"],
+                    )
+                elif line["plot_type"] == "axline":
+                    ax.axline(
+                        line["xy1"],
+                        xy2=line["xy2"],
+                        slope=line["slope"],
+                        **line["kwargs"],
+                    )
                 elif line["plot_type"] == "annotate":
                     ann_kwargs = dict(line["kwargs"])
                     if line["xytext"] is not None:
@@ -632,15 +1337,19 @@ class LinePlot:
                     plt.colorbar(im, cax=cax, label="Potential (V)")
 
         if self._title:
-            ax.set_title(self._title)
+            ax.set_title(self._title, **self._title_kwargs)
         if self._xlabel:
-            ax.set_xlabel(self._xlabel)
+            ax.set_xlabel(self._xlabel, **self._xlabel_kwargs)
         if self._ylabel:
-            ax.set_ylabel(self._ylabel)
+            ax.set_ylabel(self._ylabel, **self._ylabel_kwargs)
         if self._legend and len(self.line_data) > 0:
             ax.legend()
         if self._grid:
             ax.grid()
+        if self._axis_settings:
+            axis_settings = dict(self._axis_settings)
+            axis_args = axis_settings.pop("args", ())
+            ax.axis(*axis_args, **axis_settings)
         if self.xmin is not None:
             ax.axis(xmin=self.xmin)
         if self.xmax is not None:
@@ -654,15 +1363,85 @@ class LinePlot:
         if self._yaxis_scale is not None:
             ax.set_yscale(self._yaxis_scale)
         if self._xticks is not None:
-            ax.set_xticks(self._xticks)
-            if self._xticklabels is not None:
-                ax.set_xticklabels(self._xticklabels)
+            ax.set_xticks(
+                self._xticks,
+                labels=self._xticklabels,
+                **self._xtick_kwargs,
+            )
         if self._yticks is not None:
-            ax.set_yticks(self._yticks)
-            if self._yticklabels is not None:
-                ax.set_yticklabels(self._yticklabels)
+            ax.set_yticks(
+                self._yticks,
+                labels=self._yticklabels,
+                **self._ytick_kwargs,
+            )
+        if self._xticklabels is not None and self._xticks is None:
+            ax.set_xticklabels(self._xticklabels, **self._xticklabel_kwargs)
+        if self._yticklabels is not None and self._yticks is None:
+            ax.set_yticklabels(self._yticklabels, **self._yticklabel_kwargs)
+        if self._tick_params:
+            ax.tick_params(**self._tick_params)
         if self._aspect is not None:
             ax.set_aspect(self._aspect)
+        if self._box_aspect is not None:
+            ax.set_box_aspect(self._box_aspect)
+        if self._axisbelow is not None:
+            ax.set_axisbelow(self._axisbelow)
+        if self._facecolor is not None:
+            ax.set_facecolor(self._facecolor)
+        if self._margins:
+            margin_settings = dict(self._margins)
+            margin_args = margin_settings.pop("args", ())
+            ax.margins(*margin_args, **margin_settings)
+        if self._invert_xaxis:
+            ax.invert_xaxis()
+        if self._invert_yaxis:
+            ax.invert_yaxis()
+        if self._minorticks is True:
+            ax.minorticks_on()
+        elif self._minorticks is False:
+            ax.minorticks_off()
+        if self._locator_params:
+            ax.locator_params(**self._locator_params)
+        if self._ticklabel_format:
+            ax.ticklabel_format(**self._ticklabel_format)
+        if self._axis_off:
+            ax.set_axis_off()
+        if self._relim_settings is not None:
+            ax.relim(**self._relim_settings)
+        if self._autoscale_settings is not None:
+            ax.autoscale(**self._autoscale_settings)
+        if self._autoscale_view_settings is not None:
+            ax.autoscale_view(**self._autoscale_view_settings)
+        if self._secondary_xaxis_settings is not None:
+            settings = self._secondary_xaxis_settings
+            secondary_kwargs = dict(settings["kwargs"])
+            label = secondary_kwargs.pop("label", None)
+            secondary = ax.secondary_xaxis(
+                settings["location"],
+                functions=settings["functions"],
+                **secondary_kwargs,
+            )
+            if label:
+                secondary.set_xlabel(label)
+        if self._secondary_yaxis_settings is not None:
+            settings = self._secondary_yaxis_settings
+            secondary_kwargs = dict(settings["kwargs"])
+            label = secondary_kwargs.pop("label", None)
+            secondary = ax.secondary_yaxis(
+                settings["location"],
+                functions=settings["functions"],
+                **secondary_kwargs,
+            )
+            if label:
+                secondary.set_ylabel(label)
+        if self._bar_label_kwargs:
+            for container in ax.containers:
+                ax.bar_label(container, **self._bar_label_kwargs)
+        if self._clabel_kwargs:
+            for contour_set in contour_sets:
+                ax.clabel(contour_set, **self._clabel_kwargs)
+        if self._rasterization_zorder is not None:
+            ax.set_rasterization_zorder(self._rasterization_zorder)
 
     def plot_tikzfigure(self, layers=None, verbose: bool = False) -> TikzFigure:
 
@@ -762,7 +1541,7 @@ class LinePlot:
             print(tikz_figure.generate_tikz())
         return tikz_figure
 
-    def plot_plotly(self, layers=None):
+    def plot_plotly(self, layers=None, allow_unsupported=False):
         """
         Plot all lines using Plotly.
 
@@ -803,6 +1582,12 @@ class LinePlot:
         patch_bounds_x: list[float] = []
         patch_bounds_y: list[float] = []
 
+        # These primitives have no faithful 2-D Plotly equivalent in the
+        # current backend.  Keep the default strict so a mixed plot cannot
+        # silently lose data, while allowing callers to deliberately render
+        # the Plotly-compatible portions of a canvas.
+        unsupported_plot_types = set()
+
         def tx(values):
             return self._transform_x(values)
 
@@ -835,6 +1620,13 @@ class LinePlot:
 
         for line in self._iter_layer_lines(layers=layers):
             plot_type = line["plot_type"]
+            if plot_type in unsupported_plot_types:
+                if allow_unsupported:
+                    continue
+                raise NotImplementedError(
+                    f"{plot_type} is currently supported only by the matplotlib "
+                    "backend; pass allow_unsupported=True to skip it for Plotly"
+                )
             if plot_type == "plot":
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker")
@@ -890,6 +1682,486 @@ class LinePlot:
                     marker_color=plotly_color(kwargs.get("color", None)),
                 )
                 traces.append(trace)
+            elif plot_type == "barh":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Bar(
+                        x=np.asarray(line["width"]) * self._xscale,
+                        y=ty(line["y"]),
+                        orientation="h",
+                        name=kwargs.get("label", ""),
+                        showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                        marker_color=plotly_color(kwargs.get("color", None)),
+                    )
+                )
+            elif plot_type == "hist":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Histogram(
+                        x=tx(line["x"]),
+                        nbinsx=line["bins"] if np.isscalar(line["bins"]) else None,
+                        name=kwargs.get("label", ""),
+                        showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                        marker_color=plotly_color(kwargs.get("color", None)),
+                        opacity=kwargs.get("alpha", None),
+                    )
+                )
+            elif plot_type == "step":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Scatter(
+                        x=tx(line["x"]),
+                        y=ty(line["y"]),
+                        mode="lines",
+                        line=dict(
+                            shape=kwargs.get("where", "hv"),
+                            color=plotly_color(kwargs.get("color", None)),
+                        ),
+                        name=kwargs.get("label", ""),
+                        showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    )
+                )
+            elif plot_type == "stairs":
+                kwargs = line["kwargs"]
+                values = np.asarray(line["values"])
+                edges = line["edges"]
+                if edges is None:
+                    edges = np.arange(values.size + 1)
+                edges = np.asarray(edges)
+                x_values = np.repeat(tx(edges), 2)[1:-1]
+                y_values = np.repeat(ty(values), 2)
+                traces.append(
+                    go.Scatter(
+                        x=x_values,
+                        y=y_values,
+                        mode="lines",
+                        line=dict(color=plotly_color(kwargs.get("color", None))),
+                        name=kwargs.get("label", ""),
+                        showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    )
+                )
+            elif plot_type == "broken_barh":
+                kwargs = line["kwargs"]
+                for start, width in line["xranges"]:
+                    traces.append(
+                        go.Bar(
+                            x=[width * self._xscale],
+                            y=[line["yrange"][0] + line["yrange"][1] / 2],
+                            base=[txs(start)],
+                            orientation="h",
+                            width=line["yrange"][1],
+                            marker_color=plotly_color(kwargs.get("color", None)),
+                            showlegend=False,
+                        )
+                    )
+            elif plot_type == "pie":
+                kwargs = line["kwargs"]
+                labels = kwargs.get("labels", None)
+                traces.append(
+                    go.Pie(
+                        values=line["x"],
+                        labels=labels,
+                        name=kwargs.get("label", ""),
+                        showlegend=bool(self._legend),
+                    )
+                )
+            elif plot_type == "stem":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Scatter(
+                        x=tx(line["x"]),
+                        y=ty(line["y"]),
+                        mode="markers+lines",
+                        line=dict(color=plotly_color(kwargs.get("color", None))),
+                        name=kwargs.get("label", ""),
+                        showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    )
+                )
+            elif plot_type == "stackplot":
+                kwargs = line["kwargs"]
+                x_values = tx(line["x"])
+                cumulative = np.zeros(len(x_values))
+                for index, values in enumerate(line["ys"]):
+                    next_cumulative = cumulative + np.asarray(values)
+                    traces.append(
+                        go.Scatter(
+                            x=x_values,
+                            y=ty(next_cumulative),
+                            mode="lines",
+                            stackgroup="one",
+                            name=(
+                                kwargs.get("labels", [])[index]
+                                if index < len(kwargs.get("labels", []))
+                                else ""
+                            ),
+                            showlegend=bool(self._legend),
+                        )
+                    )
+                    cumulative = next_cumulative
+            elif plot_type == "boxplot":
+                kwargs = line["kwargs"]
+                datasets = (
+                    line["x"] if isinstance(line["x"], (list, tuple)) else [line["x"]]
+                )
+                for index, values in enumerate(datasets):
+                    showfliers = kwargs.get("showfliers", True)
+                    boxpoints = "outliers" if showfliers else False
+                    traces.append(
+                        go.Box(
+                            y=values,
+                            name=str(index),
+                            boxpoints=boxpoints,
+                            showlegend=False,
+                        )
+                    )
+            elif plot_type == "violinplot":
+                dataset = line["dataset"]
+                datasets = dataset if isinstance(dataset, (list, tuple)) else [dataset]
+                for index, values in enumerate(datasets):
+                    traces.append(
+                        go.Violin(y=values, name=str(index), showlegend=False)
+                    )
+            elif plot_type == "eventplot":
+                positions = line["positions"]
+                for row_index, row_positions in enumerate(np.atleast_1d(positions)):
+                    for position in np.atleast_1d(row_positions):
+                        shapes.append(
+                            dict(
+                                type="line",
+                                x0=txs(position),
+                                x1=txs(position),
+                                y0=row_index,
+                                y1=row_index + 0.8,
+                                line=dict(color="black"),
+                            )
+                        )
+            elif plot_type == "contour":
+                kwargs = line["kwargs"]
+                contours = dict(coloring="lines")
+                if self._clabel_kwargs:
+                    contours["showlabels"] = True
+                    contours["labelfont"] = {
+                        "size": self._clabel_kwargs.get(
+                            "size", self._clabel_kwargs.get("fontsize")
+                        ),
+                        "color": self._clabel_kwargs.get("color"),
+                        "family": self._clabel_kwargs.get("family"),
+                    }
+                traces.append(
+                    go.Contour(
+                        x=line["x"],
+                        y=line["y"],
+                        z=line["z"],
+                        contours=contours,
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                    )
+                )
+            elif plot_type == "contourf":
+                kwargs = line["kwargs"]
+                contours = {}
+                if self._clabel_kwargs:
+                    contours["showlabels"] = True
+                    contours["labelfont"] = {
+                        "size": self._clabel_kwargs.get(
+                            "size", self._clabel_kwargs.get("fontsize")
+                        ),
+                        "color": self._clabel_kwargs.get("color"),
+                        "family": self._clabel_kwargs.get("family"),
+                    }
+                traces.append(
+                    go.Contour(
+                        x=line["x"],
+                        y=line["y"],
+                        z=line["z"],
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                        contours=contours,
+                    )
+                )
+            elif plot_type == "pcolormesh":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Heatmap(
+                        x=line["x"],
+                        y=line["y"],
+                        z=line["z"],
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                    )
+                )
+            elif plot_type in ("pcolor", "pcolorfast"):
+                # Plotly's heatmap is the closest equivalent to Matplotlib's
+                # pseudocolor artists.  The cell-centered rendering differs
+                # slightly from pcolor, but preserves the data and color map.
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Heatmap(
+                        x=line["x"],
+                        y=line["y"],
+                        z=line["z"],
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                        opacity=kwargs.get("alpha", None),
+                    )
+                )
+            elif plot_type == "hexbin":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Histogram2d(
+                        x=tx(line["x"]),
+                        y=ty(line["y"]),
+                        nbinsx=(
+                            kwargs.get("gridsize", 30)
+                            if np.isscalar(kwargs.get("gridsize", 30))
+                            else 30
+                        ),
+                        nbinsy=(
+                            kwargs.get("gridsize", 30)
+                            if np.isscalar(kwargs.get("gridsize", 30))
+                            else 30
+                        ),
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                    )
+                )
+            elif plot_type == "matshow":
+                kwargs = line["kwargs"]
+                traces.append(
+                    go.Heatmap(
+                        z=line["data"],
+                        colorscale=kwargs.get("cmap", "Viridis"),
+                        showscale=kwargs.get("colorbar", True),
+                    )
+                )
+            elif plot_type == "quiver":
+                kwargs = line["kwargs"]
+                x_values = np.asarray(line["x"])
+                y_values = np.asarray(line["y"])
+                u_values = np.asarray(line["u"])
+                v_values = np.asarray(line["v"])
+                if u_values.ndim == 2 and x_values.ndim == 1 and y_values.ndim == 1:
+                    x_values, y_values = np.meshgrid(x_values, y_values)
+                x_values, y_values, u_values, v_values = np.broadcast_arrays(
+                    x_values, y_values, u_values, v_values
+                )
+                color = plotly_color(kwargs.get("color", "black"))
+                arrow_width = kwargs.get("linewidth", kwargs.get("width", 1))
+                for x_start, y_start, u_value, v_value in zip(
+                    x_values.flat, y_values.flat, u_values.flat, v_values.flat
+                ):
+                    raw_x_start = x_start
+                    raw_y_start = y_start
+                    x_start = txs(raw_x_start)
+                    y_start = tys(raw_y_start)
+                    x_end = txs(raw_x_start + u_value)
+                    y_end = tys(raw_y_start + v_value)
+                    annotations.append(
+                        dict(
+                            x=x_end,
+                            y=y_end,
+                            ax=x_start,
+                            ay=y_start,
+                            showarrow=True,
+                            arrowhead=2,
+                            arrowsize=kwargs.get("headlength", 1),
+                            arrowwidth=arrow_width,
+                            arrowcolor=color,
+                            opacity=kwargs.get("alpha", 1),
+                        )
+                    )
+            elif plot_type == "spy":
+                kwargs = line["kwargs"]
+                matrix = np.asarray(line["matrix"])
+                traces.append(
+                    go.Heatmap(
+                        z=(matrix != 0).astype(int),
+                        colorscale=kwargs.get(
+                            "cmap", [[0, "rgba(0,0,0,0)"], [1, "black"]]
+                        ),
+                        showscale=False,
+                        xgap=kwargs.get("markersize", 0),
+                        ygap=kwargs.get("markersize", 0),
+                    )
+                )
+            elif plot_type == "triplot":
+                import matplotlib.tri as mtri
+
+                kwargs = line["kwargs"]
+                triangulation = mtri.Triangulation(
+                    line["x"], line["y"], triangles=line["triangles"]
+                )
+                x_values = []
+                y_values = []
+                x_data = np.asarray(line["x"])
+                y_data = np.asarray(line["y"])
+                for triangle in triangulation.triangles:
+                    indices = [*triangle, triangle[0]]
+                    x_values.extend(x_data[indices].tolist() + [None])
+                    y_values.extend(y_data[indices].tolist() + [None])
+                transformed_x = [
+                    None if value is None else txs(value) for value in x_values
+                ]
+                transformed_y = [
+                    None if value is None else tys(value) for value in y_values
+                ]
+                traces.append(
+                    go.Scatter(
+                        x=transformed_x,
+                        y=transformed_y,
+                        mode="lines",
+                        line=dict(
+                            color=plotly_color(kwargs.get("color", None)),
+                            dash=linestyle_map.get(
+                                kwargs.get("linestyle", "solid"), "solid"
+                            ),
+                            width=kwargs.get("linewidth", None),
+                        ),
+                        name=kwargs.get("label", ""),
+                        showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    )
+                )
+            elif plot_type == "tripcolor":
+                import matplotlib.tri as mtri
+                from plotly.colors import sample_colorscale
+
+                kwargs = line["kwargs"]
+                triangulation = mtri.Triangulation(
+                    line["x"], line["y"], triangles=line["triangles"]
+                )
+                x_data = np.asarray(line["x"])
+                y_data = np.asarray(line["y"])
+                c_data = np.asarray(line["c"])
+                if c_data.ndim == 0:
+                    c_data = np.full(len(x_data), c_data.item())
+                triangle_values = (
+                    c_data
+                    if c_data.size == len(triangulation.triangles)
+                    else np.asarray(
+                        [
+                            np.mean(c_data[triangle])
+                            for triangle in triangulation.triangles
+                        ]
+                    )
+                )
+                finite_values = triangle_values[np.isfinite(triangle_values)]
+                minimum = finite_values.min() if finite_values.size else 0.0
+                maximum = finite_values.max() if finite_values.size else 1.0
+                scale = maximum - minimum or 1.0
+                colorscale = kwargs.get("cmap", "Viridis")
+                edge_color = plotly_color(kwargs.get("edgecolors", "black"))
+                for triangle, value in zip(
+                    triangulation.triangles, triangle_values, strict=False
+                ):
+                    fraction = float(np.clip((value - minimum) / scale, 0, 1))
+                    try:
+                        fill_color = sample_colorscale(colorscale, [fraction])[0]
+                    except (KeyError, ValueError):
+                        fill_color = plotly_color(kwargs.get("color", "blue"))
+                    indices = [*triangle, triangle[0]]
+                    traces.append(
+                        go.Scatter(
+                            x=tx(x_data[indices]),
+                            y=ty(y_data[indices]),
+                            mode="lines",
+                            fill="toself",
+                            fillcolor=fill_color,
+                            line=dict(color=edge_color),
+                            showlegend=False,
+                        )
+                    )
+            elif plot_type == "streamplot":
+                import matplotlib.pyplot as mpl_plt
+
+                kwargs = dict(line["kwargs"])
+                stream_figure, stream_axis = mpl_plt.subplots()
+                try:
+                    stream_set = stream_axis.streamplot(
+                        line["x"], line["y"], line["u"], line["v"], **kwargs
+                    )
+                    segments = stream_set.lines.get_segments()
+                    colors = stream_set.lines.get_colors()
+                    widths = stream_set.lines.get_linewidths()
+                    for index, segment in enumerate(segments):
+                        if len(segment) < 2:
+                            continue
+                        color = plotly_color(colors[min(index, len(colors) - 1)])
+                        width = widths[min(index, len(widths) - 1)]
+                        traces.append(
+                            go.Scatter(
+                                x=tx(segment[:, 0]),
+                                y=ty(segment[:, 1]),
+                                mode="lines",
+                                line=dict(color=color, width=width),
+                                showlegend=False,
+                            )
+                        )
+                finally:
+                    mpl_plt.close(stream_figure)
+            elif plot_type in ("tricontour", "tricontourf"):
+                import matplotlib.pyplot as mpl_plt
+                import matplotlib.tri as mtri
+
+                kwargs = dict(line["kwargs"])
+                kwargs.pop("colorbar", None)
+                kwargs.pop("label", None)
+                triangulation = mtri.Triangulation(
+                    line["x"], line["y"], triangles=line["triangles"]
+                )
+                contour_figure, contour_axis = mpl_plt.subplots()
+                try:
+                    if plot_type == "tricontourf":
+                        contour_set = contour_axis.tricontourf(
+                            triangulation, line["z"], **kwargs
+                        )
+                        colors = contour_set.get_facecolors()
+                    else:
+                        contour_set = contour_axis.tricontour(
+                            triangulation, line["z"], **kwargs
+                        )
+                        colors = contour_set.get_edgecolors()
+                    for index, path in enumerate(contour_set.get_paths()):
+                        vertices = path.vertices
+                        if len(vertices) < 2:
+                            continue
+                        color = plotly_color(colors[min(index, len(colors) - 1)])
+                        traces.append(
+                            go.Scatter(
+                                x=tx(vertices[:, 0]),
+                                y=ty(vertices[:, 1]),
+                                mode="lines",
+                                fill="toself" if plot_type == "tricontourf" else None,
+                                fillcolor=color if plot_type == "tricontourf" else None,
+                                line=dict(color=color),
+                                showlegend=False,
+                            )
+                        )
+                finally:
+                    mpl_plt.close(contour_figure)
+            elif plot_type == "table":
+                kwargs = line["kwargs"]
+                cell_text = line["cellText"] or []
+                col_labels = kwargs.get("colLabels")
+                row_labels = kwargs.get("rowLabels")
+                if col_labels is not None:
+                    header_values = list(col_labels)
+                    rows = cell_text
+                elif cell_text:
+                    header_values = []
+                    rows = cell_text
+                else:
+                    header_values = []
+                    rows = []
+                columns = list(map(list, zip(*rows))) if rows else []
+                if row_labels is not None:
+                    columns.insert(0, list(row_labels))
+                    if header_values:
+                        header_values.insert(0, "")
+                traces.append(
+                    go.Table(
+                        header=dict(values=header_values),
+                        cells=dict(values=columns),
+                    )
+                )
             elif plot_type == "gantt":
                 kwargs = line["kwargs"]
                 tasks = line["tasks"]
@@ -997,6 +2269,58 @@ class LinePlot:
                     showlegend=bool(kwargs.get("label")) and bool(self._legend),
                 )
                 traces.append(fill_trace)
+            elif plot_type == "fill_betweenx":
+                kwargs = line["kwargs"]
+                y = ty(line["y"])
+                x1 = line["x1"]
+                x2 = line["x2"]
+                if np.isscalar(x1):
+                    x1 = np.full_like(y, float(txs(x1)), dtype=float)
+                else:
+                    x1 = tx(x1)
+                if np.isscalar(x2):
+                    x2 = np.full_like(y, float(txs(x2)), dtype=float)
+                else:
+                    x2 = tx(x2)
+                color = plotly_color(kwargs.get("color", kwargs.get("facecolor", None)))
+                traces.append(
+                    go.Scatter(
+                        x=np.concatenate([x1, x2[::-1]]),
+                        y=np.concatenate([y, y[::-1]]),
+                        fill="toself",
+                        fillcolor=color,
+                        opacity=kwargs.get("alpha", 0.3),
+                        line=dict(color="rgba(0,0,0,0)"),
+                        name=kwargs.get("label", ""),
+                        showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                    )
+                )
+            elif plot_type == "fill":
+                kwargs = line["kwargs"]
+                polygon_args = line["args"]
+                for index in range(0, len(polygon_args), 2):
+                    x_values = tx(polygon_args[index])
+                    y_values = ty(polygon_args[index + 1])
+                    traces.append(
+                        go.Scatter(
+                            x=x_values,
+                            y=y_values,
+                            fill="toself",
+                            fillcolor=plotly_color(
+                                kwargs.get("color", kwargs.get("facecolor", None))
+                            ),
+                            opacity=kwargs.get("alpha", None),
+                            line=dict(
+                                color=plotly_color(
+                                    kwargs.get("edgecolor", kwargs.get("color", None))
+                                )
+                            ),
+                            name=kwargs.get("label", ""),
+                            showlegend=bool(kwargs.get("label"))
+                            and bool(self._legend)
+                            and index == 0,
+                        )
+                    )
             elif plot_type == "errorbar":
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker")
@@ -1102,6 +2426,72 @@ class LinePlot:
                                 line=dict(color=color, dash=dash, width=width),
                             )
                         )
+            elif plot_type in ("axvspan", "axhspan"):
+                kwargs = line["kwargs"]
+                color = plotly_color(kwargs.get("color", kwargs.get("facecolor", None)))
+                span_shape = dict(
+                    type="rect",
+                    fillcolor=color,
+                    opacity=kwargs.get("alpha", 0.3),
+                    line=dict(width=0),
+                )
+                if plot_type == "axvspan":
+                    span_shape.update(
+                        x0=txs(line["xmin"]),
+                        x1=txs(line["xmax"]),
+                        y0=0,
+                        y1=1,
+                        yref="paper",
+                    )
+                else:
+                    span_shape.update(
+                        x0=0,
+                        x1=1,
+                        xref="paper",
+                        y0=tys(line["ymin"]),
+                        y1=tys(line["ymax"]),
+                    )
+                shapes.append(span_shape)
+            elif plot_type == "arrow":
+                kwargs = line["kwargs"]
+                annotations.append(
+                    dict(
+                        x=txs(line["x"] + line["dx"]),
+                        y=tys(line["y"] + line["dy"]),
+                        ax=txs(line["x"]),
+                        ay=tys(line["y"]),
+                        xref="x",
+                        yref="y",
+                        axref="x",
+                        ayref="y",
+                        text="",
+                        showarrow=True,
+                        arrowhead=kwargs.get("arrowhead", 2),
+                        arrowcolor=plotly_color(kwargs.get("color", "black")),
+                    )
+                )
+            elif plot_type == "axline":
+                kwargs = line["kwargs"]
+                if line["xy2"] is None and line["slope"] is None:
+                    raise ValueError("axline requires xy2 or slope")
+                if line["xy2"] is not None:
+                    x0, y0 = line["xy1"]
+                    x1, y1 = line["xy2"]
+                    slope = (y1 - y0) / (x1 - x0)
+                else:
+                    x0, y0 = line["xy1"]
+                    slope = line["slope"]
+                shapes.append(
+                    dict(
+                        type="line",
+                        x0=0,
+                        x1=1,
+                        xref="paper",
+                        y0=tys(y0 - slope * x0),
+                        y1=tys(y0 + slope * (1 - x0)),
+                        line=dict(color=plotly_color(kwargs.get("color", "black"))),
+                    )
+                )
             elif plot_type in ("text", "annotate"):
                 kwargs = line["kwargs"]
                 if plot_type == "text":
@@ -1330,6 +2720,59 @@ class LinePlot:
                     hoverinfo="skip",
                 )
             )
+
+        if self._bar_label_kwargs:
+            label_kwargs = self._bar_label_kwargs
+            fmt = label_kwargs.get("fmt", "{x}")
+
+            def format_bar_label(value):
+                if callable(fmt):
+                    return str(fmt(value))
+                if "%" in str(fmt):
+                    return str(fmt) % value
+                return str(fmt).format(x=value)
+
+            for line in self._iter_layer_lines(layers=layers):
+                if line["plot_type"] == "bar":
+                    x_values = np.asarray(line["x"])
+                    heights = np.asarray(line["height"])
+                    bottom = np.asarray(line["kwargs"].get("bottom", 0))
+                    for x_value, height, base in zip(
+                        x_values,
+                        heights,
+                        np.broadcast_to(bottom, heights.shape),
+                        strict=False,
+                    ):
+                        edge = base + height
+                        annotations.append(
+                            dict(
+                                x=txs(x_value),
+                                y=tys(edge),
+                                text=format_bar_label(height),
+                                showarrow=False,
+                                yshift=label_kwargs.get("padding", 0),
+                            )
+                        )
+                elif line["plot_type"] == "barh":
+                    y_values = np.asarray(line["y"])
+                    widths = np.asarray(line["width"])
+                    left = np.asarray(line["kwargs"].get("left", 0))
+                    for y_value, width, start in zip(
+                        y_values,
+                        widths,
+                        np.broadcast_to(left, widths.shape),
+                        strict=False,
+                    ):
+                        edge = start + width
+                        annotations.append(
+                            dict(
+                                x=txs(edge),
+                                y=tys(y_value),
+                                text=format_bar_label(width),
+                                showarrow=False,
+                                xshift=label_kwargs.get("padding", 0),
+                            )
+                        )
 
         return traces, shapes, annotations
 

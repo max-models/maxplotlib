@@ -355,6 +355,64 @@ def test_canvas_show_uses_matplotlib_show(monkeypatch):
     assert axes is not None
 
 
+def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):
+    import sys
+    import types
+
+    import matplotlib.pyplot as plt
+    import pytest
+
+    from maxplotlib import Canvas
+
+    displayed = []
+    closed = []
+    fig = object()
+
+    ipython = types.ModuleType("IPython")
+    ipython.get_ipython = lambda: types.SimpleNamespace(config={"IPKernelApp": {}})
+    ipython_display = types.ModuleType("IPython.display")
+    ipython_display.display = displayed.append
+
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    monkeypatch.setitem(sys.modules, "IPython.display", ipython_display)
+    monkeypatch.setattr(plt, "close", lambda value: closed.append(value))
+    monkeypatch.setattr(Canvas, "plot", lambda *args, **kwargs: (fig, object()))
+    monkeypatch.setattr(plt, "show", lambda: pytest.fail("pyplot.show was called"))
+
+    canvas = Canvas()
+    result = canvas.show()
+    assert result[0] is fig
+    assert result[1] is not None
+    assert displayed == [fig]
+    assert closed == [fig]
+
+
+def test_canvas_show_falls_back_to_pyplot_outside_jupyter(monkeypatch):
+    import sys
+    import types
+
+    import matplotlib.pyplot as plt
+    import pytest
+
+    from maxplotlib import Canvas
+
+    calls = []
+    ipython = types.ModuleType("IPython")
+    ipython.get_ipython = lambda: types.SimpleNamespace(config={})
+    ipython_display = types.ModuleType("IPython.display")
+    ipython_display.display = lambda fig: pytest.fail("IPython display was called")
+
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+    monkeypatch.setitem(sys.modules, "IPython.display", ipython_display)
+    monkeypatch.setattr(plt, "show", lambda *args, **kwargs: calls.append(kwargs))
+
+    canvas = Canvas()
+    canvas.add_subplot().plot([0, 1], [0, 1])
+    canvas.show(block=False)
+
+    assert calls == [{"block": False}]
+
+
 def test_canvas_show_block_false_is_forwarded(monkeypatch):
     import matplotlib.pyplot as plt
 
@@ -375,6 +433,384 @@ def test_canvas_show_block_false_is_forwarded(monkeypatch):
     assert calls == [((), {"block": False})]
 
 
+def test_canvas_tick_label_rotation_is_forwarded_to_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    canvas.set_xticks([0, 1], labels=["zero", "one"], rotation=45)
+
+    fig, axes = canvas.plot()
+    assert [label.get_rotation() for label in axes[0][0].get_xticklabels()] == [
+        45.0,
+        45.0,
+    ]
+    plt.close(fig)
+
+
+def test_axis_label_and_tick_settings_are_forwarded_to_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    canvas.set_xlabel("Time", fontsize=14, fontweight="bold", labelpad=12)
+    canvas.set_ylabel("Value", color="crimson")
+    canvas.set_title("Results", fontsize=16, color="navy")
+    canvas.tick_params(axis="both", labelsize=12, colors="darkgreen", length=7)
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert matplotlib_axis.xaxis.label.get_fontsize() == 14
+    assert matplotlib_axis.xaxis.label.get_fontweight() == "bold"
+    assert matplotlib_axis.xaxis.labelpad == 12
+    assert matplotlib_axis.yaxis.label.get_color() == "crimson"
+    assert matplotlib_axis.title.get_fontsize() == 16
+    assert matplotlib_axis.xaxis.majorTicks[0].tick1line.get_markersize() == 7
+    assert matplotlib_axis.xaxis.get_ticklabels()[0].get_fontsize() == 12
+    plt.close(fig)
+
+
+def test_common_axis_and_figure_controls_are_forwarded_to_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([1, 2, 3], [1, 4, 9])
+    canvas.set_facecolor("whitesmoke")
+    canvas.set_axisbelow(True)
+    canvas.margins(x=0.2, y=0.1)
+    canvas.invert_yaxis()
+    canvas.minorticks_on()
+    canvas.set_axis_on()
+    canvas.supxlabel("Shared time", fontsize=11)
+    canvas.supylabel("Shared value", fontsize=11)
+    canvas.subplots_adjust(left=0.2)
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert matplotlib_axis.get_facecolor() == (0.9607843137254902,) * 3 + (1.0,)
+    assert matplotlib_axis.get_axisbelow() is True
+    assert matplotlib_axis.yaxis_inverted()
+    assert matplotlib_axis.xaxis.get_minorticklocs().size > 0
+    assert fig._supxlabel.get_text() == "Shared time"
+    assert fig._supylabel.get_text() == "Shared value"
+    plt.close(fig)
+
+
+def test_twinx_renders_a_secondary_matplotlib_y_axis():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, primary = Canvas.subplots()
+    secondary = canvas.twinx()
+    primary.plot([0, 1, 2], [0, 1, 2], color="tab:blue", label="temperature")
+    secondary.plot([0, 1, 2], [10, 20, 30], color="tab:red", label="pressure")
+    primary.set_ylabel("Temperature", color="tab:blue")
+    secondary.set_ylabel("Pressure", color="tab:red")
+
+    fig, axes = canvas.plot()
+    twin_axis = canvas.twinx_axes[(0, 0)]
+
+    assert twin_axis is not axes[0][0]
+    assert twin_axis.get_ylabel() == "Pressure"
+    assert axes[0][0].get_ylabel() == "Temperature"
+    assert len(twin_axis.lines) == 1
+    plt.close(fig)
+
+
+def test_common_matplotlib_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.barh([0, 1], [2, 3], color="steelblue")
+    axis.hist([0, 1, 1, 2, 2, 2], bins=3, alpha=0.5)
+    axis.fill_betweenx([0, 1, 2], 0.5, [1, 1.5, 2], alpha=0.2)
+    axis.axvspan(0.25, 0.75, alpha=0.1)
+    axis.axhspan(0.5, 1.5, alpha=0.1)
+    axis.arrow(0, 0, 1, 1, length_includes_head=True)
+    axis.axline((0, 0), slope=1, linestyle="--")
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.patches) > 0
+    assert len(matplotlib_axis.lines) > 0
+    plt.close(fig)
+
+
+def test_additional_matplotlib_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.step([0, 1, 2], [1, 3, 2], color="black")
+    axis.stairs([1, 2, 1], edges=[0, 1, 2, 3], color="purple")
+    axis.broken_barh([(0, 1), (1.5, 0.5)], (0, 0.4), color="orange")
+    axis.bar([0, 1], [2, 3])
+    axis.bar_label(fmt="%d")
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.containers) >= 1
+    assert len(matplotlib_axis.lines) >= 1
+    assert len(matplotlib_axis.patches) >= 2
+    assert len(matplotlib_axis.texts) >= 2
+    plt.close(fig)
+
+
+def test_statistical_and_event_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.stem([0, 1, 2], [1, 3, 2])
+    axis.stackplot([0, 1, 2], [1, 2, 1], [2, 1, 2])
+    axis.boxplot([[1, 2, 3], [2, 4, 5]])
+    axis.violinplot([[1, 2, 3], [2, 4, 5]])
+    axis.eventplot([[0.2, 0.5], [1.0, 1.5]])
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.lines) > 0
+    assert len(matplotlib_axis.collections) > 0
+    plt.close(fig)
+
+
+def test_scientific_field_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 8)
+    y = np.linspace(-1, 1, 8)
+    xx, yy = np.meshgrid(x, y)
+    z = xx**2 + yy**2
+
+    canvas, axis = Canvas.subplots()
+    axis.contour(x, y, z)
+    axis.contourf(x, y, z, alpha=0.4)
+    axis.pcolormesh(x, y, z)
+    axis.hexbin(np.ravel(xx), np.ravel(yy), gridsize=8)
+    axis.matshow(z)
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.collections) > 0
+    assert len(matplotlib_axis.images) > 0
+    plt.close(fig)
+
+
+def test_vector_and_triangulated_plot_primitives_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.array([0.0, 1.0, 0.0, 1.0])
+    y = np.array([0.0, 0.0, 1.0, 1.0])
+    triangles = [[0, 1, 2], [1, 3, 2]]
+    z = x + y
+
+    canvas, axis = Canvas.subplots()
+    axis.quiver(x, y, np.ones(4), np.ones(4))
+    axis.triplot(x, y, triangles=triangles)
+    axis.tripcolor(x, y, z, triangles=triangles, alpha=0.3)
+    axis.tricontour(x, y, z, triangles=triangles)
+    axis.tricontourf(x, y, z, triangles=triangles, alpha=0.2)
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.collections) > 0
+    assert len(matplotlib_axis.lines) > 0
+    plt.close(fig)
+
+
+def test_stream_matrix_and_table_primitives_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 8)
+    y = np.linspace(-1, 1, 8)
+    xx, yy = np.meshgrid(x, y)
+    z = xx**2 + yy**2
+    matrix = np.eye(5)
+
+    canvas, axis = Canvas.subplots()
+    axis.streamplot(x, y, -yy, xx)
+    axis.pcolor(x, y, z, alpha=0.2)
+    axis.pcolorfast(np.linspace(-1, 1, 9), np.linspace(-1, 1, 9), z, alpha=0.2)
+    axis.spy(matrix)
+    axis.table(cellText=[["A", "B"], ["1", "2"]], loc="upper right")
+
+    fig, axes = canvas.plot()
+    matplotlib_axis = axes[0][0]
+    assert len(matplotlib_axis.collections) > 0
+    assert len(matplotlib_axis.tables) == 1
+
+
+def test_contour_labels_and_rasterization_zorder_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.linspace(-1, 1, 5)
+    xx, yy = np.meshgrid(x, x)
+    canvas, axis = Canvas.subplots()
+    axis.contour(x, x, xx**2 + yy**2)
+    axis.clabel(inline=True, fontsize=8)
+    axis.set_rasterization_zorder(2)
+
+    fig, axes = canvas.plot(backend="matplotlib")
+
+    assert len(axes[0, 0].texts) > 0
+    assert axes[0, 0].get_rasterization_zorder() == 2
+    plt.close(fig)
+
+
+def test_axis_layout_and_log_shortcuts_are_supported():
+    import matplotlib.pyplot as plt
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.fill([1, 2, 3], [1, 4, 1], alpha=0.2)
+    axis.loglog([1, 2, 4], [1, 4, 16])
+    axis.axis([1, 4, 1, 16])
+    axis.autoscale_view(tight=True)
+    axis.relim()
+    axis.set_box_aspect(1)
+    axis.set_xticklabels(["one", "two", "four"], rotation=30)
+    axis.set_yticklabels(["low", "high"], color="navy")
+
+    fig, axes = canvas.plot(backend="matplotlib")
+    matplotlib_axis = axes[0, 0]
+
+    assert matplotlib_axis.get_xscale() == "log"
+    assert matplotlib_axis.get_yscale() == "log"
+    assert matplotlib_axis.get_box_aspect() == 1
+    assert len(matplotlib_axis.patches) == 1
+    plt.close(fig)
+
+
+def test_secondary_axes_are_supported_by_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    axis.secondary_xaxis(
+        "top", functions=(lambda x: x * 2, lambda x: x / 2), label="double"
+    )
+    axis.secondary_yaxis(
+        "right", functions=(lambda y: y + 1, lambda y: y - 1), label="offset"
+    )
+
+    fig, axes = canvas.plot(backend="matplotlib")
+
+    assert len(axes[0, 0].child_axes) == 2
+    plt.close(fig)
+
+
+def test_matplotlib_postprocess_can_customize_figure_and_axes():
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import to_rgba
+
+    from maxplotlib import Canvas
+
+    canvas, (axis0, axis1) = Canvas.subplots(nrows=1, ncols=2)
+    axis0.plot([0, 1], [0, 1])
+    axis1.plot([0, 1], [1, 0])
+    received = []
+
+    def customize(fig, axes):
+        received.append((fig, axes))
+        fig.suptitle("Customized")
+        for matplotlib_axis in axes.flat:
+            matplotlib_axis.set_facecolor("lightgray")
+
+    fig, axes = canvas.plot(matplotlib_postprocess=customize)
+
+    assert received == [(fig, axes)]
+    assert fig._suptitle.get_text() == "Customized"
+    assert all(axis.get_facecolor() == to_rgba("lightgray") for axis in axes.flat)
+    plt.close(fig)
+
+
+def test_matplotlib_customizations_apply_declarative_figure_and_axes_methods():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, (axis0, axis1) = Canvas.subplots(ncols=2)
+    axis0.plot([0, 1], [0, 1])
+    axis1.plot([0, 1], [1, 0])
+
+    fig, axes = canvas.plot(
+        matplotlib_customizations={
+            "figure": {"suptitle": "Customized"},
+            "axes": {
+                "set_facecolor": "lightgray",
+                "tick_params": {
+                    "kwargs": {"axis": "both", "length": 6},
+                },
+            },
+        }
+    )
+
+    from matplotlib.colors import to_rgba
+
+    assert fig._suptitle.get_text() == "Customized"
+    assert all(axis.get_facecolor() == to_rgba("lightgray") for axis in axes.flat)
+    assert all(
+        axis.xaxis.majorTicks[0].tick1line.get_markersize() == 6 for axis in axes.flat
+    )
+    plt.close(fig)
+
+
+def test_matplotlib_customizations_accept_a_callable():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    received = []
+
+    def customize(fig, axes):
+        received.append((fig, axes))
+        fig.suptitle("Customized")
+
+    fig, axes = canvas.plot(matplotlib_customizations=customize)
+
+    assert received == [(fig, axes)]
+    assert fig._suptitle.get_text() == "Customized"
+    plt.close(fig)
+
+
+def test_matplotlib_postprocess_rejects_non_matplotlib_backends():
+    import pytest
+
+    from maxplotlib import Canvas
+
+    with pytest.raises(ValueError, match="only supported with the matplotlib backend"):
+        Canvas().plot(backend="plotly", matplotlib_postprocess=lambda fig, axes: None)
+
+
 def test_show_canvas_script_invokes_canvas_show(monkeypatch):
     import maxplotlib
 
@@ -391,6 +827,27 @@ def test_show_canvas_script_invokes_canvas_show(monkeypatch):
     canvas.show(backend="tikzfigure", verbose=True)
 
     assert calls == [((), {"backend": "tikzfigure", "verbose": True})]
+
+
+def test_tikzfigure_show_does_not_return_repr_in_jupyter(monkeypatch):
+    import sys
+    import types
+
+    from maxplotlib import Canvas
+
+    ipython = types.ModuleType("IPython")
+    ipython.get_ipython = lambda: types.SimpleNamespace(config={"IPKernelApp": {}})
+    monkeypatch.setitem(sys.modules, "IPython", ipython)
+
+    class FakeTikzFigure:
+        def show(self, **kwargs):
+            self.show_kwargs = kwargs
+
+    figure = FakeTikzFigure()
+    monkeypatch.setattr(Canvas, "plot_tikzfigure", lambda *args, **kwargs: figure)
+
+    assert Canvas().show(backend="tikzfigure") is None
+    assert figure.show_kwargs == {"transparent": False}
 
 
 def test_canvas_plot_uses_screen_dpi_when_not_saving():

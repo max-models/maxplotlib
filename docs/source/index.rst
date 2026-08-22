@@ -24,4 +24,6 @@ documentation for details.
    tutorials/tutorial_07_tikz
    tutorials/tutorial_08_plotly
    tutorials/tutorial_09_plotext
+   tutorials/tutorial_13_advanced_matplotlib
+   tutorials/tutorial_14_axis_and_layout_controls
    tutorials/tutorial_tikzfigure_subplots
