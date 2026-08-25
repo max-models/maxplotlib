@@ -3371,8 +3371,10 @@ class LinePlot:
                 y = self._transform_y(line["y"])
                 extend_x(x)
                 extend_y(y)
-                xerr = self._coerce_numeric_array(line.get("xerr"))
-                yerr = self._coerce_numeric_array(line.get("yerr"))
+                xerr = self._plotext_error_values(line.get("xerr"), len(x))
+                yerr = self._plotext_error_values(line.get("yerr"), len(y))
+                xerr = self._coerce_numeric_array(xerr)
+                yerr = self._coerce_numeric_array(yerr)
                 if xerr is not None:
                     extend_x(x - xerr)
                     extend_x(x + xerr)
@@ -3432,9 +3434,19 @@ class LinePlot:
     def _plotext_error_values(self, error, count):
         if error is None:
             return None
-        if np.isscalar(error):
-            return [float(error)] * count
-        return np.asarray(error).tolist()
+        values = np.asarray(error, dtype=float)
+        if values.ndim == 0:
+            # Plotext's error() interprets each value as the full bar width,
+            # while Matplotlib interprets it as the distance from the point
+            # to one end of a symmetric error bar.
+            return [float(values) * 2] * count
+        if values.ndim == 2 and values.shape[0] == 2:
+            # Matplotlib's asymmetric form is [lower, upper]. Plotext only
+            # accepts symmetric widths, so preserve the total extent.
+            values = values[0] + values[1]
+        else:
+            values = values * 2
+        return values.tolist()
 
     def _plotext_ranges(self, layers=None):
         xs, ys = self._plotext_bounds(layers=layers)
