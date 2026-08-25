@@ -18,7 +18,7 @@ dependencies = [
     "matplotlib",
     "pint",
     "plotly",
-    "plotext >= 5, < 6",
+    "plotext >= 6.0, < 7",
     "tikzfigure[vis]>=0.3.0",
 ]
 [project.optional-dependencies]
