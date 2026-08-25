@@ -18,7 +18,7 @@ def test_plotly_backend_supports_common_primitives():
     ax.set_grid(True)
     ax.set_legend(True)
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert fig is not None
     assert len(fig.data) >= 4  # line, scatter, errorbar, fill_between
@@ -35,7 +35,7 @@ def test_plotly_backend_supports_tick_label_rotation():
     axis.plot([0, 1], [0, 1])
     axis.set_xticks([0, 1], labels=["zero", "one"], rotation=45)
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert fig.layout.xaxis.tickangle == 45
 
@@ -49,7 +49,7 @@ def test_plotly_backend_supports_twinx():
     secondary.plot([0, 1], [10, 20], color="red")
     secondary.set_ylabel("Secondary")
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert len(fig.data) == 2
     assert fig.layout.yaxis2.title.text == "Secondary"
@@ -66,7 +66,7 @@ def test_plotly_backend_supports_common_added_primitives():
     axis.axhspan(0.25, 0.75, alpha=0.1)
     axis.arrow(0, 0, 1, 1)
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert len(fig.data) >= 3
     assert len(fig.layout.shapes) >= 2
@@ -82,7 +82,7 @@ def test_plotly_backend_supports_step_stairs_broken_barh_and_pie():
     axis.broken_barh([(0, 1), (2, 0.5)], (0, 0.5))
     axis.pie([2, 3, 4], labels=["A", "B", "C"])
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert any(trace.type == "pie" for trace in fig.data)
     assert len(fig.data) >= 5
@@ -98,7 +98,7 @@ def test_plotly_backend_supports_statistical_and_event_plots():
     axis.violinplot([[1, 2, 3], [2, 4, 5]])
     axis.eventplot([[0.2, 0.5], [1.0, 1.5]])
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert any(trace.type == "box" for trace in fig.data)
     assert any(trace.type == "violin" for trace in fig.data)
@@ -122,7 +122,7 @@ def test_plotly_backend_supports_scientific_field_plots():
     axis.hexbin(xx.ravel(), yy.ravel(), gridsize=5)
     axis.matshow(z)
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert any(trace.type == "contour" for trace in fig.data)
     assert any(trace.type == "heatmap" for trace in fig.data)
@@ -138,7 +138,7 @@ def test_plotly_backend_supports_contour_labels():
     axis.contour(x, x, xx**2 + yy**2)
     axis.clabel(fontsize=10, color="black")
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert fig.data[0].contours.showlabels is True
     assert fig.data[0].contours.labelfont.size == 10
@@ -152,7 +152,7 @@ def test_plotly_backend_supports_fill_log_scales_and_ticklabels():
     axis.loglog([1, 2, 4], [1, 4, 16])
     axis.set_xticklabels(["one", "two", "four"], color="navy")
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert any(trace.fill == "toself" for trace in fig.data)
     assert fig.layout.xaxis.type == "log"
@@ -168,8 +168,8 @@ def test_plotly_backend_respects_layers():
     ax.plot(x, x, color="black", label="L0", layer=0)
     ax.plot(x, x**2, color="red", label="L1", layer=1)
 
-    fig0 = canvas.plot(backend="plotly", layers=[0])
-    fig1 = canvas.plot(backend="plotly", layers=[1])
+    fig0 = canvas.render(backend="plotly", layers=[0])
+    fig1 = canvas.render(backend="plotly", layers=[1])
 
     assert len(fig0.data) == 1
     assert len(fig1.data) == 1
@@ -203,7 +203,7 @@ def test_plotly_backend_supports_common_patches_and_symlog():
     ax.set_title("patches")
     ax.set_legend(True)
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
     assert fig is not None
     assert len(getattr(fig.layout, "shapes", []) or []) >= 4
     # patch labels become dummy legend traces
@@ -214,7 +214,7 @@ def test_plotly_backend_supports_common_patches_and_symlog():
     ax2.plot(x, x**3, color="cyan", label="x^3")
     ax2.set_xscale("symlog")
     ax2.set_yscale("symlog")
-    fig2 = canvas2.plot(backend="plotly")
+    fig2 = canvas2.render(backend="plotly")
     assert fig2 is not None
 
 
@@ -230,7 +230,7 @@ def test_plotly_backend_renders_mixed_vector_primitives():
         np.ones((3, 3)),
     )
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
     assert len(fig.data) > 1
 
 
@@ -241,7 +241,7 @@ def test_plotly_backend_supports_bar_labels():
     axis.bar([0, 1], [2, 3])
     axis.bar_label(fmt="%d")
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
     labels = [annotation.text for annotation in fig.layout.annotations]
     assert labels[-2:] == ["2", "3"]
 
@@ -264,7 +264,7 @@ def test_plotly_backend_supports_pseudocolor_spy_table_and_triplot():
     axis.table(cellText=[["A", "B"], ["1", "2"]])
     axis.triplot(points_x, points_y, triangles=triangles)
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert sum(trace.type == "heatmap" for trace in fig.data) >= 3
     assert any(trace.type == "table" for trace in fig.data)
@@ -277,7 +277,7 @@ def test_plotly_backend_supports_quiver():
     canvas, axis = Canvas.subplots()
     axis.quiver([0, 1], [0, 1], [1, -1], [1, 1], color="purple", alpha=0.5)
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     arrows = [
         annotation for annotation in fig.layout.annotations if annotation.showarrow
@@ -297,7 +297,7 @@ def test_plotly_backend_supports_tripcolor():
         triangles=[[0, 1, 2], [1, 3, 2]],
     )
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert sum(trace.fill == "toself" for trace in fig.data) == 2
 
@@ -313,7 +313,7 @@ def test_plotly_backend_supports_triangulated_contours():
     axis.tricontour(x, y, values, triangles=triangles, levels=3)
     axis.tricontourf(x, y, values, triangles=triangles, levels=3)
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert any(trace.fill is None for trace in fig.data)
     assert any(trace.fill == "toself" for trace in fig.data)
@@ -332,7 +332,7 @@ def test_plotly_backend_supports_streamplot():
         color="darkgreen",
     )
 
-    fig = canvas.plot(backend="plotly")
+    fig = canvas.render(backend="plotly")
 
     assert len(fig.data) > 0
     assert all(trace.type == "scatter" for trace in fig.data)

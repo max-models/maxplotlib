@@ -94,6 +94,62 @@ def test_canvas_plot_tikzfigure_vertical_not_supported():
     assert "nrows > 1" in str(exc_info.value)
 
 
+def test_tikzfigure_supports_scatter_bars_fills_and_errorbars():
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.arange(3)
+    canvas = Canvas()
+    canvas.scatter(x, [1, 2, 1], color="red")
+    canvas.bar(x, [1, 2, 1], color="blue")
+    canvas.fill_between(x, [1, 2, 1], 0, color="green", alpha=0.2)
+    canvas.errorbar(x, [1, 2, 1], yerr=0.1, color="black")
+
+    tikz = canvas.render(backend="tikzfigure").generate_tikz()
+
+    assert "mark=*" in tikz
+    assert "fill=blue" in tikz
+    assert "fill=green" in tikz
+    assert tikz.count("coordinates") >= 4
+
+
+def test_tikzfigure_rejects_unsupported_plot_types_explicitly():
+    import numpy as np
+    import pytest
+
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.imshow(np.ones((2, 2)))
+
+    with pytest.raises(NotImplementedError, match="imshow"):
+        canvas.render(backend="tikzfigure")
+
+
+def test_tikzfigure_supports_step_stem_reference_lines_spans_and_fill():
+    import numpy as np
+
+    from maxplotlib import Canvas
+
+    x = np.arange(4)
+    canvas = Canvas()
+    canvas.step(x, [1, 2, 1, 3], color="black")
+    canvas.stem(x, [1, 2, 1, 3], color="purple")
+    canvas.hlines([1, 2], 0, 3, color="gray")
+    canvas.vlines([1, 2], 0, 3, color="gray")
+    canvas.axvspan(1, 2, color="orange", alpha=0.2)
+    canvas.axhspan(1, 2, color="green", alpha=0.2)
+    canvas.fill(x, [0, 1, 0, 1], color="cyan", alpha=0.2)
+
+    tikz = canvas.render(backend="tikzfigure").generate_tikz()
+
+    assert "mark=*" in tikz
+    assert "fill=orange" in tikz
+    assert "fill=cyan" in tikz
+    assert tikz.count("coordinates") >= 10
+
+
 def test_canvas_matplotlib_gridspec_kw_affects_row_spacing():
     """Test that hspace changes the vertical spacing between rows."""
     import matplotlib.pyplot as plt
@@ -160,7 +216,7 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_line_spacing():
         for ax in row_axes:
             ax.plot(x, (idx + 1) * x)
             idx += 1
-    tight_fig, tight_matplotlib_axes = tight_canvas.plot(backend="matplotlib")
+    tight_fig, tight_matplotlib_axes = tight_canvas.render(backend="matplotlib")
     tight_hgap = (
         tight_matplotlib_axes[0, 1].get_position().x0
         - tight_matplotlib_axes[0, 0].get_position().x1
@@ -183,7 +239,7 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_line_spacing():
         for ax in row_axes:
             ax.plot(x, (idx + 1) * x)
             idx += 1
-    loose_fig, loose_matplotlib_axes = loose_canvas.plot(backend="matplotlib")
+    loose_fig, loose_matplotlib_axes = loose_canvas.render(backend="matplotlib")
     loose_hgap = (
         loose_matplotlib_axes[0, 1].get_position().x0
         - loose_matplotlib_axes[0, 0].get_position().x1
@@ -222,7 +278,7 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_imshow_spacing():
             ax.add_imshow(data + idx, cmap="viridis")
             ax.set_title(f"Heatmap {idx + 1}")
             idx += 1
-    tight_fig, tight_matplotlib_axes = tight_canvas.plot(backend="matplotlib")
+    tight_fig, tight_matplotlib_axes = tight_canvas.render(backend="matplotlib")
     tight_hgap = (
         tight_matplotlib_axes[0, 1].get_position().x0
         - tight_matplotlib_axes[0, 0].get_position().x1
@@ -246,7 +302,7 @@ def test_canvas_matplotlib_gridspec_kw_affects_2x2_imshow_spacing():
             ax.add_imshow(data + idx, cmap="viridis")
             ax.set_title(f"Heatmap {idx + 1}")
             idx += 1
-    loose_fig, loose_matplotlib_axes = loose_canvas.plot(backend="matplotlib")
+    loose_fig, loose_matplotlib_axes = loose_canvas.render(backend="matplotlib")
     loose_hgap = (
         loose_matplotlib_axes[0, 1].get_position().x0
         - loose_matplotlib_axes[0, 0].get_position().x1
@@ -355,6 +411,27 @@ def test_canvas_show_uses_matplotlib_show(monkeypatch):
     assert axes is not None
 
 
+def test_canvas_show_plotly_does_not_return_displayed_figure_in_jupyter(monkeypatch):
+    import maxplotlib.canvas.canvas as canvas_module
+    from maxplotlib import Canvas
+
+    class FakePlotlyFigure:
+        def __init__(self):
+            self.show_calls = 0
+
+        def show(self):
+            self.show_calls += 1
+
+    figure = FakePlotlyFigure()
+    monkeypatch.setattr(Canvas, "plot_plotly", lambda *args, **kwargs: figure)
+    monkeypatch.setattr(canvas_module, "_running_in_jupyter", lambda: True)
+
+    result = Canvas().show(backend="plotly")
+
+    assert result is None
+    assert figure.show_calls == 1
+
+
 def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):
     import sys
     import types
@@ -376,7 +453,7 @@ def test_canvas_show_uses_ipython_display_in_jupyter(monkeypatch):
     monkeypatch.setitem(sys.modules, "IPython", ipython)
     monkeypatch.setitem(sys.modules, "IPython.display", ipython_display)
     monkeypatch.setattr(plt, "close", lambda value: closed.append(value))
-    monkeypatch.setattr(Canvas, "plot", lambda *args, **kwargs: (fig, object()))
+    monkeypatch.setattr(Canvas, "_render", lambda *args, **kwargs: (fig, object()))
     monkeypatch.setattr(plt, "show", lambda: pytest.fail("pyplot.show was called"))
 
     canvas = Canvas()
@@ -636,7 +713,6 @@ def test_vector_and_triangulated_plot_primitives_are_supported():
 
 
 def test_stream_matrix_and_table_primitives_are_supported():
-    import matplotlib.pyplot as plt
     import numpy as np
 
     from maxplotlib import Canvas
@@ -673,7 +749,7 @@ def test_contour_labels_and_rasterization_zorder_are_supported():
     axis.clabel(inline=True, fontsize=8)
     axis.set_rasterization_zorder(2)
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
 
     assert len(axes[0, 0].texts) > 0
     assert axes[0, 0].get_rasterization_zorder() == 2
@@ -682,7 +758,6 @@ def test_contour_labels_and_rasterization_zorder_are_supported():
 
 def test_axis_layout_and_log_shortcuts_are_supported():
     import matplotlib.pyplot as plt
-    import numpy as np
 
     from maxplotlib import Canvas
 
@@ -696,7 +771,7 @@ def test_axis_layout_and_log_shortcuts_are_supported():
     axis.set_xticklabels(["one", "two", "four"], rotation=30)
     axis.set_yticklabels(["low", "high"], color="navy")
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
     matplotlib_axis = axes[0, 0]
 
     assert matplotlib_axis.get_xscale() == "log"
@@ -720,10 +795,242 @@ def test_secondary_axes_are_supported_by_matplotlib():
         "right", functions=(lambda y: y + 1, lambda y: y - 1), label="offset"
     )
 
-    fig, axes = canvas.plot(backend="matplotlib")
+    fig, axes = canvas.render(backend="matplotlib")
 
     assert len(axes[0, 0].child_axes) == 2
     plt.close(fig)
+
+
+def test_twiny_is_supported_by_matplotlib():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    secondary = canvas.twiny()
+    axis.plot([0, 1], [0, 1])
+    secondary.plot([10, 20], [0, 1], color="red")
+
+    fig, axes = canvas.render(backend="matplotlib")
+
+    assert canvas.twiny_axes[(0, 0)] is not axes[0, 0]
+    plt.close(fig)
+
+
+def test_axis_state_setter_aliases_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    axis.set_frame_on(False)
+    axis.set_visible(True)
+    axis.set_alpha(0.8)
+    axis.set_zorder(3)
+    axis.set_rasterized(True)
+    axis.set_autoscale_on(True)
+    axis.set_autoscalex_on(False)
+    axis.set_autoscaley_on(True)
+    axis.set_autoscale_on(False)
+    axis.set_xbound(-1, 2)
+    axis.set_ybound(-2, 3)
+
+    fig, axes = canvas.render(backend="matplotlib")
+    matplotlib_axis = axes[0, 0]
+
+    assert matplotlib_axis.get_frame_on() is False
+    assert matplotlib_axis.get_visible() is True
+    assert matplotlib_axis.get_alpha() == 0.8
+    assert matplotlib_axis.get_zorder() == 3
+    assert matplotlib_axis.get_rasterized() is True
+    assert matplotlib_axis.get_xlim() == (-1, 2)
+    assert matplotlib_axis.get_ylim() == (-2, 3)
+    plt.close(fig)
+
+
+def test_figure_size_and_dpi_setters_are_supported():
+    import pytest
+
+    from maxplotlib import Canvas
+
+    canvas, _ = Canvas.subplots(figsize=(4, 3), dpi=120)
+    assert canvas.get_size_inches() == pytest.approx([4, 3])
+    assert canvas.get_figwidth() == 4
+    assert canvas.get_figheight() == 3
+    assert canvas.get_dpi() == 120
+
+    canvas.set_figwidth(5)
+    canvas.set_figheight(2)
+    canvas.set_dpi(150)
+
+    assert canvas.get_size_inches() == pytest.approx([5, 2])
+    assert canvas.get_dpi() == 150
+
+
+def test_generic_axis_setters_and_metadata_getters_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    canvas.suptitle("Figure title")
+    canvas.supxlabel("Shared x")
+    canvas.supylabel("Shared y")
+    axis.plot([0, 1], [0, 1])
+    axis.set(fc="lavender", adjustable="box", anchor="C")
+    axis.update({"aspect": "equal"})
+    axis.invert_xaxis()
+
+    fig, axes = canvas.render(backend="matplotlib")
+    matplotlib_axis = axes[0, 0]
+
+    assert canvas.get_suptitle() == "Figure title"
+    assert canvas.get_supxlabel() == "Shared x"
+    assert canvas.get_supylabel() == "Shared y"
+    assert len(canvas.get_axes()) == 1
+    assert canvas.xaxis_inverted() is True
+    assert matplotlib_axis.get_adjustable() == "box"
+    assert matplotlib_axis.get_anchor() == "C"
+    plt.close(fig)
+
+
+def test_figure_layout_helpers_and_aliases_are_supported():
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1], label="line")
+    axis.set_legend(loc="upper left")
+    axis.add_table(cellText=[["A"]])
+    axis.add_image([[1, 2], [3, 4]])
+    canvas.set_tight_layout(True)
+    canvas.align_labels()
+    canvas.align_titles()
+    canvas.align_xlabels()
+    canvas.align_ylabels()
+    canvas.autofmt_xdate(rotation=20)
+
+    fig, axes = canvas.render(backend="matplotlib")
+
+    assert axes[0, 0].get_legend() is not None
+    assert len(axes[0, 0].tables) == 1
+    assert len(axes[0, 0].images) == 1
+    plt.close(fig)
+
+
+def test_axis_getters_reflect_configured_state():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.set_adjustable("datalim")
+    axis.set_anchor("SW")
+    axis.set_alpha(0.5)
+    axis.set_box_aspect(1.2)
+    axis.set_facecolor("pink")
+    axis.set_frame_on(False)
+    axis.set_legend(True)
+    axis.set_rasterization_zorder(4)
+    axis.set_rasterized(True)
+    axis.set_visible(False)
+    axis.set_zorder(7)
+    axis.set_xbound(-1, 2)
+    axis.set_ybound(-2, 3)
+    axis.set_xmargin(0.1)
+    axis.set_ymargin(0.2)
+
+    assert canvas.get_adjustable() == "datalim"
+    assert canvas.get_anchor() == "SW"
+    assert canvas.get_alpha() == 0.5
+    assert canvas.get_box_aspect() == 1.2
+    assert canvas.get_facecolor() == "pink"
+    assert canvas.get_frame_on() is False
+    assert canvas.get_legend() is True
+    assert canvas.get_rasterization_zorder() == 4
+    assert canvas.get_rasterized() is True
+    assert canvas.get_visible() is False
+    assert canvas.get_zorder() == 7
+    assert canvas.get_xbound() == (-1, 2)
+    assert canvas.get_ybound() == (-2, 3)
+    assert canvas.get_xmargin() == 0.1
+    assert canvas.get_ymargin() == 0.2
+
+
+def test_render_is_the_explicit_rendering_alias():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.add_line([0, 1], [0, 1])
+
+    rendered = canvas.render(backend="plotly")
+
+    assert rendered is not None
+
+
+def test_plot_adds_line_data_when_given_x_and_y():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    result = canvas.plot([0, 1], [1, 2], color="purple", label="line")
+
+    assert result is canvas
+    assert canvas.render(backend="plotly").data[0].name == "line"
+
+
+def test_legacy_plot_backend_form_warns():
+    import pytest
+
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.add_line([0, 1], [0, 1])
+
+    with pytest.warns(FutureWarning, match=r"canvas\.render"):
+        canvas.plot(backend="plotly")
+
+
+def test_plot_many_adds_labeled_lines_and_returns_canvas():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    result = canvas.plot_many(
+        [([0, 1], [0, 1]), ([0, 1], [1, 0])],
+        labels=["up", "down"],
+    )
+
+    assert result is canvas
+    assert [
+        line["kwargs"]["label"]
+        for line in canvas._subplot_matrix[0][0].layered_line_data[0]
+    ] == [
+        "up",
+        "down",
+    ]
+
+
+def test_configure_applies_common_canvas_settings():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.plot([0, 1], [0, 1]).configure(
+        title="Example",
+        xlabel="Time",
+        ylabel="Value",
+        grid=True,
+        facecolor="whitesmoke",
+        xlim=(0, 2),
+        ylim=(-1, 2),
+    )
+
+    subplot = canvas._subplot_matrix[0][0]
+    assert canvas._suptitle == "Example"
+    assert canvas._supxlabel == "Time"
+    assert canvas._supylabel == "Value"
+    assert subplot._grid is True
+    assert subplot._facecolor == "whitesmoke"
+    assert (subplot._xmin, subplot._xmax) == (0, 2)
+    assert (subplot._ymin, subplot._ymax) == (-1, 2)
 
 
 def test_matplotlib_postprocess_can_customize_figure_and_axes():
@@ -808,7 +1115,7 @@ def test_matplotlib_postprocess_rejects_non_matplotlib_backends():
     from maxplotlib import Canvas
 
     with pytest.raises(ValueError, match="only supported with the matplotlib backend"):
-        Canvas().plot(backend="plotly", matplotlib_postprocess=lambda fig, axes: None)
+        Canvas().render(backend="plotly", matplotlib_postprocess=lambda fig, axes: None)
 
 
 def test_show_canvas_script_invokes_canvas_show(monkeypatch):

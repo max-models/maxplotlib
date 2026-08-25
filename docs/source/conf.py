@@ -38,11 +38,10 @@ extensions = [
     "sphinx.ext.autodoc",
 ]
 
+# Execute every tutorial notebook when building the documentation.
+nbsphinx_execute = "always"
+
 templates_path = ["_templates"]
-exclude_patterns = [
-    # tutorial_07_tikz.ipynb requires pdflatex to render — skip during docs build
-    "tutorials/tutorial_07_tikz.ipynb",
-]
 
 
 # -- Options for HTML output -------------------------------------------------

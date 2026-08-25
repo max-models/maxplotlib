@@ -4,6 +4,83 @@ import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tikzfigure import TikzFigure
 
+_TIKZ_SUPPORTED_PLOT_TYPES = {
+    "plot",
+    "scatter",
+    "bar",
+    "barh",
+    "fill_between",
+    "errorbar",
+    "step",
+    "stairs",
+    "stem",
+    "hlines",
+    "vlines",
+    "axvspan",
+    "axhspan",
+    "fill",
+    "gantt",
+    "flame_chart",
+}
+
+
+def _tikz_style_kwargs(kwargs, *, default_color="black"):
+    """Translate common Matplotlib-style options to pgfplots/TikZ options."""
+    kwargs = dict(kwargs)
+    style = {}
+    if kwargs.get("color") is not None:
+        style["color"] = kwargs["color"]
+    else:
+        style["color"] = default_color
+    if kwargs.get("linewidth") is not None:
+        style["line_width"] = kwargs["linewidth"]
+    if kwargs.get("alpha") is not None:
+        style["opacity"] = kwargs["alpha"]
+    if kwargs.get("linestyle") in {"--", "dashed"}:
+        style["dash_pattern"] = "on 4pt off 2pt"
+    elif kwargs.get("linestyle") in {":", "dotted"}:
+        style["dash_pattern"] = "on 1pt off 2pt"
+    elif kwargs.get("linestyle") == "-.":
+        style["dash_pattern"] = "on 4pt off 2pt on 1pt off 2pt"
+    if kwargs.get("marker") is not None:
+        style["mark"] = kwargs["marker"]
+    if kwargs.get("markersize") is not None:
+        style["mark_size"] = f"{kwargs['markersize']}pt"
+    return style
+
+
+def _tikz_error_bounds(error, values):
+    """Return lower and upper error arrays in Matplotlib's common formats."""
+    if error is None:
+        return None
+    error = np.asarray(error, dtype=float)
+    values = np.asarray(values, dtype=float)
+    if error.ndim == 0:
+        error = np.full(values.shape, error.item())
+    if error.ndim == 2 and error.shape[0] == 2:
+        return error[0], error[1]
+    return error, error
+
+
+def _tikz_step_coordinates(x, y, where="pre"):
+    """Expand line data into explicit coordinates for a stepped path."""
+    x = np.asarray(x)
+    y = np.asarray(y)
+    if len(x) < 2:
+        return x, y
+    if where == "post":
+        step_x = np.repeat(x, 2)[1:]
+        step_y = np.repeat(y, 2)[:-1]
+    elif where == "mid":
+        mids = (x[:-1] + x[1:]) / 2
+        step_x = np.ravel(np.column_stack((x[:-1], mids, mids, x[1:])))
+        step_y = np.ravel(np.column_stack((y[:-1], y[:-1], y[1:], y[1:])))
+        return step_x, step_y
+    else:
+        step_x = np.repeat(x, 2)[:-1]
+        step_y = np.repeat(y, 2)[1:]
+    return step_x, step_y
+
 
 class Node:
     def __init__(self, x, y, label="", content="", layer=0, **kwargs):
@@ -70,6 +147,7 @@ class LinePlot:
         self._caption = None
         self._grid = grid
         self._legend = legend
+        self._legend_kwargs: dict = {}
         self._xmin = xmin
         self._xmax = xmax
         self._ymin = ymin
@@ -107,6 +185,18 @@ class LinePlot:
         self._box_aspect = None
         self._secondary_xaxis_settings: dict | None = None
         self._secondary_yaxis_settings: dict | None = None
+        self._frame_on = None
+        self._visible = None
+        self._alpha = None
+        self._zorder = None
+        self._rasterized = None
+        self._autoscale_on = None
+        self._autoscalex_on = None
+        self._autoscaley_on = None
+        self._xmargin = None
+        self._ymargin = None
+        self._adjustable = None
+        self._anchor = None
 
         # Custom tick positions and labels
         self._xticks: list | None = None
@@ -557,6 +647,10 @@ class LinePlot:
             layer,
         )
 
+    def add_table(self, cellText=None, layer=0, **kwargs):
+        """Matplotlib-style alias for ``table``."""
+        self.table(cellText=cellText, layer=layer, **kwargs)
+
     def gantt(self, tasks, start_times, durations, layer=0, **kwargs):
         """
         Add a Gantt chart to the subplot.
@@ -672,9 +766,10 @@ class LinePlot:
         """Configure tick appearance using Matplotlib-style keyword arguments."""
         self._tick_params = dict(kwargs)
 
-    def set_legend(self, visible: bool = True):
+    def set_legend(self, visible: bool = True, **kwargs):
         """Show or hide the legend."""
         self._legend = visible
+        self._legend_kwargs = dict(kwargs)
 
     def set_xscale(self, scale: str):
         """Set the x-axis scale type: 'linear', 'log', or 'symlog'."""
@@ -699,6 +794,87 @@ class LinePlot:
     def set_facecolor(self, color):
         """Set the subplot background color."""
         self._facecolor = color
+
+    def set_frame_on(self, state):
+        self._frame_on = state
+
+    def set_visible(self, state):
+        self._visible = state
+
+    def set_alpha(self, alpha):
+        self._alpha = alpha
+
+    def set_zorder(self, zorder):
+        self._zorder = zorder
+
+    def set_rasterized(self, rasterized):
+        self._rasterized = rasterized
+
+    def set_autoscale_on(self, enable):
+        self._autoscale_on = enable
+
+    def set_autoscalex_on(self, enable):
+        self._autoscalex_on = enable
+
+    def set_autoscaley_on(self, enable):
+        self._autoscaley_on = enable
+
+    def set_xbound(self, lower=None, upper=None):
+        self.set_xlim(lower, upper)
+
+    def set_ybound(self, lower=None, upper=None):
+        self.set_ylim(lower, upper)
+
+    def set_xmargin(self, margin):
+        self._xmargin = margin
+
+    def set_ymargin(self, margin):
+        self._ymargin = margin
+
+    def get_adjustable(self):
+        return self._adjustable
+
+    def get_anchor(self):
+        return self._anchor
+
+    def get_alpha(self):
+        return self._alpha
+
+    def get_box_aspect(self):
+        return self._box_aspect
+
+    def get_facecolor(self):
+        return self._facecolor
+
+    def get_frame_on(self):
+        return self._frame_on
+
+    def get_legend(self):
+        return self._legend
+
+    def get_rasterization_zorder(self):
+        return self._rasterization_zorder
+
+    def get_rasterized(self):
+        return self._rasterized
+
+    def get_visible(self):
+        return self._visible
+
+    def get_zorder(self):
+        return self._zorder
+
+    def get_xbound(self):
+        return self._xmin, self._xmax
+
+    def get_ybound(self):
+        return self._ymin, self._ymax
+
+    def get_xmargin(self):
+        return self._xmargin
+
+    def get_ymargin(self):
+        return self._ymargin
 
     def margins(self, *args, **kwargs):
         """Set x/y data margins using Matplotlib-style arguments."""
@@ -748,6 +924,49 @@ class LinePlot:
     def set_aspect(self, aspect):
         """Set the axes aspect ratio: 'equal', 'auto', or a float."""
         self._aspect = aspect
+
+    def set_adjustable(self, adjustable):
+        self._adjustable = adjustable
+
+    def set_anchor(self, anchor):
+        self._anchor = anchor
+
+    def set_fc(self, color):
+        self.set_facecolor(color)
+
+    def set(self, **kwargs):
+        """Set common axes properties using Matplotlib-style names."""
+        handlers = {
+            "title": self.set_title,
+            "xlabel": self.set_xlabel,
+            "ylabel": self.set_ylabel,
+            "xlim": lambda value: self.set_xlim(*value),
+            "ylim": lambda value: self.set_ylim(*value),
+            "xscale": self.set_xscale,
+            "yscale": self.set_yscale,
+            "facecolor": self.set_facecolor,
+            "fc": self.set_fc,
+            "aspect": self.set_aspect,
+            "adjustable": self.set_adjustable,
+            "anchor": self.set_anchor,
+            "visible": self.set_visible,
+            "alpha": self.set_alpha,
+            "zorder": self.set_zorder,
+        }
+        for name, value in kwargs.items():
+            if name not in handlers:
+                raise AttributeError(f"Unknown LinePlot property: {name}")
+            handlers[name](value)
+        return kwargs
+
+    def update(self, kwargs):
+        return self.set(**dict(kwargs))
+
+    def xaxis_inverted(self):
+        return self._invert_xaxis
+
+    def yaxis_inverted(self):
+        return self._invert_yaxis
 
     def axis(self, *args, **kwargs):
         """Set Matplotlib-style axis limits or modes."""
@@ -1024,6 +1243,10 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
+
+    def add_image(self, data, layer=0, **kwargs):
+        """Matplotlib-style alias for ``imshow``."""
+        self.add_imshow(data, layer=layer, **kwargs)
 
     def add_patch(self, patch, layer=0, **kwargs):
         ld = {
@@ -1343,7 +1566,7 @@ class LinePlot:
         if self._ylabel:
             ax.set_ylabel(self._ylabel, **self._ylabel_kwargs)
         if self._legend and len(self.line_data) > 0:
-            ax.legend()
+            ax.legend(**self._legend_kwargs)
         if self._grid:
             ax.grid()
         if self._axis_settings:
@@ -1382,12 +1605,36 @@ class LinePlot:
             ax.tick_params(**self._tick_params)
         if self._aspect is not None:
             ax.set_aspect(self._aspect)
+        if self._adjustable is not None:
+            ax.set_adjustable(self._adjustable)
+        if self._anchor is not None:
+            ax.set_anchor(self._anchor)
         if self._box_aspect is not None:
             ax.set_box_aspect(self._box_aspect)
         if self._axisbelow is not None:
             ax.set_axisbelow(self._axisbelow)
         if self._facecolor is not None:
             ax.set_facecolor(self._facecolor)
+        if self._frame_on is not None:
+            ax.set_frame_on(self._frame_on)
+        if self._visible is not None:
+            ax.set_visible(self._visible)
+        if self._alpha is not None:
+            ax.set_alpha(self._alpha)
+        if self._zorder is not None:
+            ax.set_zorder(self._zorder)
+        if self._rasterized is not None:
+            ax.set_rasterized(self._rasterized)
+        if self._autoscale_on is not None:
+            ax.set_autoscale_on(self._autoscale_on)
+        if self._autoscalex_on is not None:
+            ax.set_autoscalex_on(self._autoscalex_on)
+        if self._autoscaley_on is not None:
+            ax.set_autoscaley_on(self._autoscaley_on)
+        if self._xmargin is not None:
+            ax.set_xmargin(self._xmargin)
+        if self._ymargin is not None:
+            ax.set_ymargin(self._ymargin)
         if self._margins:
             margin_settings = dict(self._margins)
             margin_args = margin_settings.pop("args", ())
@@ -1450,12 +1697,176 @@ class LinePlot:
             if layers and layer_name not in layers:
                 continue
             for line in layer_lines:
-                if line["plot_type"] == "plot":
+                plot_type = line["plot_type"]
+                if plot_type not in _TIKZ_SUPPORTED_PLOT_TYPES:
+                    raise NotImplementedError(
+                        f"{plot_type} is not supported by the tikzfigure backend"
+                    )
+                if plot_type == "plot":
                     x = (line["x"] + self._xshift) * self._xscale
                     y = (line["y"] + self._yshift) * self._yscale
 
                     nodes = [[xi, yi] for xi, yi in zip(x, y)]
-                    tikz_figure.draw(nodes=nodes, **line["kwargs"])
+                    tikz_figure.draw(
+                        nodes=nodes,
+                        **_tikz_style_kwargs(line["kwargs"]),
+                    )
+                elif plot_type == "scatter":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y = (line["y"] + self._yshift) * self._yscale
+                    style = _tikz_style_kwargs(line["kwargs"])
+                    style.setdefault("mark", "*")
+                    style["line_width"] = 0
+                    tikz_figure.draw(
+                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
+                        **style,
+                    )
+                elif plot_type in {"bar", "barh"}:
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    style["fill"] = kwargs.get("color", "blue")
+                    style["fill_opacity"] = kwargs.get("alpha", 1.0)
+                    style["line_width"] = kwargs.get("linewidth", 0)
+                    if plot_type == "bar":
+                        width = kwargs.get("width", 0.8)
+                        for x, height in zip(line["x"], line["height"]):
+                            x = (x + self._xshift) * self._xscale
+                            height = height * self._yscale
+                            tikz_figure.draw(
+                                nodes=[
+                                    [x - width / 2, 0],
+                                    [x + width / 2, 0],
+                                    [x + width / 2, height],
+                                    [x - width / 2, height],
+                                ],
+                                cycle=True,
+                                **style,
+                            )
+                    else:
+                        height = kwargs.get("height", 0.8)
+                        for y, width in zip(line["y"], line["width"]):
+                            y = (y + self._yshift) * self._yscale
+                            width = width * self._xscale
+                            tikz_figure.draw(
+                                nodes=[
+                                    [0, y - height / 2],
+                                    [width, y - height / 2],
+                                    [width, y + height / 2],
+                                    [0, y + height / 2],
+                                ],
+                                cycle=True,
+                                **style,
+                            )
+                elif plot_type == "fill_between":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y1 = np.asarray(line["y1"])
+                    y2 = np.broadcast_to(line["y2"], y1.shape)
+                    nodes = [[xi, yi] for xi, yi in zip(x, y1)]
+                    nodes.extend([[xi, yi] for xi, yi in zip(x[::-1], y2[::-1])])
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    style["fill"] = kwargs.get("color", "blue")
+                    style["fill_opacity"] = kwargs.get("alpha", 0.25)
+                    tikz_figure.draw(nodes=nodes, cycle=True, **style)
+                elif plot_type == "errorbar":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y = (line["y"] + self._yshift) * self._yscale
+                    style = _tikz_style_kwargs(line["kwargs"])
+                    tikz_figure.draw(nodes=[[xi, yi] for xi, yi in zip(x, y)], **style)
+                    y_bounds = _tikz_error_bounds(line["yerr"], y)
+                    if y_bounds is not None:
+                        lower, upper = y_bounds
+                        for xi, low, high in zip(x, y - lower, y + upper):
+                            tikz_figure.draw(nodes=[[xi, low], [xi, high]], **style)
+                    x_bounds = _tikz_error_bounds(line["xerr"], x)
+                    if x_bounds is not None:
+                        lower, upper = x_bounds
+                        for yi, low, high in zip(y, x - lower, x + upper):
+                            tikz_figure.draw(nodes=[[low, yi], [high, yi]], **style)
+                elif plot_type in {"step", "stairs"}:
+                    kwargs = line["kwargs"]
+                    if plot_type == "step":
+                        x = line["x"]
+                        y = line["y"]
+                        where = kwargs.get("where", "pre")
+                    else:
+                        values = line["values"]
+                        edges = line["edges"]
+                        if edges is None:
+                            edges = np.arange(len(values) + 1)
+                        x = edges
+                        y = np.r_[values, values[-1]]
+                        where = "post"
+                    x, y = _tikz_step_coordinates(x, y, where=where)
+                    x = (x + self._xshift) * self._xscale
+                    y = (y + self._yshift) * self._yscale
+                    tikz_figure.draw(
+                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
+                        **_tikz_style_kwargs(kwargs),
+                    )
+                elif plot_type == "stem":
+                    x = (line["x"] + self._xshift) * self._xscale
+                    y = (line["y"] + self._yshift) * self._yscale
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    marker_style = dict(style)
+                    marker_style.update(mark=kwargs.get("marker", "*"), line_width=0)
+                    tikz_figure.draw(
+                        nodes=[[xi, yi] for xi, yi in zip(x, y)], **marker_style
+                    )
+                    for xi, yi in zip(x, y):
+                        tikz_figure.draw(nodes=[[xi, 0], [xi, yi]], **style)
+                elif plot_type in {"hlines", "vlines"}:
+                    kwargs = _tikz_style_kwargs(line["kwargs"])
+                    if plot_type == "hlines":
+                        for yi, left, right in zip(
+                            np.atleast_1d(line["y"]),
+                            np.atleast_1d(line["xmin"]),
+                            np.atleast_1d(line["xmax"]),
+                        ):
+                            tikz_figure.draw(nodes=[[left, yi], [right, yi]], **kwargs)
+                    else:
+                        for xi, bottom, top in zip(
+                            np.atleast_1d(line["x"]),
+                            np.atleast_1d(line["ymin"]),
+                            np.atleast_1d(line["ymax"]),
+                        ):
+                            tikz_figure.draw(nodes=[[xi, bottom], [xi, top]], **kwargs)
+                elif plot_type in {"axvspan", "axhspan"}:
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    style["fill"] = kwargs.get("color", "blue")
+                    style["fill_opacity"] = kwargs.get("alpha", 0.2)
+                    if plot_type == "axvspan":
+                        ymin, ymax = self._ymin or 0, self._ymax or 1
+                        nodes = [
+                            [line["xmin"], ymin],
+                            [line["xmax"], ymin],
+                            [line["xmax"], ymax],
+                            [line["xmin"], ymax],
+                        ]
+                    else:
+                        xmin, xmax = self._xmin or 0, self._xmax or 1
+                        nodes = [
+                            [xmin, line["ymin"]],
+                            [xmax, line["ymin"]],
+                            [xmax, line["ymax"]],
+                            [xmin, line["ymax"]],
+                        ]
+                    tikz_figure.draw(nodes=nodes, cycle=True, **style)
+                elif plot_type == "fill":
+                    if len(line["args"]) < 2:
+                        raise ValueError("tikzfigure fill requires x and y coordinates")
+                    x, y = line["args"][:2]
+                    kwargs = line["kwargs"]
+                    style = _tikz_style_kwargs(kwargs)
+                    style["fill"] = kwargs.get("color", "blue")
+                    style["fill_opacity"] = kwargs.get("alpha", 0.25)
+                    tikz_figure.draw(
+                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
+                        cycle=True,
+                        **style,
+                    )
                 elif line["plot_type"] == "gantt":
                     tasks = line["tasks"]
                     start_times = (line["start_times"] + self._xshift) * self._xscale
@@ -2960,8 +3371,10 @@ class LinePlot:
                 y = self._transform_y(line["y"])
                 extend_x(x)
                 extend_y(y)
-                xerr = self._coerce_numeric_array(line.get("xerr"))
-                yerr = self._coerce_numeric_array(line.get("yerr"))
+                xerr = self._plotext_error_values(line.get("xerr"), len(x))
+                yerr = self._plotext_error_values(line.get("yerr"), len(y))
+                xerr = self._coerce_numeric_array(xerr)
+                yerr = self._coerce_numeric_array(yerr)
                 if xerr is not None:
                     extend_x(x - xerr)
                     extend_x(x + xerr)
@@ -3021,9 +3434,19 @@ class LinePlot:
     def _plotext_error_values(self, error, count):
         if error is None:
             return None
-        if np.isscalar(error):
-            return [float(error)] * count
-        return np.asarray(error).tolist()
+        values = np.asarray(error, dtype=float)
+        if values.ndim == 0:
+            # Plotext's error() interprets each value as the full bar width,
+            # while Matplotlib interprets it as the distance from the point
+            # to one end of a symmetric error bar.
+            return [float(values) * 2] * count
+        if values.ndim == 2 and values.shape[0] == 2:
+            # Matplotlib's asymmetric form is [lower, upper]. Plotext only
+            # accepts symmetric widths, so preserve the total extent.
+            values = values[0] + values[1]
+        else:
+            values = values * 2
+        return values.tolist()
 
     def _plotext_ranges(self, layers=None):
         xs, ys = self._plotext_bounds(layers=layers)
