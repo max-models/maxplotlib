@@ -247,6 +247,17 @@ def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
 
 
 class Canvas:
+    """A figure made of one or more subplots, rendered by any backend.
+
+    The drawing methods mirror Matplotlib's ``Axes`` API and forward their
+    keyword arguments to the selected backend. Two keyword arguments are
+    handled by maxplotlib itself and accepted by every drawing method:
+    ``hover=`` (hover text, used by the Plotly backend, ignored elsewhere) and
+    ``meta=`` (an opaque tag set as ``meta`` on Plotly traces and as ``gid``
+    on Matplotlib artists, so the artists can be found by identity rather than
+    by drawing order). See :class:`~maxplotlib.subfigure.line_plot.LinePlot`.
+    """
+
     def __init__(
         self,
         nrows: int = 1,
@@ -326,6 +337,7 @@ class Canvas:
         self._align_xlabels = False
         self._align_ylabels = False
         self._autofmt_xdate_kwargs: dict | None = None
+        self._barmode: str | None = None
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
@@ -560,7 +572,9 @@ class Canvas:
         height (array-like): Heights of the bars.
         layer (int): Layer index (default 0).
         row, col (int): Subplot position (default top-left).
-        **kwargs: Forwarded to the backend (e.g., color, width, label).
+        **kwargs: Forwarded to the backend (e.g., color, width, bottom,
+            alpha, edgecolor, label). ``bottom`` stacks the bars on every
+            backend.
         """
         sp = self._get_or_create_subplot(row, col)
         sp.bar(x, height, layer=layer, **kwargs)
@@ -995,7 +1009,10 @@ class Canvas:
         start_times (array-like, optional): Start times for each frame. If None, computed from hierarchy.
         layer (int): Layer index (default 0).
         row, col (int): Subplot position (default top-left).
-        **kwargs: Forwarded to the backend (e.g., colormap, edgecolor, label).
+        **kwargs: Forwarded to the backend (e.g., colormap, colors,
+            edgecolor, label). ``colormap`` accepts a Matplotlib colormap name
+            or a Plotly colorscale name on either backend; ``colors`` sets an
+            explicit color per frame.
         """
         sp = self._get_or_create_subplot(row, col)
         sp.flame_chart(
@@ -1085,6 +1102,24 @@ class Canvas:
         if tight_layout:
             self.tight_layout()
         return self
+
+    def set_barmode(self, mode: str | None):
+        """Set how overlapping bars are arranged in the Plotly backend.
+
+        ``mode`` is one of Plotly's ``"group"``, ``"overlay"``, ``"stack"``
+        or ``"relative"``, or ``None`` to let maxplotlib decide. By default
+        the canvas uses ``"overlay"`` whenever any bar positions itself with
+        an explicit base (``bottom=``/``left=``, Gantt rows, flame frames),
+        because Plotly's default grouping would re-offset those bars away
+        from the positions the caller asked for. Ignored by the other
+        backends, which have no equivalent layout-level setting.
+        """
+        self._barmode = mode
+        return self
+
+    @property
+    def barmode(self):
+        return self._barmode
 
     def set_xlim(
         self, left=None, right=None, row: int | None = None, col: int | None = None
@@ -2776,6 +2811,7 @@ class Canvas:
                 fig.update_xaxes(
                     tickmode="array",
                     ticktext=line_plot._xticklabels,
+                    tickangle=line_plot._xticklabel_kwargs.get("rotation"),
                     tickfont={
                         key: line_plot._xticklabel_kwargs[key]
                         for key in ("size", "color", "family")
@@ -2788,6 +2824,7 @@ class Canvas:
                 fig.update_yaxes(
                     tickmode="array",
                     ticktext=line_plot._yticklabels,
+                    tickangle=line_plot._yticklabel_kwargs.get("rotation"),
                     tickfont={
                         key: line_plot._yticklabel_kwargs[key]
                         for key in ("size", "color", "family")
@@ -2796,6 +2833,35 @@ class Canvas:
                     row=row + 1,
                     col=col + 1,
                 )
+
+            # tick_params() is the neutral place to ask for rotated or
+            # restyled tick labels; translate the Matplotlib spelling into
+            # the Plotly axis properties.
+            tick_params = line_plot._tick_params
+            if tick_params:
+                axis = tick_params.get("axis", "both")
+                rotation = tick_params.get("labelrotation", tick_params.get("rotation"))
+                tickfont = {}
+                if tick_params.get("labelsize") is not None:
+                    tickfont["size"] = tick_params["labelsize"]
+                if tick_params.get("labelcolor") is not None:
+                    tickfont["color"] = tick_params["labelcolor"]
+                tick_kwargs = {}
+                if rotation is not None:
+                    tick_kwargs["tickangle"] = rotation
+                if tickfont:
+                    tick_kwargs["tickfont"] = tickfont
+                if tick_params.get("color") is not None:
+                    tick_kwargs["tickcolor"] = tick_params["color"]
+                if tick_params.get("length") is not None:
+                    tick_kwargs["ticklen"] = tick_params["length"]
+                if tick_params.get("width") is not None:
+                    tick_kwargs["tickwidth"] = tick_params["width"]
+                if tick_kwargs:
+                    if axis in ("x", "both"):
+                        fig.update_xaxes(row=row + 1, col=col + 1, **tick_kwargs)
+                    if axis in ("y", "both"):
+                        fig.update_yaxes(row=row + 1, col=col + 1, **tick_kwargs)
 
             if line_plot._axis_settings:
                 axis_args = line_plot._axis_settings.get("args", ())
@@ -2825,6 +2891,18 @@ class Canvas:
             font=dict(size=self.fontsize),
             margin=dict(l=10, r=10, t=40, b=10),
         )
+        barmode = self._barmode
+        if barmode is None:
+            barmode = next(
+                (
+                    subplot._plotly_barmode_hint
+                    for subplot in self._subplot_dict.values()
+                    if getattr(subplot, "_plotly_barmode_hint", None) is not None
+                ),
+                None,
+            )
+        if barmode is not None:
+            fig.update_layout(barmode=barmode)
         if self._suptitle:
             fig.update_layout(title=dict(text=self._suptitle, x=0.5))
 
