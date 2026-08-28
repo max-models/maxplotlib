@@ -71,6 +71,44 @@ def _running_in_jupyter() -> bool:
     return shell is not None and "IPKernelApp" in getattr(shell, "config", {})
 
 
+_MATPLOTLIB_LOC_TO_PLOTLY_ANCHOR = {
+    "upper right": dict(x=1.0, y=1.0, xanchor="right", yanchor="top"),
+    "upper left": dict(x=0.0, y=1.0, xanchor="left", yanchor="top"),
+    "lower right": dict(x=1.0, y=0.0, xanchor="right", yanchor="bottom"),
+    "lower left": dict(x=0.0, y=0.0, xanchor="left", yanchor="bottom"),
+    "upper center": dict(x=0.5, y=1.0, xanchor="center", yanchor="top"),
+    "lower center": dict(x=0.5, y=0.0, xanchor="center", yanchor="bottom"),
+    "center left": dict(x=0.0, y=0.5, xanchor="left", yanchor="middle"),
+    "center right": dict(x=1.0, y=0.5, xanchor="right", yanchor="middle"),
+    "center": dict(x=0.5, y=0.5, xanchor="center", yanchor="middle"),
+    "right": dict(x=1.0, y=0.5, xanchor="right", yanchor="middle"),
+}
+
+
+def _plotly_legend_kwargs(legend_kwargs):
+    """Translate Matplotlib ``ax.legend()`` keywords into Plotly's legend.
+
+    Only the settings that map cleanly are translated (position via ``loc``,
+    ``title``, ``fontsize``, and a two-or-more-column ``ncol`` as horizontal
+    orientation); "best"/unrecognized locations and other Matplotlib-only
+    legend options (``handlelength``, ``framealpha``, ...) are left at
+    Plotly's defaults rather than guessed at.
+    """
+    if not legend_kwargs:
+        return {}
+    layout = {}
+    loc = legend_kwargs.get("loc")
+    if isinstance(loc, str):
+        layout.update(_MATPLOTLIB_LOC_TO_PLOTLY_ANCHOR.get(loc, {}))
+    if legend_kwargs.get("title") is not None:
+        layout["title"] = dict(text=legend_kwargs["title"])
+    if legend_kwargs.get("fontsize") is not None:
+        layout["font"] = dict(size=legend_kwargs["fontsize"])
+    if legend_kwargs.get("ncol", legend_kwargs.get("ncols", 1)) not in (None, 1):
+        layout["orientation"] = "h"
+    return layout
+
+
 def _apply_matplotlib_customizations(fig, axes, customizations) -> None:
     """Apply declarative method calls to a Matplotlib figure and its axes."""
     if callable(customizations):
@@ -247,6 +285,17 @@ def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
 
 
 class Canvas:
+    """A figure made of one or more subplots, rendered by any backend.
+
+    The drawing methods mirror Matplotlib's ``Axes`` API and forward their
+    keyword arguments to the selected backend. Two keyword arguments are
+    handled by maxplotlib itself and accepted by every drawing method:
+    ``hover=`` (hover text, used by the Plotly backend, ignored elsewhere) and
+    ``meta=`` (an opaque tag set as ``meta`` on Plotly traces and as ``gid``
+    on Matplotlib artists, so the artists can be found by identity rather than
+    by drawing order). See :class:`~maxplotlib.subfigure.line_plot.LinePlot`.
+    """
+
     def __init__(
         self,
         nrows: int = 1,
@@ -312,6 +361,7 @@ class Canvas:
         self._matplotlib_fig = None
         self._matplotlib_axes = None
         self._plotext_figure = None
+        self._plotly_fig = None
         self._suptitle: str | None = None
         self._suptitle_kwargs: dict = {}
         self._supxlabel: str | None = None
@@ -326,6 +376,7 @@ class Canvas:
         self._align_xlabels = False
         self._align_ylabels = False
         self._autofmt_xdate_kwargs: dict | None = None
+        self._barmode: str | None = None
 
         # Dictionary to store lines for each subplot
         # Key: (row, col), Value: list of lines with their data and kwargs
@@ -560,7 +611,9 @@ class Canvas:
         height (array-like): Heights of the bars.
         layer (int): Layer index (default 0).
         row, col (int): Subplot position (default top-left).
-        **kwargs: Forwarded to the backend (e.g., color, width, label).
+        **kwargs: Forwarded to the backend (e.g., color, width, bottom,
+            alpha, edgecolor, label). ``bottom`` stacks the bars on every
+            backend.
         """
         sp = self._get_or_create_subplot(row, col)
         sp.bar(x, height, layer=layer, **kwargs)
@@ -995,7 +1048,10 @@ class Canvas:
         start_times (array-like, optional): Start times for each frame. If None, computed from hierarchy.
         layer (int): Layer index (default 0).
         row, col (int): Subplot position (default top-left).
-        **kwargs: Forwarded to the backend (e.g., colormap, edgecolor, label).
+        **kwargs: Forwarded to the backend (e.g., colormap, colors,
+            edgecolor, label). ``colormap`` accepts a Matplotlib colormap name
+            or a Plotly colorscale name on either backend; ``colors`` sets an
+            explicit color per frame.
         """
         sp = self._get_or_create_subplot(row, col)
         sp.flame_chart(
@@ -1086,6 +1142,24 @@ class Canvas:
             self.tight_layout()
         return self
 
+    def set_barmode(self, mode: str | None):
+        """Set how overlapping bars are arranged in the Plotly backend.
+
+        ``mode`` is one of Plotly's ``"group"``, ``"overlay"``, ``"stack"``
+        or ``"relative"``, or ``None`` to let maxplotlib decide. By default
+        the canvas uses ``"overlay"`` whenever any bar positions itself with
+        an explicit base (``bottom=``/``left=``, Gantt rows, flame frames),
+        because Plotly's default grouping would re-offset those bars away
+        from the positions the caller asked for. Ignored by the other
+        backends, which have no equivalent layout-level setting.
+        """
+        self._barmode = mode
+        return self
+
+    @property
+    def barmode(self):
+        return self._barmode
+
     def set_xlim(
         self, left=None, right=None, row: int | None = None, col: int | None = None
     ):
@@ -1105,10 +1179,22 @@ class Canvas:
         self._get_or_create_subplot(row, col).set_grid(visible)
 
     def set_legend(
-        self, visible: bool = True, row: int | None = None, col: int | None = None
+        self,
+        visible: bool = True,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
-        """Show or hide the legend for a subplot (default top-left)."""
-        self._get_or_create_subplot(row, col).set_legend(visible)
+        """Show or hide the legend for a subplot (default top-left).
+
+        ``**kwargs`` are forwarded to ``ax.legend()`` on Matplotlib; ``loc``,
+        ``title``, ``fontsize`` and ``ncol``/``ncols`` are also translated for
+        the Plotly backend's legend.
+        """
+        self._get_or_create_subplot(row, col).set_legend(visible, **kwargs)
+
+    def legend(self, row=None, col=None, **kwargs):
+        self._get_or_create_subplot(row, col).set_legend(**kwargs)
 
     def legend(self, row=None, col=None, **kwargs):
         self._get_or_create_subplot(row, col).set_legend(**kwargs)
@@ -1992,6 +2078,63 @@ class Canvas:
         """
         return self._render(*args, **kwargs)
 
+    # ------------------------------------------------------------------
+    # Escape hatches: get the native object a backend builds, to edit with
+    # that backend's own (more mature) API for anything maxplotlib doesn't
+    # wrap. Each is a thin, discoverable alias for the corresponding
+    # ``plot_<backend>()`` method; none of them display the result.
+    # ------------------------------------------------------------------
+
+    def get_matplotlib_figaxs(
+        self,
+        layers: list | None = None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+        matplotlib_postprocess=None,
+        matplotlib_customizations=None,
+    ):
+        """Render with Matplotlib and return ``(figure, axes)`` to edit directly.
+
+        Use this to reach any Matplotlib API maxplotlib doesn't wrap natively
+        (custom artists, fine-grained styling, ``savefig`` options, ...).
+        Further calls on the canvas after this one will not retroactively
+        affect the returned objects; re-call to pick up later changes.
+        """
+        return self.plot_matplotlib(
+            layers=layers,
+            usetex=usetex,
+            verbose=verbose,
+            matplotlib_postprocess=matplotlib_postprocess,
+            matplotlib_customizations=matplotlib_customizations,
+        )
+
+    def get_plotly_fig(
+        self,
+        layers: list | None = None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+        allow_unsupported: bool = False,
+    ):
+        """Render with Plotly and return the ``go.Figure`` to edit directly.
+
+        Use this to reach any Plotly API maxplotlib doesn't wrap natively
+        (``fig.update_traces()``, custom layout, ``fig.write_html()``, ...).
+        """
+        return self.plot_plotly(
+            layers=layers,
+            usetex=usetex,
+            verbose=verbose,
+            allow_unsupported=allow_unsupported,
+        )
+
+    def get_plotext_fig(self, layers: list | None = None, verbose: bool = False):
+        """Render with plotext and return the ``PlotextFigure`` to edit directly."""
+        return self.plot_plotext(layers=layers, verbose=verbose)
+
+    def get_tikz_figure(self, verbose: bool = False):
+        """Render with TikZ and return the ``TikzFigure`` to edit directly."""
+        return self.plot_tikzfigure(verbose=verbose)
+
     def show(
         self,
         backend: Backends = "matplotlib",
@@ -2776,6 +2919,7 @@ class Canvas:
                 fig.update_xaxes(
                     tickmode="array",
                     ticktext=line_plot._xticklabels,
+                    tickangle=line_plot._xticklabel_kwargs.get("rotation"),
                     tickfont={
                         key: line_plot._xticklabel_kwargs[key]
                         for key in ("size", "color", "family")
@@ -2788,6 +2932,7 @@ class Canvas:
                 fig.update_yaxes(
                     tickmode="array",
                     ticktext=line_plot._yticklabels,
+                    tickangle=line_plot._yticklabel_kwargs.get("rotation"),
                     tickfont={
                         key: line_plot._yticklabel_kwargs[key]
                         for key in ("size", "color", "family")
@@ -2796,6 +2941,35 @@ class Canvas:
                     row=row + 1,
                     col=col + 1,
                 )
+
+            # tick_params() is the neutral place to ask for rotated or
+            # restyled tick labels; translate the Matplotlib spelling into
+            # the Plotly axis properties.
+            tick_params = line_plot._tick_params
+            if tick_params:
+                axis = tick_params.get("axis", "both")
+                rotation = tick_params.get("labelrotation", tick_params.get("rotation"))
+                tickfont = {}
+                if tick_params.get("labelsize") is not None:
+                    tickfont["size"] = tick_params["labelsize"]
+                if tick_params.get("labelcolor") is not None:
+                    tickfont["color"] = tick_params["labelcolor"]
+                tick_kwargs = {}
+                if rotation is not None:
+                    tick_kwargs["tickangle"] = rotation
+                if tickfont:
+                    tick_kwargs["tickfont"] = tickfont
+                if tick_params.get("color") is not None:
+                    tick_kwargs["tickcolor"] = tick_params["color"]
+                if tick_params.get("length") is not None:
+                    tick_kwargs["ticklen"] = tick_params["length"]
+                if tick_params.get("width") is not None:
+                    tick_kwargs["tickwidth"] = tick_params["width"]
+                if tick_kwargs:
+                    if axis in ("x", "both"):
+                        fig.update_xaxes(row=row + 1, col=col + 1, **tick_kwargs)
+                    if axis in ("y", "both"):
+                        fig.update_yaxes(row=row + 1, col=col + 1, **tick_kwargs)
 
             if line_plot._axis_settings:
                 axis_args = line_plot._axis_settings.get("args", ())
@@ -2825,6 +2999,29 @@ class Canvas:
             font=dict(size=self.fontsize),
             margin=dict(l=10, r=10, t=40, b=10),
         )
+        barmode = self._barmode
+        if barmode is None:
+            barmode = next(
+                (
+                    subplot._plotly_barmode_hint
+                    for subplot in self._subplot_dict.values()
+                    if getattr(subplot, "_plotly_barmode_hint", None) is not None
+                ),
+                None,
+            )
+        if barmode is not None:
+            fig.update_layout(barmode=barmode)
+        legend_kwargs = next(
+            (
+                subplot._legend_kwargs
+                for subplot in self._subplot_dict.values()
+                if subplot._legend and subplot._legend_kwargs
+            ),
+            None,
+        )
+        legend_layout = _plotly_legend_kwargs(legend_kwargs)
+        if legend_layout:
+            fig.update_layout(legend=legend_layout)
         if self._suptitle:
             fig.update_layout(title=dict(text=self._suptitle, x=0.5))
 
@@ -2837,6 +3034,7 @@ class Canvas:
                     "install kaleido (e.g., `pip install -U kaleido`)."
                 ) from exc
 
+        self._plotly_fig = fig
         return fig
 
     def _save_plotly(self, fig, filename: str) -> None:

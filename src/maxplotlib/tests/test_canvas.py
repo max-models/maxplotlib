@@ -1254,5 +1254,57 @@ def test_canvas_fontsize_controls_axes_text():
     assert fig._suptitle.get_fontsize() == pytest.approx(10)
 
 
+def test_get_matplotlib_figaxs_returns_native_figure_and_axes():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.plot([0, 1, 2], [0, 1, 4], label="line")
+
+    figure, axes = canvas.get_matplotlib_figaxs()
+
+    assert figure.__class__.__name__ == "Figure"
+    assert axes.shape == (1, 1)
+    # The returned axes are the canvas's real Matplotlib objects, editable
+    # with the native API for anything maxplotlib doesn't wrap.
+    axes[0][0].set_title("edited directly")
+    assert axes[0][0].get_title() == "edited directly"
+
+
+def test_get_plotly_fig_returns_native_figure():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.plot([0, 1, 2], [0, 1, 4], label="line")
+
+    figure = canvas.get_plotly_fig()
+
+    assert figure.__class__.__name__ == "Figure"
+    assert len(figure.data) == 1
+    figure.update_traces(marker=dict(size=20))
+    assert figure.data[0].marker.size == 20
+
+
+def test_get_plotext_fig_returns_native_figure():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.plot([0, 1, 2], [0, 1, 4], label="line")
+
+    figure = canvas.get_plotext_fig()
+
+    assert figure.__class__.__name__ == "PlotextFigure"
+
+
+def test_get_tikz_figure_returns_native_figure():
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.plot([0, 1, 2], [0, 1, 4], label="line")
+
+    figure = canvas.get_tikz_figure()
+
+    assert figure.__class__.__name__ == "TikzFigure"
+
+
 if __name__ == "__main__":
     test()
