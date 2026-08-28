@@ -49,9 +49,11 @@ def _sample_colormap(colormap, count, *, css=True):
             import matplotlib.colors as mcolors
 
             return [
-                color
-                if isinstance(color, str)
-                else mcolors.to_hex(color, keep_alpha=True)
+                (
+                    color
+                    if isinstance(color, str)
+                    else mcolors.to_hex(color, keep_alpha=True)
+                )
                 for color in sampled
             ]
         return sampled
@@ -2326,9 +2328,9 @@ class LinePlot:
                 linewidth = kwargs.get("linewidths", kwargs.get("linewidth"))
                 if edgecolor is not None or linewidth is not None:
                     marker_dict["line"] = dict(
-                        color=plotly_color(edgecolor)
-                        if edgecolor is not None
-                        else None,
+                        color=(
+                            plotly_color(edgecolor) if edgecolor is not None else None
+                        ),
                         width=linewidth if linewidth is not None else 1,
                     )
                 trace = go.Scatter(
