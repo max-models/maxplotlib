@@ -604,3 +604,81 @@ def test_plotly_legend_loc_and_title_are_translated():
     assert fig.layout.legend.xanchor == "left"
     assert fig.layout.legend.title.text == "Legend"
     assert fig.layout.legend.font.size == 14
+
+
+def test_plotly_hist_honors_evenly_spaced_bins_density_and_style():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.hist(
+        [1, 2, 2, 3, 3, 3, 4],
+        bins=[0, 1, 2, 3, 4],
+        density=True,
+        cumulative=True,
+        edgecolor="black",
+        linewidth=2,
+    )
+
+    trace = canvas.render(backend="plotly").data[0]
+    assert trace.xbins.start == 0.0
+    assert trace.xbins.end == 4.0
+    assert trace.xbins.size == 1.0
+    assert trace.histnorm == "probability density"
+    assert trace.cumulative.enabled is True
+    assert trace.marker.line.color == "black"
+    assert trace.marker.line.width == 2
+
+
+def test_plotly_hist_scalar_bins_still_uses_nbinsx():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.hist([1, 2, 3], bins=5)
+
+    assert canvas.render(backend="plotly").data[0].nbinsx == 5
+
+
+def test_plotly_pie_honors_colors_explode_and_autopct():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.pie(
+        [30, 70],
+        labels=["a", "b"],
+        colors=["red", "blue"],
+        explode=[0.1, 0],
+        autopct="%1.1f%%",
+    )
+
+    trace = canvas.render(backend="plotly").data[0]
+    assert tuple(trace.marker.colors) == ("red", "blue")
+    assert tuple(trace.pull) == (0.1, 0)
+    assert trace.textinfo == "percent"
+
+
+def test_plotly_stackplot_honors_colors():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.stackplot(
+        [0, 1, 2], [1, 2, 3], [2, 3, 1], colors=["green", "orange"], labels=["a", "b"]
+    )
+
+    fig = canvas.render(backend="plotly")
+    assert [trace.line.color for trace in fig.data] == ["green", "orange"]
+
+
+def test_plotly_text_honors_alignment_and_font_weight():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.text(
+        0.5, 0.5, "hi", ha="center", va="top", fontweight="bold", fontfamily="Arial"
+    )
+
+    fig = canvas.render(backend="plotly")
+    annotation = fig.layout.annotations[-1]
+    assert annotation.xanchor == "center"
+    assert annotation.yanchor == "top"
+    assert annotation.font.weight == "bold"
+    assert annotation.font.family == "Arial"

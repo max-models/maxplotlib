@@ -2381,13 +2381,44 @@ class LinePlot:
                 )
             elif plot_type == "hist":
                 kwargs = line["kwargs"]
+                bins = line["bins"]
+                xbins = None
+                nbinsx = None
+                if np.isscalar(bins):
+                    nbinsx = bins
+                else:
+                    edges = np.asarray(bins, dtype=float)
+                    if edges.size >= 2:
+                        # Plotly bins by (start, end, size) rather than by
+                        # explicit edges; only an evenly spaced ``bins=``
+                        # array (the common case) can be represented exactly.
+                        spacing = np.diff(edges)
+                        if np.allclose(spacing, spacing[0]):
+                            xbins = dict(
+                                start=float(edges[0]),
+                                end=float(edges[-1]),
+                                size=float(spacing[0]) * self._xscale,
+                            )
                 traces.append(
                     go.Histogram(
                         x=tx(line["x"]),
-                        nbinsx=line["bins"] if np.isscalar(line["bins"]) else None,
+                        nbinsx=nbinsx,
+                        xbins=xbins,
+                        histnorm=(
+                            "probability density" if kwargs.get("density") else None
+                        ),
+                        cumulative=(
+                            dict(enabled=True) if kwargs.get("cumulative") else None
+                        ),
                         name=kwargs.get("label", ""),
                         showlegend=bool(kwargs.get("label")) and bool(self._legend),
-                        marker_color=plotly_color(kwargs.get("color", None)),
+                        marker=dict(
+                            color=plotly_color(kwargs.get("color", None)),
+                            line=dict(
+                                color=plotly_color(kwargs.get("edgecolor", None)),
+                                width=kwargs.get("linewidth", None),
+                            ),
+                        ),
                         opacity=kwargs.get("alpha", None),
                     )
                 )
@@ -2442,12 +2473,21 @@ class LinePlot:
             elif plot_type == "pie":
                 kwargs = line["kwargs"]
                 labels = kwargs.get("labels", None)
+                colors = kwargs.get("colors", None)
+                explode = kwargs.get("explode", None)
                 traces.append(
                     go.Pie(
                         values=line["x"],
                         labels=labels,
                         name=kwargs.get("label", ""),
                         showlegend=bool(self._legend),
+                        marker=(
+                            dict(colors=[plotly_color(c) for c in colors])
+                            if colors is not None
+                            else None
+                        ),
+                        pull=list(explode) if explode is not None else None,
+                        textinfo=("percent" if kwargs.get("autopct") else None),
                     )
                 )
             elif plot_type == "stem":
@@ -2465,15 +2505,21 @@ class LinePlot:
             elif plot_type == "stackplot":
                 kwargs = line["kwargs"]
                 x_values = tx(line["x"])
+                colors = kwargs.get("colors", None)
                 cumulative = np.zeros(len(x_values))
                 for index, values in enumerate(line["ys"]):
                     next_cumulative = cumulative + np.asarray(values)
+                    color = (
+                        plotly_color(colors[index % len(colors)]) if colors else None
+                    )
                     traces.append(
                         go.Scatter(
                             x=x_values,
                             y=ty(next_cumulative),
                             mode="lines",
                             stackgroup="one",
+                            fillcolor=color,
+                            line=dict(color=color),
                             name=(
                                 kwargs.get("labels", [])[index]
                                 if index < len(kwargs.get("labels", []))
@@ -3244,6 +3290,22 @@ class LinePlot:
                 )
             elif plot_type in ("text", "annotate"):
                 kwargs = line["kwargs"]
+                # Matplotlib's ha/va anchor the text block to the (x, y)
+                # point; Plotly's xanchor/yanchor do the same thing under a
+                # different name ("center" means the same in both).
+                ha_to_xanchor = {"left": "left", "right": "right", "center": "center"}
+                va_to_yanchor = {
+                    "top": "top",
+                    "bottom": "bottom",
+                    "center": "middle",
+                    "baseline": "bottom",
+                }
+                font = dict(
+                    color=plotly_color(kwargs.get("color", None)),
+                    size=kwargs.get("fontsize", None),
+                    family=kwargs.get("fontfamily", kwargs.get("family", None)),
+                    weight=kwargs.get("fontweight", None),
+                )
                 if plot_type == "text":
                     x = txs(float(line["x"]))
                     y = tys(float(line["y"]))
@@ -3254,10 +3316,9 @@ class LinePlot:
                             y=y,
                             text=text,
                             showarrow=False,
-                            font=dict(
-                                color=plotly_color(kwargs.get("color", None)),
-                                size=kwargs.get("fontsize", None),
-                            ),
+                            xanchor=ha_to_xanchor.get(kwargs.get("ha"), "left"),
+                            yanchor=va_to_yanchor.get(kwargs.get("va"), "bottom"),
+                            font=font,
                         )
                     )
                 else:
@@ -3271,10 +3332,7 @@ class LinePlot:
                         arrowhead=2,
                         ax=0,
                         ay=-30,
-                        font=dict(
-                            color=plotly_color(kwargs.get("color", None)),
-                            size=kwargs.get("fontsize", None),
-                        ),
+                        font=font,
                     )
                     if line.get("xytext") is not None:
                         tx_val = txs(float(line["xytext"][0]))

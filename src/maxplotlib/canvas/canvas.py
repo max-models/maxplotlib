@@ -361,6 +361,7 @@ class Canvas:
         self._matplotlib_fig = None
         self._matplotlib_axes = None
         self._plotext_figure = None
+        self._plotly_fig = None
         self._suptitle: str | None = None
         self._suptitle_kwargs: dict = {}
         self._supxlabel: str | None = None
@@ -2074,6 +2075,63 @@ class Canvas:
         """
         return self._render(*args, **kwargs)
 
+    # ------------------------------------------------------------------
+    # Escape hatches: get the native object a backend builds, to edit with
+    # that backend's own (more mature) API for anything maxplotlib doesn't
+    # wrap. Each is a thin, discoverable alias for the corresponding
+    # ``plot_<backend>()`` method; none of them display the result.
+    # ------------------------------------------------------------------
+
+    def get_matplotlib_figaxs(
+        self,
+        layers: list | None = None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+        matplotlib_postprocess=None,
+        matplotlib_customizations=None,
+    ):
+        """Render with Matplotlib and return ``(figure, axes)`` to edit directly.
+
+        Use this to reach any Matplotlib API maxplotlib doesn't wrap natively
+        (custom artists, fine-grained styling, ``savefig`` options, ...).
+        Further calls on the canvas after this one will not retroactively
+        affect the returned objects; re-call to pick up later changes.
+        """
+        return self.plot_matplotlib(
+            layers=layers,
+            usetex=usetex,
+            verbose=verbose,
+            matplotlib_postprocess=matplotlib_postprocess,
+            matplotlib_customizations=matplotlib_customizations,
+        )
+
+    def get_plotly_fig(
+        self,
+        layers: list | None = None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+        allow_unsupported: bool = False,
+    ):
+        """Render with Plotly and return the ``go.Figure`` to edit directly.
+
+        Use this to reach any Plotly API maxplotlib doesn't wrap natively
+        (``fig.update_traces()``, custom layout, ``fig.write_html()``, ...).
+        """
+        return self.plot_plotly(
+            layers=layers,
+            usetex=usetex,
+            verbose=verbose,
+            allow_unsupported=allow_unsupported,
+        )
+
+    def get_plotext_fig(self, layers: list | None = None, verbose: bool = False):
+        """Render with plotext and return the ``PlotextFigure`` to edit directly."""
+        return self.plot_plotext(layers=layers, verbose=verbose)
+
+    def get_tikz_figure(self, verbose: bool = False):
+        """Render with TikZ and return the ``TikzFigure`` to edit directly."""
+        return self.plot_tikzfigure(verbose=verbose)
+
     def show(
         self,
         backend: Backends = "matplotlib",
@@ -2973,6 +3031,7 @@ class Canvas:
                     "install kaleido (e.g., `pip install -U kaleido`)."
                 ) from exc
 
+        self._plotly_fig = fig
         return fig
 
     def _save_plotly(self, fig, filename: str) -> None:
