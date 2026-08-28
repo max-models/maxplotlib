@@ -1196,6 +1196,9 @@ class Canvas:
     def legend(self, row=None, col=None, **kwargs):
         self._get_or_create_subplot(row, col).set_legend(**kwargs)
 
+    def legend(self, row=None, col=None, **kwargs):
+        self._get_or_create_subplot(row, col).set_legend(**kwargs)
+
     def tick_params(self, row: int | None = None, col: int | None = None, **kwargs):
         """Configure major/minor tick appearance for a subplot."""
         self._get_or_create_subplot(row, col).tick_params(**kwargs)
