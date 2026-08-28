@@ -336,3 +336,349 @@ def test_plotly_backend_supports_streamplot():
 
     assert len(fig.data) > 0
     assert all(trace.type == "scatter" for trace in fig.data)
+
+
+def test_plotly_backend_supports_neutral_hover_and_meta():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.bar([0, 1, 2], [3, 4, 5], hover=["a", "b", "c"], meta="run-1")
+    axis.plot([0, 1], [0, 1], hover="the line", meta="line-1")
+
+    fig = canvas.render(backend="plotly")
+
+    bar_trace = next(trace for trace in fig.data if trace.type == "bar")
+    assert tuple(bar_trace.hovertext) == ("a", "b", "c")
+    assert bar_trace.meta == "run-1"
+    line_trace = next(trace for trace in fig.data if trace.meta == "line-1")
+    assert line_trace.hovertext == "the line"
+
+
+def test_hover_and_meta_do_not_reach_matplotlib():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.bar([0, 1], [1, 2], hover="tooltip", meta="tagged")
+
+    figure, axes = canvas.render(backend="matplotlib")
+
+    # ax.bar() would raise on an unknown "hover" kwarg; reaching here means it
+    # never got one, and the artists carry the meta tag instead.
+    assert {patch.get_gid() for patch in axes[0][0].patches} == {"tagged"}
+
+
+def test_plotly_bar_honors_bottom_width_alpha_and_edgecolor():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.bar(
+        [0, 1],
+        [1, 2],
+        bottom=[3, 4],
+        width=0.5,
+        alpha=0.6,
+        edgecolor="black",
+        linewidth=2,
+    )
+
+    fig = canvas.render(backend="plotly")
+
+    trace = fig.data[0]
+    assert tuple(trace.base) == (3.0, 4.0)
+    assert trace.width == 0.5
+    assert trace.opacity == 0.6
+    assert trace.marker.line.color == "black"
+    assert trace.marker.line.width == 2
+    # An explicit base means the bars are already positioned; grouping them
+    # again would move them.
+    assert fig.layout.barmode == "overlay"
+
+
+def test_plotly_barh_honors_left_and_barmode_override():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.barh([0, 1], [2, 3], left=[1, 1])
+
+    assert tuple(canvas.render(backend="plotly").data[0].base) == (1.0, 1.0)
+
+    canvas.set_barmode("stack")
+    assert canvas.render(backend="plotly").layout.barmode == "stack"
+
+
+def test_plotly_flame_chart_is_drawn_as_traces():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.flame_chart(
+        ["main", "a", "b"],
+        [None, 0, 0],
+        [10, 4, 3],
+        start_times=[0, 0, 4],
+        colors=["#ff0000", "#00ff00", "#0000ff"],
+        hover=["main 10ms", "a 4ms", "b 3ms"],
+        label="stack",
+    )
+    axis.set_legend(True)
+
+    fig = canvas.render(backend="plotly")
+
+    trace = fig.data[0]
+    assert trace.type == "bar"
+    assert tuple(trace.marker.color) == ("#ff0000", "#00ff00", "#0000ff")
+    assert tuple(trace.base) == (0.0, 0.0, 4.0)
+    assert tuple(trace.hovertext) == ("main 10ms", "a 4ms", "b 3ms")
+    assert trace.name == "stack"
+    assert not (getattr(fig.layout, "shapes", None) or [])
+
+
+def test_flame_chart_accepts_matplotlib_colormap_on_both_backends():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.flame_chart(["main", "a"], [None, 0], [5, 2], colormap="plasma")
+
+    colors = canvas.render(backend="plotly").data[0].marker.color
+    assert all(color.startswith("#") for color in colors)
+
+    figure, axes = canvas.render(backend="matplotlib")
+    assert len(axes[0][0].patches) == 2
+
+
+def test_plotly_span_hover_uses_axis_limits():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 3], [0, 1])
+    axis.set_ylim(0, 1)
+    axis.axvspan(1, 2, color="grey", hover="region A", meta="region-a")
+
+    fig = canvas.render(backend="plotly")
+
+    overlay = next(trace for trace in fig.data if trace.hovertext == "region A")
+    assert overlay.meta == "region-a"
+    assert overlay.fill == "toself"
+
+
+def test_tick_params_rotation_is_backend_neutral():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1])
+    axis.tick_params(axis="x", rotation=45, labelsize=8)
+
+    fig = canvas.render(backend="plotly")
+    assert fig.layout.xaxis.tickangle == 45
+    assert fig.layout.xaxis.tickfont.size == 8
+
+    figure, axes = canvas.render(backend="matplotlib")
+    assert axes[0][0].get_xticklabels()[1].get_rotation() == 45.0
+
+
+def test_plotly_accepts_matplotlib_color_spellings():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.bar([0, 1], [1, 2], color="tab:blue")
+
+    assert canvas.render(backend="plotly").data[0].marker.color == "#1f77b4"
+
+
+def test_plotly_rotated_ellipse_uses_sampled_polygon():
+    import matplotlib.patches as mpatches
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.add_patch(
+        mpatches.Ellipse((1, 1), width=2, height=1, angle=30, facecolor="orange"),
+        hover="tilted",
+        meta="ellipse-1",
+    )
+
+    fig = canvas.render(backend="plotly")
+
+    shape = fig.layout.shapes[0]
+    assert shape.type == "path"
+    assert "A" not in shape.path  # sampled polygon, not an SVG arc
+    overlay = next(trace for trace in fig.data if trace.hovertext == "tilted")
+    assert overlay.meta == "ellipse-1"
+
+
+def test_plotly_axis_aligned_ellipse_still_uses_arc_path():
+    import matplotlib.patches as mpatches
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.add_patch(mpatches.Ellipse((1, 1), width=2, height=1, facecolor="orange"))
+
+    fig = canvas.render(backend="plotly")
+
+    assert "A" in fig.layout.shapes[0].path
+
+
+def test_plotly_shape_primitives_get_legend_entries_when_labeled():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.axhline(0.5, color="black", label="threshold")
+    axis.axvspan(1, 2, color="grey", alpha=0.4, label="region")
+    axis.set_legend(True)
+
+    fig = canvas.render(backend="plotly")
+
+    names = {trace.name for trace in fig.data if trace.showlegend}
+    assert names == {"threshold", "region"}
+
+
+def test_plotly_scatter_supports_colormap_coloring():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.scatter(
+        [0, 1, 2],
+        [0, 1, 4],
+        c=[0.1, 0.5, 0.9],
+        cmap="plasma",
+        colorbar=True,
+        edgecolors="black",
+        linewidths=2,
+        alpha=0.7,
+    )
+
+    fig = canvas.render(backend="plotly")
+
+    trace = fig.data[0]
+    assert list(trace.marker.color) == [0.1, 0.5, 0.9]
+    assert trace.marker.showscale is True
+    assert len(trace.marker.colorscale) > 1
+    assert trace.marker.line.color == "black"
+    assert trace.marker.line.width == 2
+    assert trace.marker.opacity == 0.7
+
+
+def test_plotly_scatter_plain_color_wins_over_c():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.scatter([0, 1], [0, 1], c=[1, 2], color="red")
+
+    trace = canvas.render(backend="plotly").data[0]
+    assert trace.marker.color == "red"
+
+
+def test_scatter_colorbar_flag_does_not_reach_matplotlib():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.scatter([0, 1], [0, 1], c=[1, 2], cmap="viridis", colorbar=True)
+
+    # ax.scatter() would raise on an unknown "colorbar" kwarg; reaching here
+    # means it never got one.
+    canvas.render(backend="matplotlib")
+
+
+def test_plotly_errorbar_honors_capsize_and_elinewidth():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.errorbar([0, 1], [0, 1], yerr=0.1, capsize=5, elinewidth=3)
+
+    trace = canvas.render(backend="plotly").data[0]
+    assert trace.error_y.width == 5.0
+    assert trace.error_y.thickness == 3
+
+
+def test_plotly_legend_loc_and_title_are_translated():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1], label="l")
+    axis.set_legend(True, loc="upper left", title="Legend", fontsize=14)
+
+    fig = canvas.render(backend="plotly")
+
+    assert fig.layout.legend.x == 0.0
+    assert fig.layout.legend.y == 1.0
+    assert fig.layout.legend.xanchor == "left"
+    assert fig.layout.legend.title.text == "Legend"
+    assert fig.layout.legend.font.size == 14
+
+
+def test_plotly_hist_honors_evenly_spaced_bins_density_and_style():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.hist(
+        [1, 2, 2, 3, 3, 3, 4],
+        bins=[0, 1, 2, 3, 4],
+        density=True,
+        cumulative=True,
+        edgecolor="black",
+        linewidth=2,
+    )
+
+    trace = canvas.render(backend="plotly").data[0]
+    assert trace.xbins.start == 0.0
+    assert trace.xbins.end == 4.0
+    assert trace.xbins.size == 1.0
+    assert trace.histnorm == "probability density"
+    assert trace.cumulative.enabled is True
+    assert trace.marker.line.color == "black"
+    assert trace.marker.line.width == 2
+
+
+def test_plotly_hist_scalar_bins_still_uses_nbinsx():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.hist([1, 2, 3], bins=5)
+
+    assert canvas.render(backend="plotly").data[0].nbinsx == 5
+
+
+def test_plotly_pie_honors_colors_explode_and_autopct():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.pie(
+        [30, 70],
+        labels=["a", "b"],
+        colors=["red", "blue"],
+        explode=[0.1, 0],
+        autopct="%1.1f%%",
+    )
+
+    trace = canvas.render(backend="plotly").data[0]
+    assert tuple(trace.marker.colors) == ("red", "blue")
+    assert tuple(trace.pull) == (0.1, 0)
+    assert trace.textinfo == "percent"
+
+
+def test_plotly_stackplot_honors_colors():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.stackplot(
+        [0, 1, 2], [1, 2, 3], [2, 3, 1], colors=["green", "orange"], labels=["a", "b"]
+    )
+
+    fig = canvas.render(backend="plotly")
+    assert [trace.line.color for trace in fig.data] == ["green", "orange"]
+
+
+def test_plotly_text_honors_alignment_and_font_weight():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.text(
+        0.5, 0.5, "hi", ha="center", va="top", fontweight="bold", fontfamily="Arial"
+    )
+
+    fig = canvas.render(backend="plotly")
+    annotation = fig.layout.annotations[-1]
+    assert annotation.xanchor == "center"
+    assert annotation.yanchor == "top"
+    assert annotation.font.weight == "bold"
+    assert annotation.font.family == "Arial"

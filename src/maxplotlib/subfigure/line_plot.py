@@ -1,8 +1,14 @@
+import re
+
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tikzfigure import TikzFigure
+
+# Keyword arguments that every drawing method accepts and that are handled by
+# maxplotlib itself rather than being forwarded to a backend drawing call.
+_NEUTRAL_KWARGS = ("hover", "meta")
 
 _TIKZ_SUPPORTED_PLOT_TYPES = {
     "plot",
@@ -22,6 +28,98 @@ _TIKZ_SUPPORTED_PLOT_TYPES = {
     "gantt",
     "flame_chart",
 }
+
+
+def _sample_colormap(colormap, count, *, css=True):
+    """Sample ``count`` colors from a colormap, for either backend.
+
+    ``colormap`` may be a Matplotlib colormap name (``"viridis"``), a Plotly
+    colorscale name (``"Viridis"``), a Matplotlib ``Colormap`` instance, or an
+    explicit sequence of colors.  Returns CSS color strings when ``css`` is
+    true (Plotly) and Matplotlib RGBA tuples otherwise, so one ``colormap=``
+    argument serves every backend.
+    """
+    count = max(int(count), 1)
+    if isinstance(colormap, (list, tuple)):
+        colors = list(colormap)
+        if not colors:
+            colors = ["#1f77b4"]
+        sampled = [colors[index % len(colors)] for index in range(count)]
+        if css:
+            import matplotlib.colors as mcolors
+
+            return [
+                (
+                    color
+                    if isinstance(color, str)
+                    else mcolors.to_hex(color, keep_alpha=True)
+                )
+                for color in sampled
+            ]
+        return sampled
+
+    positions = np.linspace(0, 1, count) if count > 1 else np.array([0.5])
+    try:
+        import matplotlib.colors as mcolors
+
+        cmap = plt.get_cmap(colormap)
+        rgba = [cmap(float(position)) for position in positions]
+        if css:
+            return [mcolors.to_hex(color, keep_alpha=False) for color in rgba]
+        return rgba
+    except (ValueError, TypeError):
+        pass
+
+    from plotly.colors import sample_colorscale
+
+    css_colors = sample_colorscale(colormap, list(positions))
+    if css:
+        return list(css_colors)
+
+    import matplotlib.colors as mcolors
+
+    converted = []
+    for color in css_colors:
+        numbers = [float(value) for value in re.findall(r"[\d.]+", str(color))]
+        if len(numbers) >= 3:
+            converted.append(tuple(value / 255.0 for value in numbers[:3]) + (1.0,))
+        else:
+            converted.append(mcolors.to_rgba(color))
+    return converted
+
+
+def _flame_frame_colors(kwargs, depths, count, *, css):
+    """Resolve one color per flame-chart frame.
+
+    ``colors=`` (one entry per frame, or a single color) wins; otherwise the
+    frames are colored by stack depth from ``colormap=``.
+    """
+    explicit = kwargs.get("colors", kwargs.get("color"))
+    if explicit is not None:
+        if isinstance(explicit, str) or not hasattr(explicit, "__len__"):
+            return [explicit] * count
+        explicit = list(explicit)
+        if explicit:
+            return [explicit[index % len(explicit)] for index in range(count)]
+
+    default = "Viridis" if css else "viridis"
+    colormap = kwargs.get("colormap", default)
+    max_depth = int(depths.max()) + 1 if count else 1
+    palette = _sample_colormap(colormap, max_depth, css=css)
+    return [palette[int(depth) % len(palette)] for depth in depths]
+
+
+def _colormap_to_plotly_colorscale(colormap, steps=17):
+    """Convert a Matplotlib colormap name into a Plotly colorscale.
+
+    Plotly only recognizes its own colorscale names (``"Viridis"``, not
+    ``"viridis"``, and nothing at all for names like ``"coolwarm"``), so a
+    Matplotlib ``cmap=`` on a value-colored scatter has to be resampled into
+    an explicit ``[[fraction, color], ...]`` list to render at all.
+    """
+    positions = np.linspace(0, 1, steps)
+    colors = _sample_colormap(colormap, steps, css=True)
+    return [[float(position), color] for position, color in zip(positions, colors)]
 
 
 def _tikz_style_kwargs(kwargs, *, default_color="black"):
@@ -111,6 +209,26 @@ class Path:
 
 
 class LinePlot:
+    """A subplot's drawing surface.
+
+    Every drawing method accepts two backend-neutral keyword arguments in
+    addition to the ones it forwards to the backend:
+
+    ``hover``
+        Hover text for the artists this call creates. A single string, one
+        entry per point, or a 2-D array for image-like plots. Rendered by the
+        Plotly backend (as ``hovertext``, with an invisible overlay trace for
+        shapes, which cannot show hover text themselves) and ignored by the
+        other backends.
+    ``meta``
+        An opaque tag attached to everything this call creates: ``meta`` on
+        Plotly traces, ``gid`` on Matplotlib artists. Use it to find the
+        artists again by identity instead of by drawing order.
+
+    Neither is forwarded to the backend drawing call, so ``hover=`` never
+    reaches ``ax.bar()``.
+    """
+
     def __init__(
         self,
         title: str | None = None,
@@ -226,6 +344,18 @@ class LinePlot:
         self._caption = caption
 
     def _add(self, obj, layer):
+        # ``hover`` and ``meta`` are backend-neutral: they are meaningful to
+        # Plotly (hover text / addressable traces) and meaningless to the
+        # other backends, which forward **kwargs straight to their drawing
+        # calls.  Lift them out of ``kwargs`` here, once, so that every
+        # drawing method accepts them without leaking them into Matplotlib.
+        kwargs = obj.get("kwargs")
+        if isinstance(kwargs, dict):
+            for key in _NEUTRAL_KWARGS:
+                if key in kwargs:
+                    obj[key] = kwargs.pop(key)
+        for key in _NEUTRAL_KWARGS:
+            obj.setdefault(key, None)
         self.line_data.append(obj)
         if layer in self.layered_line_data:
             self.layered_line_data[layer].append(obj)
@@ -291,7 +421,9 @@ class LinePlot:
         height (array-like): Heights of the bars.
         layer (int): Layer index (default 0).
         **kwargs: Additional keyword arguments forwarded to the backend
-            (e.g., color, width, label).
+            (e.g., color, width, bottom, alpha, edgecolor, linewidth, label).
+            ``bottom`` stacks the bars on every backend (it becomes Plotly's
+            ``base``).
         """
         ld = {
             "x": np.array(x),
@@ -303,7 +435,11 @@ class LinePlot:
         self._add(ld, layer)
 
     def barh(self, y, width, layer=0, **kwargs):
-        """Add a horizontal bar chart."""
+        """Add a horizontal bar chart.
+
+        ``left`` offsets the bars on every backend (it becomes Plotly's
+        ``base``); ``height``, ``alpha`` and ``edgecolor`` are honored too.
+        """
         self._add(
             {
                 "y": np.array(y),
@@ -684,7 +820,10 @@ class LinePlot:
         start_times (array-like, optional): Start times for each frame. If None, computed from hierarchy.
         layer (int): Layer index (default 0).
         **kwargs: Additional keyword arguments forwarded to the backend
-            (e.g., colormap, edgecolor, label).
+            (e.g., colormap, colors, edgecolor, label). ``colormap`` accepts a
+            Matplotlib colormap name or a Plotly colorscale name on either
+            backend; ``colors`` sets an explicit color per frame, which colors
+            frames by region rather than by stack depth.
         """
         ld = {
             "labels": list(labels),
@@ -1291,6 +1430,11 @@ class LinePlot:
             if layers and layer_name not in layers:
                 continue
             for line in layer_lines:
+                artists_before = (
+                    set(map(id, ax.get_children()))
+                    if line.get("meta") is not None
+                    else None
+                )
                 if line["plot_type"] == "plot":
                     ax.plot(
                         (line["x"] + self._xshift) * self._xscale,
@@ -1298,10 +1442,16 @@ class LinePlot:
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "scatter":
+                    # "colorbar" mirrors the same Plotly-only flag used by
+                    # contour/pcolormesh/etc.; Matplotlib shows a colorbar via
+                    # a separate colorbar() call, not a scatter() kwarg.
+                    scatter_kwargs = {
+                        k: v for k, v in line["kwargs"].items() if k != "colorbar"
+                    }
                     ax.scatter(
                         (line["x"] + self._xshift) * self._xscale,
                         (line["y"] + self._yshift) * self._yscale,
-                        **line["kwargs"],
+                        **scatter_kwargs,
                     )
                 elif line["plot_type"] == "bar":
                     ax.bar(
@@ -1439,14 +1589,13 @@ class LinePlot:
                     # Draw rectangles for each frame
                     import matplotlib.patches as mpatches
 
-                    colormap = line["kwargs"].get("colormap", "viridis")
-                    cmap = plt.get_cmap(colormap)
                     max_depth = depths.max() + 1
+                    frame_colors = _flame_frame_colors(
+                        line["kwargs"], depths, n, css=False
+                    )
 
                     for i in range(n):
-                        color = (
-                            cmap(depths[i] / max_depth) if max_depth > 1 else cmap(0.5)
-                        )
+                        color = frame_colors[i]
                         rect = mpatches.Rectangle(
                             (start_times[i], depths[i]),
                             values[i],
@@ -1559,6 +1708,12 @@ class LinePlot:
                     cax = divider.append_axes("right", size="5%", pad=0.05)
                     plt.colorbar(im, cax=cax, label="Potential (V)")
 
+                if line.get("meta") is not None:
+                    # Mirror the Plotly ``meta=`` tag onto the Matplotlib
+                    # artists so callers can find them again by identity
+                    # rather than by drawing order.
+                    self._tag_matplotlib_artists(ax, artists_before, line["meta"])
+
         if self._title:
             ax.set_title(self._title, **self._title_kwargs)
         if self._xlabel:
@@ -1602,7 +1757,13 @@ class LinePlot:
         if self._yticklabels is not None and self._yticks is None:
             ax.set_yticklabels(self._yticklabels, **self._yticklabel_kwargs)
         if self._tick_params:
-            ax.tick_params(**self._tick_params)
+            tick_params = dict(self._tick_params)
+            # ``rotation`` is the neutral spelling accepted by every backend;
+            # Matplotlib calls it ``labelrotation``.
+            if "rotation" in tick_params:
+                tick_params.setdefault("labelrotation", tick_params.pop("rotation"))
+                tick_params.pop("rotation", None)
+            ax.tick_params(**tick_params)
         if self._aspect is not None:
             ax.set_aspect(self._aspect)
         if self._adjustable is not None:
@@ -1689,6 +1850,19 @@ class LinePlot:
                 ax.clabel(contour_set, **self._clabel_kwargs)
         if self._rasterization_zorder is not None:
             ax.set_rasterization_zorder(self._rasterization_zorder)
+
+    @staticmethod
+    def _tag_matplotlib_artists(ax, artists_before, meta):
+        """Set ``gid`` on every artist added since ``artists_before``."""
+        if artists_before is None:
+            return
+        for artist in ax.get_children():
+            if id(artist) in artists_before:
+                continue
+            try:
+                artist.set_gid(str(meta))
+            except AttributeError:
+                continue
 
     def plot_tikzfigure(self, layers=None, verbose: bool = False) -> TikzFigure:
 
@@ -1923,13 +2097,23 @@ class LinePlot:
 
                     # Draw rectangles for each frame
                     bar_height = 0.8
+                    explicit_colors = line["kwargs"].get("colors")
+                    if isinstance(explicit_colors, str) or not hasattr(
+                        explicit_colors, "__len__"
+                    ):
+                        explicit_colors = (
+                            None if explicit_colors is None else [explicit_colors]
+                        )
                     colors = ["red", "blue", "green", "orange", "purple", "cyan"]
 
                     for i in range(n):
                         x_start = start_times[i]
                         x_end = start_times[i] + values[i]
                         y_pos = depths[i]
-                        color = colors[depths[i] % len(colors)]
+                        if explicit_colors:
+                            color = explicit_colors[i % len(explicit_colors)]
+                        else:
+                            color = colors[depths[i] % len(colors)]
 
                         rect_nodes = [
                             [x_start, y_pos - bar_height / 2],
@@ -1944,7 +2128,7 @@ class LinePlot:
                             **{
                                 k: v
                                 for k, v in line["kwargs"].items()
-                                if k != "colormap"
+                                if k not in ("colormap", "colors")
                             },
                         )
         if verbose:
@@ -1986,12 +2170,20 @@ class LinePlot:
         shapes: list[dict] = []
         annotations: list[dict] = []
         last_heatmap_idx: int | None = None
+        # Set to "overlay" while building traces whenever a bar-like trace
+        # positions itself with an explicit base (stacked bars, Gantt rows,
+        # flame frames); Plotly's default "group" barmode would re-offset
+        # those bars and undo the positioning the caller asked for.
+        self._plotly_barmode_hint = None
         # Plotly shapes (unlike traces) don't participate in axis autorange,
         # so patches would otherwise be clipped or invisible unless the caller
         # sets explicit axis limits. Track each patch's bounding box here and
         # add one invisible marker trace at the end so autorange sees them.
         patch_bounds_x: list[float] = []
         patch_bounds_y: list[float] = []
+        # Indices of shapes that already got their own hover overlay trace and
+        # must not receive a second one from the generic ``hover=`` handling.
+        hover_handled_shapes: set[int] = set()
 
         # These primitives have no faithful 2-D Plotly equivalent in the
         # current backend.  Keep the default strict so a mixed plot cannot
@@ -2027,7 +2219,38 @@ class LinePlot:
                             a = a / 255.0
                         return f"rgba({r},{g},{b},{a})"
                     return f"rgb({r},{g},{b})"
+            if isinstance(value, str):
+                lowered = value.strip().lower()
+                if lowered.startswith(("#", "rgb", "hsl", "hwb", "lab", "lch", "ok")):
+                    return value
+                # Matplotlib color spellings Plotly does not accept, such as
+                # "tab:blue", "C0" or the single-letter shorthands. CSS named
+                # colors are passed through unchanged.
+                import matplotlib.colors as mcolors
+
+                if lowered in mcolors.CSS4_COLORS:
+                    return value
+                try:
+                    return mcolors.to_hex(value, keep_alpha=False)
+                except ValueError:
+                    return value
             return value
+
+        def bar_marker(kwargs):
+            """Build a go.Bar marker honoring color, edgecolor and linewidth."""
+            marker = dict(color=plotly_color(kwargs.get("color", None)))
+            edgecolor = kwargs.get("edgecolor", kwargs.get("edgecolors", None))
+            linewidth = kwargs.get("linewidth", kwargs.get("linewidths", None))
+            if edgecolor is not None or linewidth is not None:
+                marker["line"] = dict(
+                    color=plotly_color(edgecolor) if edgecolor is not None else None,
+                    width=(
+                        linewidth
+                        if linewidth is not None
+                        else (1 if edgecolor is not None else None)
+                    ),
+                )
+            return marker
 
         for line in self._iter_layer_lines(layers=layers):
             plot_type = line["plot_type"]
@@ -2038,6 +2261,8 @@ class LinePlot:
                     f"{plot_type} is currently supported only by the matplotlib "
                     "backend; pass allow_unsupported=True to skip it for Plotly"
                 )
+            trace_start = len(traces)
+            shape_start = len(shapes)
             if plot_type == "plot":
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker")
@@ -2070,50 +2295,132 @@ class LinePlot:
             elif plot_type == "scatter":
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker", "circle")
+                # ``c`` is Matplotlib's value-per-point coloring; a plain
+                # ``color`` still wins if both are given, matching ax.scatter.
+                c_values = kwargs.get("c")
+                if kwargs.get("color") is not None or c_values is None:
+                    marker_color = plotly_color(kwargs.get("color", None))
+                    colorscale = None
+                else:
+                    if isinstance(c_values, str) or (
+                        np.ndim(c_values) > 0
+                        and not np.issubdtype(np.asarray(c_values).dtype, np.number)
+                    ):
+                        marker_color = plotly_color(c_values)
+                        colorscale = None
+                    else:
+                        marker_color = np.asarray(c_values, dtype=float).tolist()
+                        colorscale = _colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        )
+                marker_dict = dict(
+                    color=marker_color,
+                    colorscale=colorscale,
+                    cmin=kwargs.get("vmin", None),
+                    cmax=kwargs.get("vmax", None),
+                    showscale=(colorscale is not None)
+                    and bool(kwargs.get("colorbar", False)),
+                    symbol=marker_map.get(marker, marker),
+                    size=kwargs.get("s", None),
+                    opacity=kwargs.get("alpha", None),
+                )
+                edgecolor = kwargs.get("edgecolors", kwargs.get("edgecolor"))
+                linewidth = kwargs.get("linewidths", kwargs.get("linewidth"))
+                if edgecolor is not None or linewidth is not None:
+                    marker_dict["line"] = dict(
+                        color=(
+                            plotly_color(edgecolor) if edgecolor is not None else None
+                        ),
+                        width=linewidth if linewidth is not None else 1,
+                    )
                 trace = go.Scatter(
                     x=tx(line["x"]),
                     y=ty(line["y"]),
                     mode="markers",
                     name=kwargs.get("label", ""),
                     showlegend=bool(kwargs.get("label")) and bool(self._legend),
-                    marker=dict(
-                        color=plotly_color(kwargs.get("color", None)),
-                        symbol=marker_map.get(marker, marker),
-                        size=kwargs.get("s", None),
-                    ),
+                    marker=marker_dict,
                 )
                 traces.append(trace)
             elif plot_type == "bar":
                 kwargs = line["kwargs"]
+                base = kwargs.get("bottom")
+                if base is not None:
+                    base = np.asarray(base, dtype=float) * self._yscale
+                    self._plotly_barmode_hint = "overlay"
                 trace = go.Bar(
                     x=tx(line["x"]),
                     y=np.asarray(line["height"]) * self._yscale,
+                    base=base,
+                    width=kwargs.get("width", None),
+                    orientation="v",
                     name=kwargs.get("label", ""),
                     showlegend=bool(kwargs.get("label")) and bool(self._legend),
-                    marker_color=plotly_color(kwargs.get("color", None)),
+                    marker=bar_marker(kwargs),
+                    opacity=kwargs.get("alpha", None),
+                    offsetgroup=kwargs.get("offsetgroup", None),
                 )
                 traces.append(trace)
             elif plot_type == "barh":
                 kwargs = line["kwargs"]
+                base = kwargs.get("left")
+                if base is not None:
+                    base = np.asarray(base, dtype=float) * self._xscale
+                    self._plotly_barmode_hint = "overlay"
                 traces.append(
                     go.Bar(
                         x=np.asarray(line["width"]) * self._xscale,
                         y=ty(line["y"]),
+                        base=base,
+                        width=kwargs.get("height", None),
                         orientation="h",
                         name=kwargs.get("label", ""),
                         showlegend=bool(kwargs.get("label")) and bool(self._legend),
-                        marker_color=plotly_color(kwargs.get("color", None)),
+                        marker=bar_marker(kwargs),
+                        opacity=kwargs.get("alpha", None),
+                        offsetgroup=kwargs.get("offsetgroup", None),
                     )
                 )
             elif plot_type == "hist":
                 kwargs = line["kwargs"]
+                bins = line["bins"]
+                xbins = None
+                nbinsx = None
+                if np.isscalar(bins):
+                    nbinsx = bins
+                else:
+                    edges = np.asarray(bins, dtype=float)
+                    if edges.size >= 2:
+                        # Plotly bins by (start, end, size) rather than by
+                        # explicit edges; only an evenly spaced ``bins=``
+                        # array (the common case) can be represented exactly.
+                        spacing = np.diff(edges)
+                        if np.allclose(spacing, spacing[0]):
+                            xbins = dict(
+                                start=float(edges[0]),
+                                end=float(edges[-1]),
+                                size=float(spacing[0]) * self._xscale,
+                            )
                 traces.append(
                     go.Histogram(
                         x=tx(line["x"]),
-                        nbinsx=line["bins"] if np.isscalar(line["bins"]) else None,
+                        nbinsx=nbinsx,
+                        xbins=xbins,
+                        histnorm=(
+                            "probability density" if kwargs.get("density") else None
+                        ),
+                        cumulative=(
+                            dict(enabled=True) if kwargs.get("cumulative") else None
+                        ),
                         name=kwargs.get("label", ""),
                         showlegend=bool(kwargs.get("label")) and bool(self._legend),
-                        marker_color=plotly_color(kwargs.get("color", None)),
+                        marker=dict(
+                            color=plotly_color(kwargs.get("color", None)),
+                            line=dict(
+                                color=plotly_color(kwargs.get("edgecolor", None)),
+                                width=kwargs.get("linewidth", None),
+                            ),
+                        ),
                         opacity=kwargs.get("alpha", None),
                     )
                 )
@@ -2168,12 +2475,21 @@ class LinePlot:
             elif plot_type == "pie":
                 kwargs = line["kwargs"]
                 labels = kwargs.get("labels", None)
+                colors = kwargs.get("colors", None)
+                explode = kwargs.get("explode", None)
                 traces.append(
                     go.Pie(
                         values=line["x"],
                         labels=labels,
                         name=kwargs.get("label", ""),
                         showlegend=bool(self._legend),
+                        marker=(
+                            dict(colors=[plotly_color(c) for c in colors])
+                            if colors is not None
+                            else None
+                        ),
+                        pull=list(explode) if explode is not None else None,
+                        textinfo=("percent" if kwargs.get("autopct") else None),
                     )
                 )
             elif plot_type == "stem":
@@ -2191,15 +2507,21 @@ class LinePlot:
             elif plot_type == "stackplot":
                 kwargs = line["kwargs"]
                 x_values = tx(line["x"])
+                colors = kwargs.get("colors", None)
                 cumulative = np.zeros(len(x_values))
                 for index, values in enumerate(line["ys"]):
                     next_cumulative = cumulative + np.asarray(values)
+                    color = (
+                        plotly_color(colors[index % len(colors)]) if colors else None
+                    )
                     traces.append(
                         go.Scatter(
                             x=x_values,
                             y=ty(next_cumulative),
                             mode="lines",
                             stackgroup="one",
+                            fillcolor=color,
+                            line=dict(color=color),
                             name=(
                                 kwargs.get("labels", [])[index]
                                 if index < len(kwargs.get("labels", []))
@@ -2579,14 +2901,16 @@ class LinePlot:
                 start_times = tx(line["start_times"])
                 durations = np.asarray(line["durations"]) * self._xscale
                 y_positions = list(range(len(tasks)))
+                self._plotly_barmode_hint = "overlay"
                 trace = go.Bar(
                     x=durations,
                     y=y_positions,
                     base=start_times,
+                    width=kwargs.get("height", None),
                     orientation="h",
                     name=kwargs.get("label", ""),
                     showlegend=bool(kwargs.get("label")) and bool(self._legend),
-                    marker_color=plotly_color(kwargs.get("color", None)),
+                    marker=bar_marker(kwargs),
                     opacity=kwargs.get("alpha", None),
                 )
                 traces.append(trace)
@@ -2616,31 +2940,45 @@ class LinePlot:
                         )
                         depths[i] = depths[parent_idx] + 1
 
-                # Create rectangles as shapes
-                colormap = kwargs.get("colormap", "Viridis")
-                import plotly.express as px
-
-                colors = px.colors.sample_colorscale(
-                    colormap, np.linspace(0, 1, depths.max() + 1)
+                # Frames are drawn as a single horizontal bar trace rather
+                # than layout shapes, so they carry hover text, per-frame
+                # colors, legend entries and zoom/click behaviour.
+                frame_colors = [
+                    plotly_color(color)
+                    for color in _flame_frame_colors(kwargs, depths, n, css=True)
+                ]
+                hover = line.get("hover")
+                if hover is None:
+                    hover = [
+                        f"{label}<br>{float(value):g}"
+                        for label, value in zip(labels, values, strict=False)
+                    ]
+                self._plotly_barmode_hint = "overlay"
+                traces.append(
+                    go.Bar(
+                        x=[float(value) for value in values],
+                        y=[float(depth) + 0.45 for depth in depths],
+                        base=[float(start) for start in start_times],
+                        width=0.9,
+                        orientation="h",
+                        name=kwargs.get("label", "") or "",
+                        showlegend=bool(kwargs.get("label")) and bool(self._legend),
+                        marker=dict(
+                            color=frame_colors,
+                            line=dict(
+                                color=plotly_color(kwargs.get("edgecolor", "black")),
+                                width=kwargs.get("linewidth", 0.5),
+                            ),
+                        ),
+                        opacity=kwargs.get("alpha", None),
+                        customdata=list(labels),
+                        hovertext=hover,
+                        hoverinfo="text",
+                    )
                 )
 
                 for i in range(n):
-                    color = colors[depths[i]] if depths.max() > 0 else colors[0]
-                    shapes.append(
-                        dict(
-                            type="rect",
-                            x0=float(start_times[i]),
-                            x1=float(start_times[i] + values[i]),
-                            y0=float(depths[i]),
-                            y1=float(depths[i] + 0.9),
-                            fillcolor=color,
-                            line=dict(
-                                color=kwargs.get("edgecolor", "black"), width=0.5
-                            ),
-                        )
-                    )
-
-                    # Add text annotation if wide enough
+                    # Add text annotation if the frame is wide enough
                     if values[i] > 0.1 * (start_times.max() + values.max()):
                         annotations.append(
                             dict(
@@ -2744,6 +3082,13 @@ class LinePlot:
                     yerr = np.full(len(x_vals), float(yerr))
                 if xerr is not None and np.isscalar(xerr):
                     xerr = np.full(len(x_vals), float(xerr))
+                # Matplotlib draws error-bar caps only when ``capsize`` is
+                # set; Plotly always draws them, sized by ``width``, so
+                # ``capsize`` is honored and a caller who omits it (wanting no
+                # caps) still gets Plotly's default rather than nothing.
+                capsize = kwargs.get("capsize")
+                error_width = None if capsize is None else float(capsize)
+                error_linewidth = kwargs.get("elinewidth", kwargs.get("capthick"))
                 trace = go.Scatter(
                     x=x_vals,
                     y=y_vals,
@@ -2767,12 +3112,24 @@ class LinePlot:
                         else None
                     ),
                     error_y=(
-                        dict(type="data", array=yerr, visible=True)
+                        dict(
+                            type="data",
+                            array=yerr,
+                            visible=True,
+                            width=error_width,
+                            thickness=error_linewidth,
+                        )
                         if yerr is not None
                         else None
                     ),
                     error_x=(
-                        dict(type="data", array=xerr, visible=True)
+                        dict(
+                            type="data",
+                            array=xerr,
+                            visible=True,
+                            width=error_width,
+                            thickness=error_linewidth,
+                        )
                         if xerr is not None
                         else None
                     ),
@@ -2783,6 +3140,20 @@ class LinePlot:
                 color = plotly_color(kwargs.get("color", kwargs.get("colors", "black")))
                 dash = linestyle_map.get(kwargs.get("linestyle", "solid"), "solid")
                 width = kwargs.get("linewidth", 1)
+                # Layout shapes never appear in a Plotly legend, unlike their
+                # Matplotlib equivalents; add a zero-data dummy trace so a
+                # labeled line still shows up.
+                if kwargs.get("label") and self._legend:
+                    traces.append(
+                        go.Scatter(
+                            x=[None],
+                            y=[None],
+                            mode="lines",
+                            name=kwargs["label"],
+                            line=dict(color=color, dash=dash, width=width),
+                            showlegend=True,
+                        )
+                    )
                 if plot_type == "axhline":
                     shapes.append(
                         dict(
@@ -2863,6 +3234,22 @@ class LinePlot:
                         y1=tys(line["ymax"]),
                     )
                 shapes.append(span_shape)
+                if kwargs.get("label") and self._legend:
+                    traces.append(
+                        go.Scatter(
+                            x=[None],
+                            y=[None],
+                            mode="markers",
+                            name=kwargs["label"],
+                            marker=dict(
+                                color=color,
+                                opacity=kwargs.get("alpha", 0.3),
+                                symbol="square",
+                                size=12,
+                            ),
+                            showlegend=True,
+                        )
+                    )
             elif plot_type == "arrow":
                 kwargs = line["kwargs"]
                 annotations.append(
@@ -2905,6 +3292,22 @@ class LinePlot:
                 )
             elif plot_type in ("text", "annotate"):
                 kwargs = line["kwargs"]
+                # Matplotlib's ha/va anchor the text block to the (x, y)
+                # point; Plotly's xanchor/yanchor do the same thing under a
+                # different name ("center" means the same in both).
+                ha_to_xanchor = {"left": "left", "right": "right", "center": "center"}
+                va_to_yanchor = {
+                    "top": "top",
+                    "bottom": "bottom",
+                    "center": "middle",
+                    "baseline": "bottom",
+                }
+                font = dict(
+                    color=plotly_color(kwargs.get("color", None)),
+                    size=kwargs.get("fontsize", None),
+                    family=kwargs.get("fontfamily", kwargs.get("family", None)),
+                    weight=kwargs.get("fontweight", None),
+                )
                 if plot_type == "text":
                     x = txs(float(line["x"]))
                     y = tys(float(line["y"]))
@@ -2915,10 +3318,9 @@ class LinePlot:
                             y=y,
                             text=text,
                             showarrow=False,
-                            font=dict(
-                                color=plotly_color(kwargs.get("color", None)),
-                                size=kwargs.get("fontsize", None),
-                            ),
+                            xanchor=ha_to_xanchor.get(kwargs.get("ha"), "left"),
+                            yanchor=va_to_yanchor.get(kwargs.get("va"), "bottom"),
+                            font=font,
                         )
                     )
                 else:
@@ -2932,10 +3334,7 @@ class LinePlot:
                         arrowhead=2,
                         ax=0,
                         ay=-30,
-                        font=dict(
-                            color=plotly_color(kwargs.get("color", None)),
-                            size=kwargs.get("fontsize", None),
-                        ),
+                        font=font,
                     )
                     if line.get("xytext") is not None:
                         tx_val = txs(float(line["xytext"][0]))
@@ -2999,7 +3398,9 @@ class LinePlot:
                     if raw and not str(raw).startswith("_"):
                         patch_label = str(raw)
 
-                hovertext = kwargs.get("hovertext")
+                hovertext = line.get("hover")
+                if hovertext is None:
+                    hovertext = kwargs.get("hovertext")
 
                 def _add_hover_trace(x_pts, y_pts, hovertext=hovertext):
                     # Plotly shapes can't show hover info themselves, so an
@@ -3007,6 +3408,7 @@ class LinePlot:
                     # the shape's outline to make the whole area hoverable.
                     if hovertext is None:
                         return
+                    hover_handled_shapes.add(len(shapes) - 1)
                     traces.append(
                         go.Scatter(
                             x=list(x_pts) + [x_pts[0]],
@@ -3066,16 +3468,55 @@ class LinePlot:
                     angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
                     _add_hover_trace(cx + rx * np.cos(angles), cy + ry * np.sin(angles))
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Ellipse):
-                    cx = txs(patch.center[0])
-                    cy = tys(patch.center[1])
-                    rx = abs(txs(patch.center[0] + patch.width / 2.0) - cx)
-                    ry = abs(tys(patch.center[1] + patch.height / 2.0) - cy)
-                    # Ignore rotation for now; provides useful parity for tutorials.
-                    path = (
-                        f"M {cx - rx},{cy} "
-                        f"A {rx},{ry} 0 1,0 {cx + rx},{cy} "
-                        f"A {rx},{ry} 0 1,0 {cx - rx},{cy} Z"
-                    )
+                    angle = float(getattr(patch, "angle", 0.0) or 0.0)
+                    if angle == 0.0:
+                        cx = txs(patch.center[0])
+                        cy = tys(patch.center[1])
+                        rx = abs(txs(patch.center[0] + patch.width / 2.0) - cx)
+                        ry = abs(tys(patch.center[1] + patch.height / 2.0) - cy)
+                        path = (
+                            f"M {cx - rx},{cy} "
+                            f"A {rx},{ry} 0 1,0 {cx + rx},{cy} "
+                            f"A {rx},{ry} 0 1,0 {cx - rx},{cy} Z"
+                        )
+                        patch_bounds_x.extend([cx - rx, cx + rx])
+                        patch_bounds_y.extend([cy - ry, cy + ry])
+                        hover_x = cx + rx * np.cos(
+                            np.linspace(0, 2 * np.pi, 32, endpoint=False)
+                        )
+                        hover_y = cy + ry * np.sin(
+                            np.linspace(0, 2 * np.pi, 32, endpoint=False)
+                        )
+                    else:
+                        # A rotated ellipse is no longer axis-aligned once the
+                        # per-axis x/y transforms are applied, so it can't be
+                        # described with a two-arc SVG path; approximate it
+                        # with a sampled polygon instead, computed in data
+                        # space (where the rotation is defined) and then
+                        # transformed point-by-point.
+                        cx0, cy0 = patch.center
+                        a = patch.width / 2.0
+                        b = patch.height / 2.0
+                        theta = np.radians(angle)
+                        t = np.linspace(0, 2 * np.pi, 64, endpoint=False)
+                        ex = a * np.cos(t) * np.cos(theta) - b * np.sin(t) * np.sin(
+                            theta
+                        )
+                        ey = a * np.cos(t) * np.sin(theta) + b * np.sin(t) * np.cos(
+                            theta
+                        )
+                        hover_x = np.array([txs(cx0 + dx) for dx in ex])
+                        hover_y = np.array([tys(cy0 + dy) for dy in ey])
+                        path = (
+                            "M "
+                            + " L ".join(
+                                f"{x},{y}"
+                                for x, y in zip(hover_x, hover_y, strict=False)
+                            )
+                            + " Z"
+                        )
+                        patch_bounds_x.extend(hover_x.tolist())
+                        patch_bounds_y.extend(hover_y.tolist())
                     shapes.append(
                         dict(
                             type="path",
@@ -3085,10 +3526,7 @@ class LinePlot:
                             opacity=kwargs.get("alpha", None),
                         )
                     )
-                    patch_bounds_x.extend([cx - rx, cx + rx])
-                    patch_bounds_y.extend([cy - ry, cy + ry])
-                    angles = np.linspace(0, 2 * np.pi, 32, endpoint=False)
-                    _add_hover_trace(cx + rx * np.cos(angles), cy + ry * np.sin(angles))
+                    _add_hover_trace(hover_x, hover_y)
                 elif mpl_patches is not None and isinstance(patch, mpl_patches.Polygon):
                     pts = patch.get_xy()
                     if len(pts) >= 2:
@@ -3119,6 +3557,15 @@ class LinePlot:
                             showlegend=True,
                         )
                     )
+
+            self._apply_plotly_neutral(
+                line,
+                traces,
+                shapes,
+                trace_start,
+                shape_start,
+                skip_shapes=hover_handled_shapes,
+            )
 
         if patch_bounds_x:
             traces.append(
@@ -3186,6 +3633,97 @@ class LinePlot:
                         )
 
         return traces, shapes, annotations
+
+    def _apply_plotly_neutral(
+        self,
+        line,
+        traces,
+        shapes,
+        trace_start,
+        shape_start,
+        skip_shapes=(),
+    ):
+        """Apply the backend-neutral ``hover=`` / ``meta=`` options.
+
+        Every trace and shape produced by ``line`` is tagged, so callers never
+        have to match traces by creation order after the figure is built.
+        ``hover`` may be a single string, one entry per point, or a 2-D array
+        for heatmap-like traces; shapes, which cannot show hover text of their
+        own, get an invisible overlay trace instead.
+        """
+        hover = line.get("hover")
+        meta = line.get("meta")
+        if hover is None and meta is None:
+            return
+
+        for trace in traces[trace_start:]:
+            if meta is not None:
+                try:
+                    trace.update(meta=meta)
+                except (ValueError, TypeError):
+                    pass
+            if hover is not None:
+                try:
+                    trace.update(hovertext=hover, hoverinfo="text")
+                except (ValueError, TypeError):
+                    pass
+
+        for index in range(shape_start, len(shapes)):
+            shape = shapes[index]
+            if meta is not None and "name" not in shape:
+                shape["name"] = str(meta)
+            if hover is None or index in skip_shapes:
+                continue
+            corners = self._plotly_shape_corners(shape)
+            if corners is None:
+                continue
+            x_points, y_points = corners
+            traces.append(
+                go.Scatter(
+                    x=list(x_points) + [x_points[0]],
+                    y=list(y_points) + [y_points[0]],
+                    mode="lines",
+                    fill="toself",
+                    fillcolor="rgba(0,0,0,0)",
+                    line=dict(width=0),
+                    hoveron="fills",
+                    hoverinfo="text",
+                    hovertext=hover,
+                    meta=meta,
+                    showlegend=False,
+                )
+            )
+
+    def _plotly_shape_corners(self, shape):
+        """Return the polygon outline of a rectangular shape, if hoverable.
+
+        Shapes anchored to the paper (full-height spans from ``axvspan``, for
+        instance) have no data coordinates on that axis; they can only be
+        given a hover overlay when the subplot has explicit limits to
+        substitute.
+        """
+        if shape.get("type") != "rect":
+            return None
+        try:
+            if shape.get("xref") == "paper":
+                if self._xmin is None or self._xmax is None:
+                    return None
+                x0 = self._transform_scalar_x(self._xmin)
+                x1 = self._transform_scalar_x(self._xmax)
+            else:
+                x0 = float(shape["x0"])
+                x1 = float(shape["x1"])
+            if shape.get("yref") == "paper":
+                if self._ymin is None or self._ymax is None:
+                    return None
+                y0 = self._transform_scalar_y(self._ymin)
+                y1 = self._transform_scalar_y(self._ymax)
+            else:
+                y0 = float(shape["y0"])
+                y1 = float(shape["y1"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return [x0, x1, x1, x0], [y0, y0, y1, y1]
 
     def _iter_layer_lines(self, layers=None):
         for layer_name in sorted(self.layered_line_data):
@@ -3645,14 +4183,22 @@ class LinePlot:
                 flame_kwargs = self._plotext_bar_kwargs(kwargs)
                 flame_kwargs["orientation"] = "h"
 
-                # Use different colors for different depths
-                colormap = kwargs.get("colormap", "viridis")
-                max_depth = int(depths.max()) + 1
+                # Explicit per-frame colors win; otherwise cycle by depth using
+                # names the terminal backend understands.
+                explicit_colors = kwargs.get("colors")
+                if isinstance(explicit_colors, str) or not hasattr(
+                    explicit_colors, "__len__"
+                ):
+                    explicit_colors = (
+                        None if explicit_colors is None else [explicit_colors]
+                    )
+                depth_colors = ["red", "green", "blue", "yellow", "cyan", "magenta"]
 
                 for i in range(n):
-                    # Simple color cycling based on depth
-                    depth_colors = ["red", "green", "blue", "yellow", "cyan", "magenta"]
-                    color = depth_colors[depths[i] % len(depth_colors)]
+                    if explicit_colors:
+                        color = explicit_colors[i % len(explicit_colors)]
+                    else:
+                        color = depth_colors[depths[i] % len(depth_colors)]
 
                     ax.bar(
                         [start_times[i] + values[i] / 2],
