@@ -482,3 +482,125 @@ def test_plotly_accepts_matplotlib_color_spellings():
     axis.bar([0, 1], [1, 2], color="tab:blue")
 
     assert canvas.render(backend="plotly").data[0].marker.color == "#1f77b4"
+
+
+def test_plotly_rotated_ellipse_uses_sampled_polygon():
+    import matplotlib.patches as mpatches
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.add_patch(
+        mpatches.Ellipse((1, 1), width=2, height=1, angle=30, facecolor="orange"),
+        hover="tilted",
+        meta="ellipse-1",
+    )
+
+    fig = canvas.render(backend="plotly")
+
+    shape = fig.layout.shapes[0]
+    assert shape.type == "path"
+    assert "A" not in shape.path  # sampled polygon, not an SVG arc
+    overlay = next(trace for trace in fig.data if trace.hovertext == "tilted")
+    assert overlay.meta == "ellipse-1"
+
+
+def test_plotly_axis_aligned_ellipse_still_uses_arc_path():
+    import matplotlib.patches as mpatches
+
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.add_patch(mpatches.Ellipse((1, 1), width=2, height=1, facecolor="orange"))
+
+    fig = canvas.render(backend="plotly")
+
+    assert "A" in fig.layout.shapes[0].path
+
+
+def test_plotly_shape_primitives_get_legend_entries_when_labeled():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.axhline(0.5, color="black", label="threshold")
+    axis.axvspan(1, 2, color="grey", alpha=0.4, label="region")
+    axis.set_legend(True)
+
+    fig = canvas.render(backend="plotly")
+
+    names = {trace.name for trace in fig.data if trace.showlegend}
+    assert names == {"threshold", "region"}
+
+
+def test_plotly_scatter_supports_colormap_coloring():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.scatter(
+        [0, 1, 2],
+        [0, 1, 4],
+        c=[0.1, 0.5, 0.9],
+        cmap="plasma",
+        colorbar=True,
+        edgecolors="black",
+        linewidths=2,
+        alpha=0.7,
+    )
+
+    fig = canvas.render(backend="plotly")
+
+    trace = fig.data[0]
+    assert list(trace.marker.color) == [0.1, 0.5, 0.9]
+    assert trace.marker.showscale is True
+    assert len(trace.marker.colorscale) > 1
+    assert trace.marker.line.color == "black"
+    assert trace.marker.line.width == 2
+    assert trace.marker.opacity == 0.7
+
+
+def test_plotly_scatter_plain_color_wins_over_c():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.scatter([0, 1], [0, 1], c=[1, 2], color="red")
+
+    trace = canvas.render(backend="plotly").data[0]
+    assert trace.marker.color == "red"
+
+
+def test_scatter_colorbar_flag_does_not_reach_matplotlib():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.scatter([0, 1], [0, 1], c=[1, 2], cmap="viridis", colorbar=True)
+
+    # ax.scatter() would raise on an unknown "colorbar" kwarg; reaching here
+    # means it never got one.
+    canvas.render(backend="matplotlib")
+
+
+def test_plotly_errorbar_honors_capsize_and_elinewidth():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.errorbar([0, 1], [0, 1], yerr=0.1, capsize=5, elinewidth=3)
+
+    trace = canvas.render(backend="plotly").data[0]
+    assert trace.error_y.width == 5.0
+    assert trace.error_y.thickness == 3
+
+
+def test_plotly_legend_loc_and_title_are_translated():
+    from maxplotlib import Canvas
+
+    canvas, axis = Canvas.subplots()
+    axis.plot([0, 1], [0, 1], label="l")
+    axis.set_legend(True, loc="upper left", title="Legend", fontsize=14)
+
+    fig = canvas.render(backend="plotly")
+
+    assert fig.layout.legend.x == 0.0
+    assert fig.layout.legend.y == 1.0
+    assert fig.layout.legend.xanchor == "left"
+    assert fig.layout.legend.title.text == "Legend"
+    assert fig.layout.legend.font.size == 14

@@ -71,6 +71,44 @@ def _running_in_jupyter() -> bool:
     return shell is not None and "IPKernelApp" in getattr(shell, "config", {})
 
 
+_MATPLOTLIB_LOC_TO_PLOTLY_ANCHOR = {
+    "upper right": dict(x=1.0, y=1.0, xanchor="right", yanchor="top"),
+    "upper left": dict(x=0.0, y=1.0, xanchor="left", yanchor="top"),
+    "lower right": dict(x=1.0, y=0.0, xanchor="right", yanchor="bottom"),
+    "lower left": dict(x=0.0, y=0.0, xanchor="left", yanchor="bottom"),
+    "upper center": dict(x=0.5, y=1.0, xanchor="center", yanchor="top"),
+    "lower center": dict(x=0.5, y=0.0, xanchor="center", yanchor="bottom"),
+    "center left": dict(x=0.0, y=0.5, xanchor="left", yanchor="middle"),
+    "center right": dict(x=1.0, y=0.5, xanchor="right", yanchor="middle"),
+    "center": dict(x=0.5, y=0.5, xanchor="center", yanchor="middle"),
+    "right": dict(x=1.0, y=0.5, xanchor="right", yanchor="middle"),
+}
+
+
+def _plotly_legend_kwargs(legend_kwargs):
+    """Translate Matplotlib ``ax.legend()`` keywords into Plotly's legend.
+
+    Only the settings that map cleanly are translated (position via ``loc``,
+    ``title``, ``fontsize``, and a two-or-more-column ``ncol`` as horizontal
+    orientation); "best"/unrecognized locations and other Matplotlib-only
+    legend options (``handlelength``, ``framealpha``, ...) are left at
+    Plotly's defaults rather than guessed at.
+    """
+    if not legend_kwargs:
+        return {}
+    layout = {}
+    loc = legend_kwargs.get("loc")
+    if isinstance(loc, str):
+        layout.update(_MATPLOTLIB_LOC_TO_PLOTLY_ANCHOR.get(loc, {}))
+    if legend_kwargs.get("title") is not None:
+        layout["title"] = dict(text=legend_kwargs["title"])
+    if legend_kwargs.get("fontsize") is not None:
+        layout["font"] = dict(size=legend_kwargs["fontsize"])
+    if legend_kwargs.get("ncol", legend_kwargs.get("ncols", 1)) not in (None, 1):
+        layout["orientation"] = "h"
+    return layout
+
+
 def _apply_matplotlib_customizations(fig, axes, customizations) -> None:
     """Apply declarative method calls to a Matplotlib figure and its axes."""
     if callable(customizations):
@@ -1140,10 +1178,19 @@ class Canvas:
         self._get_or_create_subplot(row, col).set_grid(visible)
 
     def set_legend(
-        self, visible: bool = True, row: int | None = None, col: int | None = None
+        self,
+        visible: bool = True,
+        row: int | None = None,
+        col: int | None = None,
+        **kwargs,
     ):
-        """Show or hide the legend for a subplot (default top-left)."""
-        self._get_or_create_subplot(row, col).set_legend(visible)
+        """Show or hide the legend for a subplot (default top-left).
+
+        ``**kwargs`` are forwarded to ``ax.legend()`` on Matplotlib; ``loc``,
+        ``title``, ``fontsize`` and ``ncol``/``ncols`` are also translated for
+        the Plotly backend's legend.
+        """
+        self._get_or_create_subplot(row, col).set_legend(visible, **kwargs)
 
     def legend(self, row=None, col=None, **kwargs):
         self._get_or_create_subplot(row, col).set_legend(**kwargs)
@@ -2903,6 +2950,17 @@ class Canvas:
             )
         if barmode is not None:
             fig.update_layout(barmode=barmode)
+        legend_kwargs = next(
+            (
+                subplot._legend_kwargs
+                for subplot in self._subplot_dict.values()
+                if subplot._legend and subplot._legend_kwargs
+            ),
+            None,
+        )
+        legend_layout = _plotly_legend_kwargs(legend_kwargs)
+        if legend_layout:
+            fig.update_layout(legend=legend_layout)
         if self._suptitle:
             fig.update_layout(title=dict(text=self._suptitle, x=0.5))
 
