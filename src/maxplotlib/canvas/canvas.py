@@ -1867,7 +1867,17 @@ class Canvas:
         layers: list | None = None,
         layer_by_layer: bool = False,
         verbose: bool = False,
+        include_plotlyjs: bool | str = True,
     ):
+        """Render and save the canvas.
+
+        ``include_plotlyjs`` only applies to the Plotly backend when saving
+        to an ``.html``/``.htm`` file (see ``fig.write_html`` in the Plotly
+        docs). It defaults to ``True``, which bundles plotly.js into the
+        file so it works offline. Pass ``"cdn"`` to instead reference
+        plotly.js from a CDN, producing a much smaller file that requires
+        network access to render.
+        """
         filename_no_extension, extension = os.path.splitext(filename)
         if backend == "matplotlib":
             if layer_by_layer:
@@ -1942,7 +1952,9 @@ class Canvas:
                         savefig=False,
                         layers=layers,
                     )
-                    self._save_plotly(fig, full_filepath)
+                    self._save_plotly(
+                        fig, full_filepath, include_plotlyjs=include_plotlyjs
+                    )
                     if verbose:
                         print(f"Saved {full_filepath}")
             else:
@@ -1956,7 +1968,7 @@ class Canvas:
                     savefig=False,
                     layers=layers,
                 )
-                self._save_plotly(fig, full_filepath)
+                self._save_plotly(fig, full_filepath, include_plotlyjs=include_plotlyjs)
                 if verbose:
                     print(f"Saved {full_filepath}")
         elif backend == "tikzfigure":
@@ -3037,11 +3049,13 @@ class Canvas:
         self._plotly_fig = fig
         return fig
 
-    def _save_plotly(self, fig, filename: str) -> None:
+    def _save_plotly(
+        self, fig, filename: str, include_plotlyjs: bool | str = True
+    ) -> None:
         _, extension = os.path.splitext(filename)
         extension = extension.lower()
         if extension in {".html", ".htm"}:
-            fig.write_html(filename)
+            fig.write_html(filename, include_plotlyjs=include_plotlyjs)
             return
         try:
             fig.write_image(filename)
@@ -3050,6 +3064,33 @@ class Canvas:
                 "Plotly image export failed. For PNG/PDF/SVG export, install kaleido "
                 "(e.g., `pip install -U kaleido`), or export to HTML instead."
             ) from exc
+
+    def to_html(
+        self,
+        layers: list | None = None,
+        include_plotlyjs: bool | str = "cdn",
+        full_html: bool = True,
+        verbose: bool = False,
+        allow_unsupported: bool = False,
+    ) -> str:
+        """Render the canvas with the Plotly backend and return standalone HTML.
+
+        The returned markup embeds the figure data and calls plotly.js to
+        render it in a browser. By default ``include_plotlyjs="cdn"``
+        references plotly.js from a CDN instead of bundling it, producing a
+        much smaller string suited to embedding in an existing page; pass
+        ``include_plotlyjs=True`` to inline plotly.js for offline use, as
+        ``savefig(..., backend="plotly")`` does. Set ``full_html=False`` to
+        get just the ``<div>``/``<script>`` fragment for embedding inside a
+        larger page (you must include plotly.js yourself in that case).
+        """
+        fig = self.plot_plotly(
+            show=False,
+            layers=layers,
+            verbose=verbose,
+            allow_unsupported=allow_unsupported,
+        )
+        return fig.to_html(include_plotlyjs=include_plotlyjs, full_html=full_html)
 
     # Property getters
 
