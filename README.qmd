@@ -1,5 +1,5 @@
 ---
-title: Maxlotlib
+title: Maxplotlib
 format: gfm
 fig-dpi: 150
 ---
