@@ -394,6 +394,25 @@ class Canvas:
     # ------------------------------------------------------------------
 
     @classmethod
+    def from_matplotlib(cls, source, *, strict=False, **canvas_kwargs):
+        """Import a Figure, Axes, or one-/two-dimensional array of Axes.
+
+        Copies 2D lines, scatter, bars, errors, polygons, stairs, images,
+        data-coordinate text/annotations, and basic axis settings into
+        independent plot entries. Supports one twinx/twiny per primary axes.
+        Two-dimensional arrays define the layout explicitly; figures and flat
+        arrays use a common, unspanned GridSpec when available.
+
+        Unsupported content emits UserWarning, or raises NotImplementedError
+        with ``strict=True``. This is a semantic import, not a pixel-perfect
+        reproduction: custom ticks, legend placement, and backend-specific
+        decoration may differ. ``canvas_kwargs`` override figure defaults.
+        """
+        from maxplotlib.backends.matplotlib.importer import import_matplotlib
+
+        return import_matplotlib(cls, source, strict=strict, **canvas_kwargs)
+
+    @classmethod
     def subplots(
         cls,
         nrows: int = 1,
@@ -2306,10 +2325,9 @@ class Canvas:
             ax = axes[row][col]
             if isinstance(subplot, TikzFigure):
                 plot_matplotlib(subplot, ax, layers=layers)
+                ax.grid(False)
             else:
                 subplot.plot_matplotlib(ax, layers=layers)
-            # ax.set_title(f"Subplot ({row}, {col})")
-            ax.grid()
 
         if verbose:
             print("Finished plotting subplots.")

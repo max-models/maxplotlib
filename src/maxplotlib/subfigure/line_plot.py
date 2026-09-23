@@ -1693,6 +1693,8 @@ class LinePlot:
                     ax.text(line["x"], line["y"], line["s"], **line["kwargs"])
                 elif line["plot_type"] == "axvline":
                     ax.axvline(x=line["x"], **line["kwargs"])
+                elif line["plot_type"] == "axhline":
+                    ax.axhline(y=line["y"], **line["kwargs"])
                 elif line["plot_type"] == "imshow":
                     im = ax.imshow(
                         line["data"],
@@ -1722,8 +1724,7 @@ class LinePlot:
             ax.set_ylabel(self._ylabel, **self._ylabel_kwargs)
         if self._legend and len(self.line_data) > 0:
             ax.legend(**self._legend_kwargs)
-        if self._grid:
-            ax.grid()
+        ax.grid(self._grid)
         if self._axis_settings:
             axis_settings = dict(self._axis_settings)
             axis_args = axis_settings.pop("args", ())
@@ -2209,6 +2210,8 @@ class LinePlot:
             if isinstance(value, np.generic):
                 value = value.item()
             if isinstance(value, (list, tuple, np.ndarray)):
+                if np.ndim(value) == 2:
+                    return [plotly_color(color) for color in value]
                 arr = np.asarray(value).astype(float).reshape(-1)
                 if arr.size in (3, 4):
                     rgb = (arr[:3] * 255.0) if np.all(arr[:3] <= 1.0) else arr[:3]
@@ -2300,6 +2303,9 @@ class LinePlot:
                 c_values = kwargs.get("c")
                 if kwargs.get("color") is not None or c_values is None:
                     marker_color = plotly_color(kwargs.get("color", None))
+                    colorscale = None
+                elif np.ndim(c_values) == 2:
+                    marker_color = plotly_color(c_values)
                     colorscale = None
                 else:
                     if isinstance(c_values, str) or (
@@ -3074,6 +3080,8 @@ class LinePlot:
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker")
                 mode = "lines+markers" if marker is not None else "lines"
+                if kwargs.get("linestyle") in ("None", "", " "):
+                    mode = "markers" if marker is not None else "none"
                 x_vals = tx(line["x"])
                 y_vals = ty(line["y"])
                 yerr = line.get("yerr")
@@ -3089,6 +3097,26 @@ class LinePlot:
                 capsize = kwargs.get("capsize")
                 error_width = None if capsize is None else float(capsize)
                 error_linewidth = kwargs.get("elinewidth", kwargs.get("capthick"))
+
+                def error_spec(values, scale):
+                    if values is None:
+                        return None
+                    values = np.asarray(values) * abs(scale)
+                    spec = dict(
+                        type="data",
+                        visible=True,
+                        width=error_width,
+                        thickness=error_linewidth,
+                        color=plotly_color(kwargs.get("ecolor", kwargs.get("color"))),
+                    )
+                    if values.ndim == 2:
+                        spec.update(
+                            array=values[1], arrayminus=values[0], symmetric=False
+                        )
+                    else:
+                        spec["array"] = values
+                    return spec
+
                 trace = go.Scatter(
                     x=x_vals,
                     y=y_vals,
@@ -3111,28 +3139,8 @@ class LinePlot:
                         if marker is not None
                         else None
                     ),
-                    error_y=(
-                        dict(
-                            type="data",
-                            array=yerr,
-                            visible=True,
-                            width=error_width,
-                            thickness=error_linewidth,
-                        )
-                        if yerr is not None
-                        else None
-                    ),
-                    error_x=(
-                        dict(
-                            type="data",
-                            array=xerr,
-                            visible=True,
-                            width=error_width,
-                            thickness=error_linewidth,
-                        )
-                        if xerr is not None
-                        else None
-                    ),
+                    error_y=error_spec(yerr, self._yscale),
+                    error_x=error_spec(xerr, self._xscale),
                 )
                 traces.append(trace)
             elif plot_type in ("axhline", "axvline", "hlines", "vlines"):
@@ -3302,10 +3310,13 @@ class LinePlot:
                     "center": "middle",
                     "baseline": "bottom",
                 }
+                font_family = kwargs.get("fontfamily", kwargs.get("family", None))
+                if isinstance(font_family, (list, tuple)):
+                    font_family = ", ".join(font_family)
                 font = dict(
                     color=plotly_color(kwargs.get("color", None)),
                     size=kwargs.get("fontsize", None),
-                    family=kwargs.get("fontfamily", kwargs.get("family", None)),
+                    family=font_family,
                     weight=kwargs.get("fontweight", None),
                 )
                 if plot_type == "text":
@@ -3330,7 +3341,7 @@ class LinePlot:
                         x=x,
                         y=y,
                         text=line["text"],
-                        showarrow=True,
+                        showarrow=kwargs.get("arrowprops", {}) is not None,
                         arrowhead=2,
                         ax=0,
                         ay=-30,
@@ -3339,13 +3350,18 @@ class LinePlot:
                     if line.get("xytext") is not None:
                         tx_val = txs(float(line["xytext"][0]))
                         ty_val = tys(float(line["xytext"][1]))
-                        ann.update(axref="x", ayref="y", ax=tx_val, ay=ty_val)
+                        if ann["showarrow"]:
+                            ann.update(axref="x", ayref="y", ax=tx_val, ay=ty_val)
+                        else:
+                            ann.update(x=tx_val, y=ty_val)
                     annotations.append(ann)
             elif plot_type == "imshow":
                 kwargs = line["kwargs"]
                 heatmap = go.Heatmap(
                     z=line["data"],
-                    colorscale=kwargs.get("cmap", "Viridis"),
+                    colorscale=_colormap_to_plotly_colorscale(
+                        kwargs.get("cmap", "Viridis")
+                    ),
                     showscale=True,
                 )
                 traces.append(heatmap)
