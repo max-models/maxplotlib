@@ -133,12 +133,17 @@ def test_grid_state(grid):
 def test_unsupported_artists_warn_or_raise_without_changing_source():
     fig, ax = plt.subplots()
     ax.plot([1, 2], [3, 4])
-    ax.pcolormesh([[1, 2], [3, 4]])
+    from matplotlib.artist import Artist
+
+    class CustomArtist(Artist):
+        pass
+
+    ax.add_artist(CustomArtist())
     children = ax.get_children()
-    with pytest.warns(UserWarning, match="collection skipped"):
+    with pytest.warns(UserWarning, match="artist skipped"):
         canvas = Canvas.from_matplotlib(fig)
     assert len(canvas._subplot_matrix[0][0].line_data) == 1
-    with pytest.raises(NotImplementedError, match="collection skipped"):
+    with pytest.raises(NotImplementedError, match="artist skipped"):
         Canvas.from_matplotlib(fig, strict=True)
     assert ax.get_children() == children
 
@@ -148,12 +153,14 @@ def test_colorbar_is_reported_and_twin_is_imported():
     image = ax.imshow([[1, 2], [3, 4]])
     fig.colorbar(image, ax=ax)
     ax.twinx().plot([1, 2], [3, 4])
-    with pytest.warns(UserWarning) as caught:
-        canvas = Canvas.from_matplotlib(fig)
-    assert any("Colorbar" in str(w.message) for w in caught)
-    assert not any("Twin" in str(w.message) for w in caught)
+    canvas = Canvas.from_matplotlib(fig, strict=True)
+    rendered, _ = canvas.render()
+    rendered.canvas.draw()
     assert len(canvas._subplots) == 1
     assert len(canvas._twinx_subplots) == 1
+    assert len(rendered.axes) == 3
+    bar = rendered.axes[-1]._colorbar
+    assert bar.mappable is rendered.axes[0].images[0]
 
 
 @pytest.mark.parametrize("direction", ["twinx", "twiny"])
@@ -244,8 +251,8 @@ def test_line_collections_and_reference_lines():
     canvas = Canvas.from_matplotlib(ax, strict=True)
     _, imported = canvas.render()
     assert len(imported[0, 0].lines) == 4
-    np.testing.assert_allclose(imported[0, 0].lines[0].get_xdata(), [0.2, 0.8])
-    np.testing.assert_allclose(imported[0, 0].lines[1].get_ydata(), [0.1, 0.7])
+    np.testing.assert_allclose(imported[0, 0].lines[2].get_xdata(), [0.2, 0.8])
+    np.testing.assert_allclose(imported[0, 0].lines[3].get_ydata(), [0.1, 0.7])
     canvas.render(backend="plotly")
 
 
@@ -289,13 +296,14 @@ def test_annotation_without_arrow_and_marker_only_errors_in_plotly():
 def test_unsupported_annotation_coordinates_and_multiple_twins():
     fig, ax = plt.subplots()
     ax.annotate("label", (0.5, 0.5), xycoords="axes fraction")
-    with pytest.raises(NotImplementedError, match="outside data coordinates"):
-        Canvas.from_matplotlib(ax, strict=True)
+    imported, axes = Canvas.from_matplotlib(ax, strict=True).render()
+    imported.canvas.draw()
+    assert axes[0, 0].texts[0].xycoords == "axes fraction"
     fig2, base = plt.subplots()
     base.twinx()
     base.twinx()
-    with pytest.raises(NotImplementedError, match="Multiple twins"):
-        Canvas.from_matplotlib(fig2, strict=True)
+    imported, _ = Canvas.from_matplotlib(fig2, strict=True).render()
+    assert len(imported.axes) == 3
 
 
 def test_dashed_line_collection_and_disconnected_fill():
@@ -315,11 +323,12 @@ def test_spanning_layout_is_reported():
     grid = fig.add_gridspec(2, 2)
     fig.add_subplot(grid[0, :])
     fig.add_subplot(grid[1, 0])
-    with pytest.warns(UserWarning, match="layout"):
-        canvas = Canvas.from_matplotlib(fig)
-    assert (canvas.nrows, canvas.ncols) == (1, 2)
-    with pytest.raises(NotImplementedError, match="layout"):
-        Canvas.from_matplotlib(fig, strict=True)
+    canvas = Canvas.from_matplotlib(fig, strict=True)
+    imported, _ = canvas.render()
+    for source, result in zip(fig.axes, imported.axes):
+        np.testing.assert_allclose(
+            source.get_position().bounds, result.get_position().bounds
+        )
 
 
 @pytest.mark.parametrize("source", [None, 42, [1, 2], [[[1]]]])

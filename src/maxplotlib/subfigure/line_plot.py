@@ -900,6 +900,8 @@ class LinePlot:
     def set_grid(self, visible: bool = True):
         """Show or hide the grid."""
         self._grid = visible
+        if hasattr(self, "_import_grid"):
+            self._import_grid_edited = True
 
     def tick_params(self, **kwargs):
         """Configure tick appearance using Matplotlib-style keyword arguments."""
@@ -913,10 +915,14 @@ class LinePlot:
     def set_xscale(self, scale: str):
         """Set the x-axis scale type: 'linear', 'log', or 'symlog'."""
         self._xaxis_scale = scale
+        if hasattr(self, "_import_scales"):
+            self._import_xscale_edited = True
 
     def set_yscale(self, scale: str):
         """Set the y-axis scale type: 'linear', 'log', or 'symlog'."""
         self._yaxis_scale = scale
+        if hasattr(self, "_import_scales"):
+            self._import_yscale_edited = True
 
     def set_axis_off(self):
         """Hide the axis frame, ticks, and labels."""
@@ -1376,7 +1382,7 @@ class LinePlot:
 
     def add_imshow(self, data, layer=0, **kwargs):
         ld = {
-            "data": np.array(data),
+            "data": np.asanyarray(data).copy(),
             "layer": layer,
             "plot_type": "imshow",
             "kwargs": kwargs,
@@ -1425,6 +1431,15 @@ class LinePlot:
         ax (matplotlib.axes.Axes): Axis on which to plot the lines.
         """
         im = None
+        self._import_rendered_artists = {}
+        if hasattr(self, "_import_projection_artist_ids"):
+            for name, identifiers in self._import_projection_artist_ids.items():
+                for identifier, artist in zip(identifiers, getattr(ax, name)):
+                    self._import_rendered_artists[identifier] = [artist]
+        if hasattr(self, "_import_axis_state"):
+            from maxplotlib.backends.matplotlib.import_state import apply_axis_state
+
+            apply_axis_state(ax, self._import_axis_state, units=False)
         contour_sets = []
         for layer_name, layer_lines in self.layered_line_data.items():
             if layers and layer_name not in layers:
@@ -1432,10 +1447,12 @@ class LinePlot:
             for line in layer_lines:
                 artists_before = (
                     set(map(id, ax.get_children()))
-                    if line.get("meta") is not None
+                    if line.get("meta") is not None or "source_artist_id" in line
                     else None
                 )
-                if line["plot_type"] == "plot":
+                if line["plot_type"] == "matplotlib_artist":
+                    line["snapshot"].draw(ax, **line["kwargs"])
+                elif line["plot_type"] == "plot":
                     ax.plot(
                         (line["x"] + self._xshift) * self._xscale,
                         (line["y"] + self._yshift) * self._yscale,
@@ -1710,13 +1727,33 @@ class LinePlot:
                     cax = divider.append_axes("right", size="5%", pad=0.05)
                     plt.colorbar(im, cax=cax, label="Potential (V)")
 
+                if "source_artist_id" in line:
+                    created = [
+                        artist
+                        for artist in ax.get_children()
+                        if id(artist) not in artists_before
+                    ]
+                    for artist in created:
+                        if "source_sticky_edges" in line:
+                            artist.sticky_edges.x[:] = line["source_sticky_edges"][0]
+                            artist.sticky_edges.y[:] = line["source_sticky_edges"][1]
+                        if line.get("source_picker") is not None:
+                            artist.set_picker(line["source_picker"])
+                    if created:
+                        self._import_rendered_artists.setdefault(
+                            line["source_artist_id"], []
+                        ).extend(created)
                 if line.get("meta") is not None:
                     # Mirror the Plotly ``meta=`` tag onto the Matplotlib
                     # artists so callers can find them again by identity
                     # rather than by drawing order.
                     self._tag_matplotlib_artists(ax, artists_before, line["meta"])
 
-        if self._title:
+        if hasattr(self, "_import_projection"):
+            return
+        if hasattr(self, "_import_axis_state"):
+            apply_axis_state(ax, self._import_axis_state)
+        if self._title is not None:
             ax.set_title(self._title, **self._title_kwargs)
         if self._xlabel:
             ax.set_xlabel(self._xlabel, **self._xlabel_kwargs)
@@ -1724,7 +1761,9 @@ class LinePlot:
             ax.set_ylabel(self._ylabel, **self._ylabel_kwargs)
         if self._legend and len(self.line_data) > 0:
             ax.legend(**self._legend_kwargs)
-        ax.grid(self._grid)
+        if (not hasattr(self, "_import_grid") or self._grid != self._import_grid
+                or getattr(self, "_import_grid_edited", False)):
+            ax.grid(self._grid)
         if self._axis_settings:
             axis_settings = dict(self._axis_settings)
             axis_args = axis_settings.pop("args", ())
@@ -1737,9 +1776,17 @@ class LinePlot:
             ax.axis(ymin=self.ymin)
         if self.ymax is not None:
             ax.axis(ymax=self.ymax)
-        if self._xaxis_scale is not None:
+        if self._xaxis_scale is not None and (
+            not hasattr(self, "_import_scales")
+            or self._xaxis_scale != self._import_scales[0]
+            or getattr(self, "_import_xscale_edited", False)
+        ):
             ax.set_xscale(self._xaxis_scale)
-        if self._yaxis_scale is not None:
+        if self._yaxis_scale is not None and (
+            not hasattr(self, "_import_scales")
+            or self._yaxis_scale != self._import_scales[1]
+            or getattr(self, "_import_yscale_edited", False)
+        ):
             ax.set_yscale(self._yaxis_scale)
         if self._xticks is not None:
             ax.set_xticks(
@@ -1851,6 +1898,37 @@ class LinePlot:
                 ax.clabel(contour_set, **self._clabel_kwargs)
         if self._rasterization_zorder is not None:
             ax.set_rasterization_zorder(self._rasterization_zorder)
+        if hasattr(self, "_import_axis_state"):
+            ax.set_xlim(self.xmin, self.xmax, auto=None)
+            ax.set_ylim(self.ymin, self.ymax, auto=None)
+            # Explicit edits made through the neutral setters still win.
+            if self._tick_params:
+                params = dict(self._tick_params)
+                if "rotation" in params:
+                    params["labelrotation"] = params.pop("rotation")
+                ax.tick_params(**params)
+            if self._legend and self._import_legends and not self._legend_kwargs:
+                if ax.legend_ is not None:
+                    ax.legend_.remove()
+                for i, snapshot in enumerate(self._import_legends):
+                    legend = snapshot.clone(ax)
+                    if i < len(self._import_legends) - 1:
+                        ax.add_artist(legend)
+                    else:
+                        ax.legend_ = legend
+                        legend._remove_method = ax._remove_legend
+            for child in self._import_child_axes:
+                if child["kind"] == "secondary":
+                    secondary = getattr(
+                        ax, "secondary_" + child["orientation"] + "axis"
+                    )(child["location"], functions=child["functions"])
+                    secondary.set_axes_locator(child["locator"].clone(ax))
+                    secondary.set(xlabel=child["xlabel"], ylabel=child["ylabel"])
+                    apply_axis_state(secondary, child["state"])
+                else:
+                    inset = ax.inset_axes(child["bounds"])
+                    inset.set_axes_locator(child["locator"].clone(ax))
+                    child["subplot"].plot_matplotlib(inset, layers=layers)
 
     @staticmethod
     def _tag_matplotlib_artists(ax, artists_before, meta):
@@ -2138,6 +2216,10 @@ class LinePlot:
         return tikz_figure
 
     def plot_plotly(self, layers=None, allow_unsupported=False):
+        if hasattr(self, "_import_projection"):
+            raise NotImplementedError(
+                "Imported projections require the Matplotlib backend or fallback='raster'"
+            )
         """
         Plot all lines using Plotly.
 
@@ -2190,7 +2272,7 @@ class LinePlot:
         # current backend.  Keep the default strict so a mixed plot cannot
         # silently lose data, while allowing callers to deliberately render
         # the Plotly-compatible portions of a canvas.
-        unsupported_plot_types = set()
+        unsupported_plot_types = {"matplotlib_artist"}
 
         def tx(values):
             return self._transform_x(values)
@@ -2319,6 +2401,14 @@ class LinePlot:
                         colorscale = _colormap_to_plotly_colorscale(
                             kwargs.get("cmap", "viridis")
                         )
+                if c_values is not None and kwargs.get("norm") is not None:
+                    from matplotlib.cm import ScalarMappable
+
+                    mapped = ScalarMappable(
+                        norm=kwargs["norm"], cmap=kwargs.get("cmap", "viridis")
+                    )
+                    marker_color = plotly_color(mapped.to_rgba(np.ma.asarray(c_values)))
+                    colorscale = None
                 marker_dict = dict(
                     color=marker_color,
                     colorscale=colorscale,
@@ -2327,7 +2417,11 @@ class LinePlot:
                     showscale=(colorscale is not None)
                     and bool(kwargs.get("colorbar", False)),
                     symbol=marker_map.get(marker, marker),
-                    size=kwargs.get("s", None),
+                    size=(
+                        np.sqrt(np.asarray(kwargs["s"])) * (96 / 72)
+                        if kwargs.get("s") is not None
+                        else None
+                    ),
                     opacity=kwargs.get("alpha", None),
                 )
                 edgecolor = kwargs.get("edgecolors", kwargs.get("edgecolor"))
@@ -2338,6 +2432,16 @@ class LinePlot:
                             plotly_color(edgecolor) if edgecolor is not None else None
                         ),
                         width=linewidth if linewidth is not None else 1,
+                    )
+                if (
+                    isinstance(kwargs.get("facecolors"), str)
+                    and kwargs["facecolors"] == "none"
+                ):
+                    symbol = marker_dict["symbol"]
+                    if isinstance(symbol, str) and not symbol.endswith("-open"):
+                        marker_dict["symbol"] = symbol + "-open"
+                    marker_dict["color"] = (
+                        plotly_color(edgecolor) if edgecolor is not None else "black"
                     )
                 trace = go.Scatter(
                     x=tx(line["x"]),
@@ -3357,15 +3461,63 @@ class LinePlot:
                     annotations.append(ann)
             elif plot_type == "imshow":
                 kwargs = line["kwargs"]
-                heatmap = go.Heatmap(
-                    z=line["data"],
-                    colorscale=_colormap_to_plotly_colorscale(
-                        kwargs.get("cmap", "Viridis")
+                data = np.ma.asarray(line["data"])
+                rows, cols = data.shape[:2]
+                origin = kwargs.get("origin", "upper")
+                extent = kwargs.get(
+                    "extent",
+                    (
+                        -0.5,
+                        cols - 0.5,
+                        rows - 0.5 if origin == "upper" else -0.5,
+                        -0.5 if origin == "upper" else rows - 0.5,
                     ),
-                    showscale=True,
                 )
-                traces.append(heatmap)
-                last_heatmap_idx = len(traces) - 1
+                left, right, bottom, top = extent
+                dx = (right - left) / cols
+                dy = ((bottom - top) if origin == "upper" else (top - bottom)) / rows
+                x0 = left + dx / 2
+                y0 = (top if origin == "upper" else bottom) + dy / 2
+                if data.ndim == 3 or kwargs.get("norm") is not None:
+                    from matplotlib.cm import ScalarMappable
+
+                    mapper = ScalarMappable(
+                        norm=kwargs.get("norm"), cmap=kwargs.get("cmap", "viridis")
+                    )
+                    rgba = mapper.to_rgba(data)
+                    if kwargs.get("alpha") is not None:
+                        rgba[..., 3] *= np.asarray(kwargs["alpha"])
+                    pixels = np.asarray(rgba, dtype=float).copy()
+                    pixels[..., :3] *= 255
+                    trace = go.Image(
+                        z=pixels,
+                        colormodel="rgba",
+                        x0=x0,
+                        y0=y0,
+                        dx=dx,
+                        dy=dy,
+                        visible=kwargs.get("visible", True),
+                    )
+                else:
+                    trace = go.Heatmap(
+                        z=data.astype(float).filled(np.nan),
+                        x0=x0,
+                        y0=y0,
+                        dx=dx,
+                        dy=dy,
+                        colorscale=_colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        ),
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
+                        showscale=kwargs.get("colorbar", False),
+                        opacity=kwargs.get("alpha"),
+                        visible=kwargs.get("visible", True),
+                    )
+                traces.append(trace)
+                last_heatmap_idx = (
+                    len(traces) - 1 if isinstance(trace, go.Heatmap) else None
+                )
             elif plot_type == "colorbar":
                 if last_heatmap_idx is not None:
                     label = line.get("label", "") or line["kwargs"].get("label", "")
