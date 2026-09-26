@@ -372,6 +372,9 @@ class Canvas:
         self._subplots_adjust_kwargs: dict = {}
         self._tight_layout_kwargs: dict | None = None
         self._hide_empty_subplots = False
+        # Set by Canvas.facet: merge Plotly legend entries across subplots and
+        # leave room for the figure title above the subplot titles.
+        self._facet = False
         self._set_tight_layout = None
         self._align_labels = False
         self._align_titles = False
@@ -521,16 +524,18 @@ class Canvas:
         kind (str): ``"plot"``, ``"scatter"``, ``"pcolormesh"``, ``"imshow"``,
             ``"contour"`` or ``"contourf"``.
         sharey (bool): For ``"plot"``/``"scatter"``, give every subplot the
-            y-range of the whole array. With ``False`` each subplot scales
-            its own y-axis and keeps its y tick labels.
+            value range of the whole array (on the x-axis with ``ycoord=``).
+            With ``False`` each subplot scales its own axis and keeps its y
+            tick labels.
         canvas_kwargs (dict): Forwarded to the Canvas constructor.
         **kwargs: Forwarded to each subplot's ``kind`` method.
 
         Color-mapped kinds share one color scale (``vmin``/``vmax`` default to
         the data range, and contour levels are shared) and one colorbar for
         the whole figure, which ``add_colorbar=False`` turns off. Axis and
-        tick labels are kept on the outer subplots only, and each subplot is
-        titled with its coordinate values.
+        tick labels are kept on the outer subplots only. Each subplot is
+        titled with the coordinate values that differ between subplots, and
+        the figure with the ones they share.
 
         Returns:
         (canvas, axes): The Canvas and a 2-D list of LinePlots, with ``None``
@@ -575,6 +580,8 @@ class Canvas:
         add_colorbar = kwargs.pop("add_colorbar", kind != "contour")
         values = xarray_support.magnitude(da)
         if mapped:
+            # Shared limits for every panel, with xarray's color defaults.
+            xarray_support.color_limits(values, kwargs)
             kwargs.setdefault("vmin", float(np.nanmin(values)))
             kwargs.setdefault("vmax", float(np.nanmax(values)))
             if kind in ("contour", "contourf") and "levels" not in kwargs:
@@ -595,13 +602,26 @@ class Canvas:
             )
         canvas = cls(nrows=nrows, ncols=ncols, **canvas_kwargs)
         canvas._hide_empty_subplots = True
+        canvas._facet = True
+        # Coordinates shared by every panel go in the figure title, so the
+        # panel titles only show what differs between them.
+        common = [name for name, coord in da.coords.items() if coord.ndim == 0]
+        common_title = xarray_support.title(da)
+        if common_title:
+            canvas.suptitle(common_title)
         axes = [[None] * ncols for _ in range(nrows)]
         method = cls._FACET_KINDS[kind]
         for r, c, selection in panels:
             subplot = canvas.add_subplot(row=r, col=c)
-            getattr(subplot, method)(da.isel(selection), **kwargs)
+            panel = da.isel(selection)
+            subplot.set_title(
+                xarray_support.title(panel, exclude=common)
+                or ", ".join(f"{dim} = {index}" for dim, index in selection.items())
+            )
+            getattr(subplot, method)(panel, **kwargs)
             axes[r][c] = subplot
 
+        vertical = "ycoord" in kwargs
         if not mapped and sharey:
             low, high = float(np.nanmin(values)), float(np.nanmax(values))
             margin = 0.05 * (high - low)
@@ -616,7 +636,9 @@ class Canvas:
                 tick_params["labelleft"] = False
             if tick_params:
                 subplot.tick_params(**tick_params)
-            if not mapped and sharey:
+            if not mapped and sharey and vertical:
+                subplot.set_xlim(low - margin, high + margin)
+            elif not mapped and sharey:
                 subplot.set_ylim(low - margin, high + margin)
             if (r, c) != panels[0][:2]:
                 subplot._legend = False
@@ -2568,6 +2590,10 @@ class Canvas:
             fig.supxlabel(self._supxlabel, **self._supxlabel_kwargs)
         if self._supylabel:
             fig.supylabel(self._supylabel, **self._supylabel_kwargs)
+        if self._facet and self._suptitle and "top" not in self._subplots_adjust_kwargs:
+            # About four font heights: the figure title plus subplot titles.
+            room = 4 * self.fontsize / 72
+            fig.subplots_adjust(top=max(0.5, 1 - room / fig.get_figheight()))
         if self._subplots_adjust_kwargs:
             fig.subplots_adjust(**self._subplots_adjust_kwargs)
         if self._tight_layout_kwargs is not None:
@@ -2755,8 +2781,8 @@ class Canvas:
                     )
                 if plot_type == "plot":
                     # Extract and transform x, y data
-                    x = (line_data["x"] + line_plot._xshift) * line_plot._xscale
-                    y = (line_data["y"] + line_plot._yshift) * line_plot._yscale
+                    x = line_plot._shift_x(line_data["x"])
+                    y = line_plot._shift_y(line_data["y"])
                     kwargs = line_data.get("kwargs", {})
                     if verbose:
                         print(f"Line {kwargs = }")
@@ -2767,8 +2793,8 @@ class Canvas:
                         **_tikz_style_kwargs(kwargs),
                     )
                 elif plot_type == "scatter":
-                    x = (line_data["x"] + line_plot._xshift) * line_plot._xscale
-                    y = (line_data["y"] + line_plot._yshift) * line_plot._yscale
+                    x = line_plot._shift_x(line_data["x"])
+                    y = line_plot._shift_y(line_data["y"])
                     kwargs = _tikz_style_kwargs(line_data.get("kwargs", {}))
                     kwargs.setdefault("mark", "*")
                     kwargs["line_width"] = 0
@@ -3109,10 +3135,22 @@ class Canvas:
                         fig.update_yaxes(visible=False, row=row + 1, col=col + 1)
 
         # Plot each subplot and propagate axis labels/scale
+        legend_names = set()
         for (row, col), line_plot in self._subplot_dict.items():
             traces, shapes, annotations = line_plot.plot_plotly(
                 layers=layers, allow_unsupported=allow_unsupported
             )
+            if self._facet:
+                # One legend entry per label across all subplots; clicking it
+                # toggles the matching trace in every subplot.
+                for trace in traces:
+                    name = getattr(trace, "name", None)
+                    if not name or trace.type in ("pie", "table"):
+                        continue
+                    trace.legendgroup = name
+                    if name in legend_names:
+                        trace.showlegend = False
+                    legend_names.add(name)
             for trace in traces:
                 if trace.type in ("pie", "table"):
                     fig.add_trace(trace)

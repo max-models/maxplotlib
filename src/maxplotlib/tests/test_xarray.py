@@ -54,9 +54,9 @@ def test_labels_from_attrs():
 
 def test_dimension_without_coordinate_uses_index():
     da = xr.DataArray([3.0, 4.0, 5.0], dims="i")
-    x, y, xlabel, ylabel = xarray_support.line_data(da)
-    np.testing.assert_array_equal(x, [0, 1, 2])
-    assert xlabel == "i"
+    data = xarray_support.line_data(da)
+    np.testing.assert_array_equal(data.lines[0][0], [0, 1, 2])
+    assert data.coord_label == "i"
 
 
 def test_canvas_plot_dataarray_matplotlib():
@@ -133,7 +133,7 @@ def test_pcolormesh_dataarray_matplotlib():
 def test_pcolormesh_dataarray_transpose_and_no_colorbar():
     da = _mesh()
     canvas = Canvas()
-    canvas.pcolormesh(da, xdim="y", add_colorbar=False)
+    canvas.pcolormesh(da, xcoord="y", add_colorbar=False)
     fig, axes = canvas.get_matplotlib_figaxs()
     ax = np.ravel(axes)[0]
     assert ax.get_xlabel() == "y"
@@ -159,10 +159,10 @@ def test_pcolormesh_dataarray_errors():
     canvas = Canvas()
     with pytest.raises(ValueError, match="2-D DataArray"):
         canvas.pcolormesh(_line())
-    with pytest.raises(ValueError, match="not a dimension"):
-        canvas.pcolormesh(_mesh(), xdim="t")
-    with pytest.raises(ValueError, match="different"):
-        canvas.pcolormesh(_mesh(), xdim="x", ydim="x")
+    with pytest.raises(ValueError, match="not a dimension or coordinate"):
+        canvas.pcolormesh(_mesh(), xcoord="t")
+    with pytest.raises(ValueError, match="different dimensions"):
+        canvas.pcolormesh(_mesh(), xcoord="x", ycoord="x")
     with pytest.raises(TypeError, match="no y or z"):
         canvas.pcolormesh(_mesh(), np.arange(3))
     with pytest.raises(TypeError, match="requires x, y and z"):
@@ -341,9 +341,10 @@ def test_plot_hue_draws_one_labelled_line_per_value():
 
 def test_hue_on_first_dimension_and_without_coordinate():
     da = _species().T.drop_vars("species")
-    x, lines, _, _ = xarray_support.line_data(da, hue="species")
-    assert [label for _, label in lines] == ["species = 0", "species = 1"]
-    np.testing.assert_allclose(lines[1][0], 2 * x)
+    data = xarray_support.line_data(da, hue="species")
+    assert [label for _, _, label in data.lines] == ["species = 0", "species = 1"]
+    positions, values, _ = data.lines[1]
+    np.testing.assert_allclose(values, 2 * positions)
 
 
 def test_hue_errors_and_add_legend():
@@ -408,7 +409,9 @@ def test_facet_row_and_col_lines():
     da = _cube()
     canvas, axes = Canvas.facet(da.isel(y=0), row="t", kind="plot")
     assert len(axes) == 3 and len(axes[0]) == 1
-    assert axes[2][0]._title == "t = 1 s, y = 0"
+    # y = 0 is shared by every panel, so it goes in the figure title.
+    assert axes[2][0]._title == "t = 1 s"
+    assert canvas._suptitle == "y = 0"
     canvas, axes = Canvas.facet(da, row="t", col="y", kind="plot", color="k")
     assert len(axes) == 3 and len(axes[0]) == 3
     fig, _ = canvas.get_matplotlib_figaxs()
@@ -554,3 +557,340 @@ def test_maxplotlib_does_not_import_xarray():
 
     code = "import sys, maxplotlib; assert 'xarray' not in sys.modules"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+# ---------------------------------------------------------------------------
+# Non-numeric coordinates
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("kind", ["line", "scatter"])
+def test_datetime_and_string_coordinates(kind):
+    import maxplotlib.xarray  # noqa: F401
+
+    dates = np.arange("2026-01-01", "2026-01-06", dtype="datetime64[D]")
+    for da in (
+        xr.DataArray(np.arange(5.0), dims="time", coords={"time": dates}),
+        xr.DataArray([1.0, 2, 3], dims="species", coords={"species": ["a", "b", "c"]}),
+    ):
+        canvas = getattr(da.maxplot, kind)()
+        fig, _ = canvas.get_matplotlib_figaxs()
+        plt.close(fig)
+        np.testing.assert_array_equal(
+            canvas.render(backend="plotly").data[0].x, da[da.dims[0]].values
+        )
+
+
+def test_shift_and_scale_still_apply_to_numbers():
+    canvas, ax = Canvas.subplots()
+    ax._xshift, ax._xscale = 1.0, 2.0
+    ax.plot([0.0, 1.0], [0.0, 1.0])
+    fig, axes = canvas.get_matplotlib_figaxs()
+    np.testing.assert_allclose(axes[0][0].get_lines()[0].get_xdata(), [2.0, 4.0])
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Choosing coordinates: xcoord=/ycoord= (x=/y= in the accessor)
+# ---------------------------------------------------------------------------
+
+
+def _profile():
+    z = np.linspace(0, 10, 6)
+    return xr.DataArray(
+        np.linspace(300, 250, 6),
+        dims="i",
+        coords={
+            "z": ("i", z, {"long_name": "Height", "units": "km"}),
+            "p": ("i", 1000 - 50 * z, {"units": "hPa"}),
+        },
+        name="T",
+        attrs={"units": "K"},
+    )
+
+
+def test_line_against_non_dimension_coordinate():
+    da = _profile()
+    canvas = Canvas()
+    canvas.plot(da, xcoord="p")
+    fig, axes = canvas.get_matplotlib_figaxs()
+    ax = np.ravel(axes)[0]
+    np.testing.assert_allclose(ax.get_lines()[0].get_xdata(), da.p.values)
+    assert ax.get_xlabel() == "p [hPa]"
+    plt.close(fig)
+
+
+def test_vertical_profile_with_ycoord():
+    da = _profile()
+    canvas = Canvas()
+    canvas.plot(da, ycoord="z")
+    fig, axes = canvas.get_matplotlib_figaxs()
+    ax = np.ravel(axes)[0]
+    line = ax.get_lines()[0]
+    np.testing.assert_allclose(line.get_xdata(), da.values)
+    np.testing.assert_allclose(line.get_ydata(), da.z.values)
+    assert (ax.get_xlabel(), ax.get_ylabel()) == ("T [K]", "Height [km]")
+    plt.close(fig)
+
+
+def test_line_coordinate_errors():
+    canvas = Canvas()
+    with pytest.raises(ValueError, match="not both"):
+        canvas.plot(_profile(), xcoord="z", ycoord="p")
+    with pytest.raises(ValueError, match="not a dimension or coordinate"):
+        canvas.plot(_profile(), xcoord="q")
+    with pytest.raises(ValueError, match="other than hue"):
+        canvas.plot(_species(), hue="species", xcoord="species")
+
+
+def _curvilinear():
+    r = np.linspace(1, 2, 4)[:, None]
+    theta = np.linspace(0, np.pi / 2, 5)[None, :]
+    return xr.DataArray(
+        np.arange(20.0).reshape(4, 5),
+        dims=("e1", "e2"),
+        coords={
+            "R": (("e1", "e2"), r * np.cos(theta), {"units": "m"}),
+            "Z": (("e1", "e2"), r * np.sin(theta), {"units": "m"}),
+        },
+        name="n",
+    )
+
+
+def test_pcolormesh_on_2d_coordinates():
+    da = _curvilinear()
+    canvas = Canvas()
+    canvas.pcolormesh(da, xcoord="R", ycoord="Z")
+    fig, axes = canvas.get_matplotlib_figaxs()
+    ax = np.ravel(axes)[0]
+    mesh = ax.collections[0]
+    # Matplotlib turns the cell centres into a (5, 6) grid of cell corners.
+    assert mesh.get_coordinates().shape == (5, 6, 2)
+    np.testing.assert_allclose(mesh.get_array().reshape(4, 5), da.values)
+    # The edges extend half a cell beyond the R values (0 to 2 m).
+    low, high = ax.dataLim.intervalx
+    assert low < da.R.min() and high > da.R.max()
+    assert (ax.get_xlabel(), ax.get_ylabel()) == ("R [m]", "Z [m]")
+    plt.close(fig)
+    # Transposed coordinates are broadcast to the data's dimension order.
+    t = da.assign_coords(R=da.R.T)
+    mesh_data = xarray_support.mesh_data(t, x="R", y="Z")
+    np.testing.assert_allclose(mesh_data.x, da.R.values)
+
+
+def test_2d_coordinate_errors_and_plotly():
+    da = _curvilinear()
+    with pytest.raises(ValueError, match="give both"):
+        Canvas().pcolormesh(da, xcoord="R")
+    with pytest.raises(ValueError, match="imshow.*pcolormesh"):
+        Canvas().imshow(da, xcoord="R", ycoord="Z")
+    canvas = Canvas()
+    canvas.contourf(da, xcoord="R", ycoord="Z")
+    with pytest.raises(NotImplementedError, match="curvilinear"):
+        canvas.render(backend="plotly")
+    canvas.render(backend="plotly", allow_unsupported=True)
+
+
+def test_mesh_with_one_axis_coordinate():
+    da = _mesh().assign_coords(xc=("x", np.arange(4) * 10.0))
+    data = xarray_support.mesh_data(da, x="xc")
+    assert (data.xname, data.yname) == ("xc", "y")
+    np.testing.assert_allclose(data.x, [0, 10, 20, 30])
+
+
+def test_accessor_x_and_y():
+    import maxplotlib.xarray  # noqa: F401
+
+    fig, axes = _profile().maxplot.line(y="z").get_matplotlib_figaxs()
+    assert np.ravel(axes)[0].get_ylabel() == "Height [km]"
+    plt.close(fig)
+    fig, axes = _curvilinear().maxplot.pcolormesh(x="R", y="Z").get_matplotlib_figaxs()
+    assert np.ravel(axes)[0].get_xlabel() == "R [m]"
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Color defaults: centering and robust limits
+# ---------------------------------------------------------------------------
+
+
+def test_color_limits():
+    signed = np.array([-1.0, 0.5, 3.0])
+    assert xarray_support.color_limits(signed, {}) == {
+        "cmap": "RdBu_r",
+        "vmin": -3.0,
+        "vmax": 3.0,
+    }
+    assert xarray_support.color_limits(signed, {"cmap": "magma"})["cmap"] == "magma"
+    assert "cmap" not in xarray_support.color_limits(signed, {"colors": "k"})
+    assert xarray_support.color_limits(signed, {"center": False}) == {}
+    assert xarray_support.color_limits(np.arange(3.0), {}) == {}
+    assert xarray_support.color_limits(np.arange(3.0), {"center": 1.5}) == {
+        "cmap": "RdBu_r",
+        "vmin": 0.0,
+        "vmax": 3.0,
+    }
+    both = {"vmin": -1, "vmax": 5}
+    assert xarray_support.color_limits(signed, dict(both)) == both
+    robust = xarray_support.color_limits(np.r_[np.arange(100.0), 1e6], {"robust": True})
+    assert robust["vmax"] < 1e3
+    assert "norm" in xarray_support.color_limits(signed, {"norm": "x"})
+
+
+def test_signed_data_gets_diverging_colormap_in_both_backends():
+    da = _mesh() - 5.5
+    canvas = Canvas()
+    canvas.pcolormesh(da)
+    fig, axes = canvas.get_matplotlib_figaxs()
+    mesh = np.ravel(axes)[0].collections[0]
+    assert mesh.get_cmap().name == "RdBu_r"
+    assert (mesh.norm.vmin, mesh.norm.vmax) == (-5.5, 5.5)
+    plt.close(fig)
+    heatmap = canvas.render(backend="plotly").data[0]
+    assert (heatmap.zmin, heatmap.zmax) == (-5.5, 5.5)
+    # Matplotlib's RdBu_r runs blue -> red; Plotly's own "RdBu_r" is reversed,
+    # so the colorscale must be sampled from Matplotlib.
+    low, high = heatmap.colorscale[0][1], heatmap.colorscale[-1][1]
+    assert low.startswith("#05") and high.startswith("#67")
+
+
+# ---------------------------------------------------------------------------
+# Colorbar layout
+# ---------------------------------------------------------------------------
+
+
+def test_colorbar_label_stays_inside_figure():
+    canvas = Canvas()
+    canvas.pcolormesh(_mesh())
+    fig, _ = canvas.get_matplotlib_figaxs()
+    fig.canvas.draw()
+    colorbar_axes = fig.axes[-1]
+    label = colorbar_axes.yaxis.label.get_window_extent()
+    assert label.x1 <= fig.bbox.x1
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Facet titles, legends and colors
+# ---------------------------------------------------------------------------
+
+
+def test_hue_lines_get_consistent_colors():
+    canvas, axes = Canvas.facet(
+        xr.concat([_species(), 2 * _species()], dim="run"),
+        col="run",
+        kind="plot",
+        hue="species",
+    )
+    fig = canvas.render(backend="plotly")
+    colors = [trace.line.color for trace in fig.data]
+    assert colors[:2] == colors[2:]
+    # One legend entry per species, grouped across panels.
+    assert [trace.showlegend for trace in fig.data] == [True, True, False, False]
+    assert {trace.legendgroup for trace in fig.data} == {
+        "species = ions",
+        "species = electrons",
+    }
+
+
+def test_facet_without_coordinate_titles_by_index():
+    da = _cube().drop_vars("t")
+    canvas, axes = Canvas.facet(da, col="t")
+    assert [ax._title for ax in axes[0]] == ["t = 0", "t = 1", "t = 2"]
+
+
+def test_facet_vertical_profiles_share_value_axis():
+    da = xr.concat([_profile(), _profile() + 10], dim="run")
+    canvas, axes = Canvas.facet(da, col="run", kind="plot", ycoord="z")
+    assert axes[0][0]._xmin == axes[0][1]._xmin
+    assert axes[0][0]._ymin is None
+
+
+def test_facet_robust_and_center():
+    da = _cube() - 10
+    canvas, axes = Canvas.facet(da, col="t", center=False)
+    heatmaps = canvas.render(backend="plotly").data
+    assert {trace.zmin for trace in heatmaps} == {-10.0}
+    canvas, axes = Canvas.facet(da, col="t")
+    assert {trace.zmin for trace in canvas.render(backend="plotly").data} == {-25.0}
+
+
+# ---------------------------------------------------------------------------
+# Dataset accessor
+# ---------------------------------------------------------------------------
+
+
+def _dataset():
+    t = np.linspace(0, 1, 5)
+    return xr.Dataset(
+        {
+            "n": (("species", "t"), np.stack([t + 1, 2 * t + 1]), {"units": "m^-3"}),
+            "T": (("species", "t"), np.stack([10 * t, 20 * t]), {"units": "eV"}),
+            "q": (("species", "t"), np.stack([-t, t]), {"long_name": "Charge"}),
+        },
+        coords={"species": ["ions", "electrons"], "t": t},
+    )
+
+
+def test_dataset_line_and_scatter_with_dimension_hue():
+    import maxplotlib.xarray  # noqa: F401
+
+    ds = _dataset()
+    fig = ds.maxplot.line(x="n", y="T", hue="species").render(backend="plotly")
+    assert [trace.name for trace in fig.data] == [
+        "species = ions",
+        "species = electrons",
+    ]
+    np.testing.assert_allclose(fig.data[1].x, ds.n.sel(species="electrons"))
+    assert fig.layout.xaxis.title.text == "n [m^-3]"
+    canvas = ds.isel(species=0).maxplot.scatter(x="n", y="T")
+    fig, axes = canvas.get_matplotlib_figaxs()
+    assert np.ravel(axes)[0].get_title() == "species = ions"
+    plt.close(fig)
+
+
+def test_dataset_scatter_colored_by_variable():
+    import maxplotlib.xarray  # noqa: F401
+
+    ds = _dataset()
+    canvas = ds.maxplot.scatter(x="n", y="T", hue="q")
+    fig, axes = canvas.get_matplotlib_figaxs()
+    points = np.ravel(axes)[0].collections[0]
+    assert len(points.get_offsets()) == 10
+    assert points.get_cmap().name == "RdBu_r"  # q has both signs
+    assert fig.axes[-1].get_ylabel() == "Charge"
+    plt.close(fig)
+    marker = canvas.render(backend="plotly").data[0].marker
+    assert marker.showscale is True
+    assert marker.colorbar.title.text == "Charge"
+
+
+def test_dataset_errors():
+    import maxplotlib.xarray  # noqa: F401
+
+    ds = _dataset()
+    with pytest.raises(ValueError, match="not a variable"):
+        ds.maxplot.scatter(x="nope", y="T")
+    with pytest.raises(ValueError, match="facets are not supported"):
+        ds.maxplot.scatter(x="n", y="T", hue="q", col="species")
+    with pytest.raises(ValueError, match="not all dims"):
+        ds.assign(u=("u", [1.0, 2.0])).maxplot.line(x="u", y="T", hue="species")
+
+
+def test_subplot_imshow_alias():
+    canvas, ax = Canvas.subplots()
+    ax.imshow(_mesh())
+    fig, axes = canvas.get_matplotlib_figaxs()
+    assert len(np.ravel(axes)[0].get_images()) == 1
+    plt.close(fig)
+
+
+def test_facet_figure_title_does_not_overlap_panel_titles():
+    canvas, _ = Canvas.facet(_cube().isel(y=0), col="t", kind="plot")
+    fig, axes = canvas.get_matplotlib_figaxs()
+    fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
+    suptitle = fig._suptitle.get_window_extent(renderer)
+    for ax in np.ravel(axes):
+        assert ax.title.get_window_extent(renderer).y1 <= suptitle.y0
+    plt.close(fig)

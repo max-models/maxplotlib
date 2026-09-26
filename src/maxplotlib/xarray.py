@@ -1,6 +1,6 @@
-"""The ``DataArray.maxplot`` accessor.
+"""The ``DataArray.maxplot`` and ``Dataset.maxplot`` accessors.
 
-Importing this module registers it::
+Importing this module registers them::
 
     import maxplotlib.xarray  # noqa: F401
 
@@ -8,7 +8,8 @@ Importing this module registers it::
     canvas.show(backend="plotly")
 
 Every method returns a new :class:`~maxplotlib.Canvas`; choose the backend
-when rendering it. ``col=``, ``row=``, ``col_wrap=`` and ``sharey=`` lay the
+when rendering it. ``x=``/``y=`` name the dimension or coordinate for each
+axis, as in xarray. ``col=``, ``row=``, ``col_wrap=`` and ``sharey=`` lay the
 data out over several subplots with :meth:`Canvas.facet`, and
 ``canvas_kwargs=`` is forwarded to the Canvas constructor. Everything else is
 forwarded to the Canvas method of the same name (``line`` uses ``plot``).
@@ -23,8 +24,9 @@ except ImportError as error:  # pragma: no cover - depends on the environment
     ) from error
 
 from maxplotlib.canvas.canvas import Canvas
+from maxplotlib.utils import xarray_support
 
-__all__ = ["MaxplotAccessor"]
+__all__ = ["MaxplotAccessor", "MaxplotDatasetAccessor"]
 
 _FACET_KWARGS = ("col", "row", "col_wrap", "sharey")
 
@@ -80,6 +82,11 @@ class MaxplotAccessor:
 
     def _draw(self, kind, kwargs):
         canvas_kwargs = kwargs.pop("canvas_kwargs", None)
+        # xarray's x=/y= are xcoord=/ycoord= on Canvas methods, where x and y
+        # are the positional data arguments.
+        for axis in ("x", "y"):
+            if axis in kwargs:
+                kwargs[f"{axis}coord"] = kwargs.pop(axis)
         if any(name in kwargs for name in _FACET_KWARGS):
             canvas, _ = Canvas.facet(
                 self._da, kind=kind, canvas_kwargs=canvas_kwargs, **kwargs
@@ -87,4 +94,77 @@ class MaxplotAccessor:
             return canvas
         canvas = Canvas(**(canvas_kwargs or {}))
         getattr(canvas, kind)(self._da, **kwargs)
+        return canvas
+
+
+@xr.register_dataset_accessor("maxplot")
+class MaxplotDatasetAccessor:
+    """Plot one Dataset variable against another: ``ds.maxplot.scatter(x=, y=)``."""
+
+    def __init__(self, ds):
+        self._ds = ds
+
+    def line(self, x, y, hue=None, **kwargs):
+        """Lines of variable ``y`` against variable or coordinate ``x``.
+
+        ``hue`` names a dimension to draw one line per value of. Other
+        arguments are as for ``DataArray.maxplot.line``, including facets.
+        """
+        return self._as_dataarray(x, y).maxplot.line(x=x, hue=hue, **kwargs)
+
+    def scatter(self, x, y, hue=None, **kwargs):
+        """Points of variable ``y`` against variable or coordinate ``x``.
+
+        ``hue`` names a dimension, for one series per value, or a variable,
+        which colors the points by value with a labelled colorbar (turned off
+        by ``add_colorbar=False``; ``cmap``, ``robust`` and ``center`` apply).
+        """
+        if hue is None or hue in self._ds.dims:
+            return self._as_dataarray(x, y).maxplot.scatter(x=x, hue=hue, **kwargs)
+        if any(name in kwargs for name in _FACET_KWARGS):
+            raise ValueError("facets are not supported with a variable as hue=")
+        return self._scatter_colored(x, y, hue, kwargs)
+
+    def _variable(self, name):
+        if name not in self._ds.variables:
+            raise ValueError(
+                f"{name!r} is not a variable or coordinate of the Dataset; "
+                f"variables are {tuple(self._ds.data_vars)}"
+            )
+        return self._ds[name]
+
+    def _as_dataarray(self, x, y):
+        """``y`` with ``x`` attached as a coordinate, to plot against it."""
+        xvar, yvar = self._variable(x), self._variable(y)
+        if x in yvar.coords:
+            return yvar
+        if not set(xvar.dims) <= set(yvar.dims):
+            raise ValueError(
+                f"{x!r} has dims {xvar.dims}, which are not all dims of "
+                f"{y!r} {yvar.dims}"
+            )
+        return yvar.assign_coords({x: xvar})
+
+    def _scatter_colored(self, x, y, hue, kwargs):
+        canvas_kwargs = kwargs.pop("canvas_kwargs", None)
+        add_colorbar = kwargs.pop("add_colorbar", True)
+        xvar, yvar, cvar = xr.broadcast(
+            self._variable(x), self._variable(y), self._variable(hue)
+        )
+        colors = xarray_support.magnitude(cvar).ravel()
+        xarray_support.color_limits(colors, kwargs)
+        canvas = Canvas(**(canvas_kwargs or {}))
+        canvas.scatter(
+            xarray_support.magnitude(xvar).ravel(),
+            xarray_support.magnitude(yvar).ravel(),
+            c=colors,
+            **kwargs,
+        )
+        canvas.set_xlabel(xarray_support.value_label(xvar))
+        canvas.set_ylabel(xarray_support.value_label(yvar))
+        title = xarray_support.title(yvar)
+        if title:
+            canvas.set_title(title)
+        if add_colorbar:
+            canvas.colorbar(label=xarray_support.value_label(cvar))
         return canvas

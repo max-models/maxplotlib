@@ -31,3 +31,4 @@ documentation for details.
    tutorials/tutorial_14_axis_and_layout_controls
    tutorials/tutorial_15_tikzfigure_subplots
    tutorials/tutorial_16_plotext_advanced
+   tutorials/tutorial_17_xarray
