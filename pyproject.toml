@@ -25,6 +25,10 @@ dependencies = [
 test = [
     "pytest",
     "coverage",
+    "xarray",
+]
+xarray = [
+    "xarray",
 ]
 docs = [
     "myst-parser",

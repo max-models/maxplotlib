@@ -25,6 +25,7 @@ from maxplotlib.subfigure.line_plot import (
     _tikz_step_coordinates,
     _tikz_style_kwargs,
 )
+from maxplotlib.utils import xarray_support
 from maxplotlib.utils.options import Backends
 
 
@@ -856,14 +857,18 @@ class Canvas:
     def pcolormesh(
         self,
         x,
-        y,
-        z,
+        y=None,
+        z=None,
         layer=0,
         row: int | None = None,
         col: int | None = None,
         **kwargs,
     ):
-        """Add a pseudocolor mesh to a subplot."""
+        """Add a pseudocolor mesh to a subplot.
+
+        ``pcolormesh(da)`` accepts a 2-D ``xarray.DataArray``; see
+        :meth:`LinePlot.pcolormesh`.
+        """
         self._get_or_create_subplot(row, col).pcolormesh(x, y, z, layer=layer, **kwargs)
 
     def hexbin(
@@ -2082,10 +2087,18 @@ class Canvas:
         """Add a line, or render when called with backend options.
 
         ``canvas.plot(x, y, **style)`` is the convenient direct plotting form.
+        ``canvas.plot(da)`` plots a 1-D ``xarray.DataArray`` against its
+        coordinate, labelling the axes from its attributes.
         Rendering is named explicitly by ``canvas.render(...)``; the legacy
         ``canvas.plot(backend=...)`` form remains supported.
         """
         explicit_render = backend is not None or (args and isinstance(args[0], str))
+        if len(args) == 1 and xarray_support.is_dataarray(args[0]):
+            layer = kwargs.pop("layer", 0)
+            row = kwargs.pop("row", None)
+            col = kwargs.pop("col", None)
+            self._get_or_create_subplot(row, col).plot(args[0], layer=layer, **kwargs)
+            return self
         if args and not isinstance(args[0], str):
             if len(args) < 2:
                 raise TypeError("plot(x, y) requires both x and y data")

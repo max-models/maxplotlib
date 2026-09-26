@@ -6,6 +6,8 @@ import plotly.graph_objects as go
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tikzfigure import TikzFigure
 
+from maxplotlib.utils import xarray_support
+
 # Keyword arguments that every drawing method accepts and that are handled by
 # maxplotlib itself rather than being forwarded to a backend drawing call.
 _NEUTRAL_KWARGS = ("hover", "meta")
@@ -388,9 +390,25 @@ class LinePlot:
         }
         self._add(ld, layer)
 
-    def plot(self, x, y, layer=0, **kwargs):
-        """Matplotlib-style alias for :meth:`add_line`."""
+    def plot(self, x, y=None, layer=0, **kwargs):
+        """Matplotlib-style alias for :meth:`add_line`.
+
+        ``plot(da)`` with a 1-D ``xarray.DataArray`` plots it against its
+        coordinate and labels axes that have no label yet.
+        """
+        if y is None:
+            if not xarray_support.is_dataarray(x):
+                raise TypeError("plot(x, y) requires both x and y data")
+            x, y, xlabel, ylabel = xarray_support.line_data(x)
+            self._set_default_labels(xlabel, ylabel)
         self.add_line(x, y, layer=layer, **kwargs)
+
+    def _set_default_labels(self, xlabel, ylabel):
+        """Set axis labels that the user has not set."""
+        if not self._xlabel and xlabel:
+            self._xlabel = xlabel
+        if not self._ylabel and ylabel:
+            self._ylabel = ylabel
 
     def scatter(self, x, y, layer=0, **kwargs):
         """
@@ -608,8 +626,28 @@ class LinePlot:
             layer,
         )
 
-    def pcolormesh(self, x, y, z, layer=0, **kwargs):
-        """Add a pseudocolor mesh."""
+    def pcolormesh(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add a pseudocolor mesh.
+
+        ``pcolormesh(da)`` with a 2-D ``xarray.DataArray`` uses its coordinates
+        and labels axes that have no label yet. ``xdim=``/``ydim=`` pick which
+        dimension goes on each axis, and a labelled colorbar is added unless
+        ``add_colorbar=False``.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("pcolormesh(da) takes no y or z data")
+            add_colorbar = kwargs.pop("add_colorbar", True)
+            x, y, z, xlabel, ylabel, zlabel = xarray_support.mesh_data(
+                x, x=kwargs.pop("xdim", None), y=kwargs.pop("ydim", None)
+            )
+            self._set_default_labels(xlabel, ylabel)
+            self.pcolormesh(x, y, z, layer=layer, **kwargs)
+            if add_colorbar:
+                self.add_colorbar(label=zlabel, layer=layer)
+            return
+        if y is None or z is None:
+            raise TypeError("pcolormesh(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -1520,7 +1558,9 @@ class LinePlot:
                         ax.contourf(line["x"], line["y"], line["z"], **line["kwargs"])
                     )
                 elif line["plot_type"] == "pcolormesh":
-                    ax.pcolormesh(line["x"], line["y"], line["z"], **line["kwargs"])
+                    im = ax.pcolormesh(
+                        line["x"], line["y"], line["z"], **line["kwargs"]
+                    )
                 elif line["plot_type"] == "hexbin":
                     ax.hexbin(line["x"], line["y"], **line["kwargs"])
                 elif line["plot_type"] == "matshow":
@@ -1725,7 +1765,7 @@ class LinePlot:
                 elif line["plot_type"] == "colorbar":
                     divider = make_axes_locatable(ax)
                     cax = divider.append_axes("right", size="5%", pad=0.05)
-                    plt.colorbar(im, cax=cax, label="Potential (V)")
+                    plt.colorbar(im, cax=cax, label=line["label"])
 
                 if "source_artist_id" in line:
                     created = [
@@ -2739,6 +2779,7 @@ class LinePlot:
                         showscale=kwargs.get("colorbar", True),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type in ("pcolor", "pcolorfast"):
                 # Plotly's heatmap is the closest equivalent to Matplotlib's
                 # pseudocolor artists.  The cell-centered rendering differs
