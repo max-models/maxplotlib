@@ -349,3 +349,49 @@ canvas.show()
 
     (<Figure size 590.551x324.803 with 1 Axes>,
      array([[<Axes: xlabel='x'>]], dtype=object))
+
+### xarray data
+
+Plot labelled [xarray](https://docs.xarray.dev) data directly
+(`pip install maxplotlibx[xarray]`). Axes come from the coordinates,
+labels from the `long_name` and `units` attributes, and titles from the
+coordinates you selected. `import maxplotlib.xarray` adds a `.maxplot`
+accessor that mirrors xarray’s own `.plot` API and returns an ordinary
+`Canvas`, so the backend is still chosen when rendering:
+
+``` python
+import xarray as xr
+
+import maxplotlib.xarray  # registers da.maxplot and ds.maxplot
+
+t = np.linspace(0, 1.5, 6)
+xs = np.linspace(0, 2 * np.pi, 80)
+ys = np.linspace(-1, 1, 50)
+wave = xr.DataArray(
+    np.sin(xs - 2 * t[:, None, None]) * np.exp(-3 * ys[None, :, None] ** 2),
+    dims=("t", "y", "x"),
+    coords={"t": ("t", t, {"units": "s"}), "y": ys, "x": ("x", xs, {"units": "m"})},
+    name="phi",
+    attrs={"long_name": "Potential", "units": "V"},
+)
+
+wave.maxplot.pcolormesh(col="t", col_wrap=3, canvas_kwargs={"width": "16cm", "ratio": 0.6}).show()
+```
+
+![](README_files/figure-commonmark/cell-20-output-1.png)
+
+    (<Figure size 944.882x566.929 with 7 Axes>,
+     array([[<Axes: title={'center': 't = 0 s'}, ylabel='y'>,
+             <Axes: title={'center': 't = 0.3 s'}>,
+             <Axes: title={'center': 't = 0.6 s'}>],
+            [<Axes: title={'center': 't = 0.9 s'}, xlabel='x [m]', ylabel='y'>,
+             <Axes: title={'center': 't = 1.2 s'}, xlabel='x [m]'>,
+             <Axes: title={'center': 't = 1.5 s'}, xlabel='x [m]'>]],
+           dtype=object))
+
+The same works through Canvas methods,
+e.g. `canvas.plot(da, hue="species")`,
+`ax.pcolormesh(da, xcoord="R", ycoord="Z")` for curvilinear grids, or
+`Canvas.facet(da, col="t")`. `ds.maxplot.scatter(x=..., y=..., hue=...)`
+plots one Dataset variable against another. See the [xarray
+tutorial](tutorials/tutorial_17_xarray.ipynb) for more.

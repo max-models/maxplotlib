@@ -3,12 +3,23 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 from tikzfigure import TikzFigure
+
+from maxplotlib.utils import xarray_support
 
 # Keyword arguments that every drawing method accepts and that are handled by
 # maxplotlib itself rather than being forwarded to a backend drawing call.
 _NEUTRAL_KWARGS = ("hover", "meta")
+
+
+def _mpl_mappable_kwargs(line):
+    """Kwargs for a Matplotlib color-mapped artist.
+
+    ``colorbar`` is a Plotly-only flag; Matplotlib adds colorbars through a
+    separate ``colorbar()`` entry, and would reject it as an artist property.
+    """
+    return {k: v for k, v in line["kwargs"].items() if k != "colorbar"}
+
 
 _TIKZ_SUPPORTED_PLOT_TYPES = {
     "plot",
@@ -388,13 +399,95 @@ class LinePlot:
         }
         self._add(ld, layer)
 
-    def plot(self, x, y, layer=0, **kwargs):
-        """Matplotlib-style alias for :meth:`add_line`."""
+    def plot(self, x, y=None, layer=0, **kwargs):
+        """Matplotlib-style alias for :meth:`add_line`.
+
+        ``plot(da)`` with a 1-D ``xarray.DataArray`` plots it against its
+        coordinate; see :meth:`_plot_dataarray`.
+        """
+        if y is None:
+            if not xarray_support.is_dataarray(x):
+                raise TypeError("plot(x, y) requires both x and y data")
+            self._plot_dataarray(self.add_line, x, layer, kwargs)
+            return
         self.add_line(x, y, layer=layer, **kwargs)
 
-    def scatter(self, x, y, layer=0, **kwargs):
+    def _set_default_labels(self, xlabel, ylabel, da=None):
+        """Set axis labels, and a title from ``da``, that the user has not set."""
+        if not self._xlabel and xlabel:
+            self._xlabel = xlabel
+        if not self._ylabel and ylabel:
+            self._ylabel = ylabel
+        if da is not None and not self._title:
+            self._title = xarray_support.title(da) or self._title
+
+    def _plot_dataarray(self, method, da, layer, kwargs):
+        """Draw a DataArray as lines or points with ``method(x, y, ...)``.
+
+        Axes are labelled from the array's attributes and the title from its
+        single-value coordinates, unless already set. ``xcoord=`` names the
+        dimension or 1-D coordinate to plot against; ``ycoord=`` does the same
+        with the coordinate on the y-axis, e.g. for vertical profiles.
+        ``hue=<dim>`` draws a 2-D array as one labelled series per value of
+        ``dim``, colored ``C0``, ``C1``, ... unless ``color`` is given, and
+        shows the legend unless ``add_legend=False``.
+        """
+        hue = kwargs.pop("hue", None)
+        add_legend = kwargs.pop("add_legend", True)
+        if hue is not None and "label" in kwargs:
+            raise TypeError("label= cannot be combined with hue=")
+        data = xarray_support.line_data(
+            da, hue=hue, x=kwargs.pop("xcoord", None), y=kwargs.pop("ycoord", None)
+        )
+        if data.vertical:
+            self._set_default_labels(data.value_label, data.coord_label, da)
+        else:
+            self._set_default_labels(data.coord_label, data.value_label, da)
+        cycle_colors = hue is not None and not {"color", "c"} & kwargs.keys()
+        for i, (positions, values, label) in enumerate(data.lines):
+            line_kwargs = dict(kwargs)
+            if label is not None:
+                line_kwargs["label"] = label
+            if cycle_colors:
+                line_kwargs["color"] = f"C{i % 10}"
+            if data.vertical:
+                method(values, positions, layer=layer, **line_kwargs)
+            else:
+                method(positions, values, layer=layer, **line_kwargs)
+        if hue is not None and add_legend:
+            self._legend = True
+
+    def _mesh_dataarray(self, method, da, layer, kwargs, add_colorbar=True, name=None):
+        """Draw a 2-D DataArray with ``method(x, y, z, ...)``.
+
+        ``xcoord=``/``ycoord=`` name the dimension or coordinate for each
+        axis; 2-D coordinates give a curvilinear mesh. Colors follow xarray's
+        defaults (see :func:`xarray_support.color_limits`, including
+        ``robust=`` and ``center=``). A colorbar labelled from the array is
+        added unless ``add_colorbar=False``.
+        """
+        add_colorbar = kwargs.pop("add_colorbar", add_colorbar)
+        mesh = self._mesh_of(da, kwargs, name or method.__name__)
+        self._set_default_labels(mesh.xlabel, mesh.ylabel, da)
+        xarray_support.color_limits(mesh.z, kwargs)
+        method(mesh.x, mesh.y, mesh.z, layer=layer, **kwargs)
+        if add_colorbar:
+            self.add_colorbar(label=mesh.zlabel, layer=layer)
+
+    @staticmethod
+    def _mesh_of(da, kwargs, method):
+        return xarray_support.mesh_data(
+            da,
+            x=kwargs.pop("xcoord", None),
+            y=kwargs.pop("ycoord", None),
+            method=method,
+        )
+
+    def scatter(self, x, y=None, layer=0, **kwargs):
         """
         Add a scatter plot to the subplot.
+
+        ``scatter(da)`` accepts an ``xarray.DataArray`` like :meth:`plot`.
 
         Parameters:
         x (array-like): X-axis data.
@@ -403,6 +496,11 @@ class LinePlot:
         **kwargs: Additional keyword arguments forwarded to the backend
             (e.g., color, marker, s, label).
         """
+        if y is None:
+            if not xarray_support.is_dataarray(x):
+                raise TypeError("scatter(x, y) requires both x and y data")
+            self._plot_dataarray(self.scatter, x, layer, kwargs)
+            return
         ld = {
             "x": np.array(x),
             "y": np.array(y),
@@ -580,8 +678,19 @@ class LinePlot:
             layer,
         )
 
-    def contour(self, x, y, z, layer=0, **kwargs):
-        """Add contour lines for a 2D scalar field."""
+    def contour(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add contour lines for a 2D scalar field.
+
+        ``contour(da)`` accepts a 2-D ``xarray.DataArray`` like
+        :meth:`pcolormesh`, but adds no colorbar by default.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("contour(da) takes no y or z data")
+            self._mesh_dataarray(self.contour, x, layer, kwargs, add_colorbar=False)
+            return
+        if y is None or z is None:
+            raise TypeError("contour(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -594,8 +703,19 @@ class LinePlot:
             layer,
         )
 
-    def contourf(self, x, y, z, layer=0, **kwargs):
-        """Add filled contours for a 2D scalar field."""
+    def contourf(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add filled contours for a 2D scalar field.
+
+        ``contourf(da)`` accepts a 2-D ``xarray.DataArray`` like
+        :meth:`pcolormesh`.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("contourf(da) takes no y or z data")
+            self._mesh_dataarray(self.contourf, x, layer, kwargs, add_colorbar=True)
+            return
+        if y is None or z is None:
+            raise TypeError("contourf(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -608,8 +728,23 @@ class LinePlot:
             layer,
         )
 
-    def pcolormesh(self, x, y, z, layer=0, **kwargs):
-        """Add a pseudocolor mesh."""
+    def pcolormesh(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add a pseudocolor mesh.
+
+        ``pcolormesh(da)`` with a 2-D ``xarray.DataArray`` uses its coordinates.
+        Axes are labelled from its attributes and the title from its
+        single-value coordinates, unless already set. ``xcoord=``/``ycoord=``
+        pick the dimension or coordinate for each axis (2-D coordinates give
+        a curvilinear mesh), and a labelled colorbar is added unless
+        ``add_colorbar=False``. See :meth:`_mesh_dataarray` for colors.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("pcolormesh(da) takes no y or z data")
+            self._mesh_dataarray(self.pcolormesh, x, layer, kwargs)
+            return
+        if y is None or z is None:
+            raise TypeError("pcolormesh(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -1381,6 +1516,25 @@ class LinePlot:
         self._add(ld, layer)
 
     def add_imshow(self, data, layer=0, **kwargs):
+        """Add an image.
+
+        ``add_imshow(da)`` with a 2-D ``xarray.DataArray`` places the image by
+        its evenly spaced coordinates (``origin="lower"``) and otherwise
+        behaves like :meth:`pcolormesh` with a DataArray.
+        """
+        if xarray_support.is_dataarray(data):
+            mesh = self._mesh_of(data, dict(kwargs), "imshow")
+            if mesh.curvilinear:
+                raise ValueError(
+                    "imshow() cannot draw on 2-D coordinates; use pcolormesh() instead"
+                )
+            kwargs.setdefault("origin", "lower")
+            kwargs.setdefault(
+                "extent",
+                xarray_support.image_extent(mesh.x, mesh.y, mesh.xname, mesh.yname),
+            )
+            self._mesh_dataarray(self._imshow_xyz, data, layer, kwargs, name="imshow")
+            return
         ld = {
             "data": np.asanyarray(data).copy(),
             "layer": layer,
@@ -1388,6 +1542,13 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
+
+    def _imshow_xyz(self, x, y, z, layer=0, **kwargs):
+        self.add_imshow(z, layer=layer, **kwargs)
+
+    def imshow(self, data, layer=0, **kwargs):
+        """Matplotlib-style alias for :meth:`add_imshow`."""
+        self.add_imshow(data, layer=layer, **kwargs)
 
     def add_image(self, data, layer=0, **kwargs):
         """Matplotlib-style alias for ``imshow``."""
@@ -1431,6 +1592,7 @@ class LinePlot:
         ax (matplotlib.axes.Axes): Axis on which to plot the lines.
         """
         im = None
+        self._figure_colorbar = None
         self._import_rendered_artists = {}
         if hasattr(self, "_import_projection_artist_ids"):
             for name, identifiers in self._import_projection_artist_ids.items():
@@ -1454,8 +1616,8 @@ class LinePlot:
                     line["snapshot"].draw(ax, **line["kwargs"])
                 elif line["plot_type"] == "plot":
                     ax.plot(
-                        (line["x"] + self._xshift) * self._xscale,
-                        (line["y"] + self._yshift) * self._yscale,
+                        self._shift_x(line["x"]),
+                        self._shift_y(line["y"]),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "scatter":
@@ -1465,14 +1627,14 @@ class LinePlot:
                     scatter_kwargs = {
                         k: v for k, v in line["kwargs"].items() if k != "colorbar"
                     }
-                    ax.scatter(
-                        (line["x"] + self._xshift) * self._xscale,
-                        (line["y"] + self._yshift) * self._yscale,
+                    im = ax.scatter(
+                        self._shift_x(line["x"]),
+                        self._shift_y(line["y"]),
                         **scatter_kwargs,
                     )
                 elif line["plot_type"] == "bar":
                     ax.bar(
-                        (line["x"] + self._xshift) * self._xscale,
+                        self._shift_x(line["x"]),
                         line["height"] * self._yscale,
                         **line["kwargs"],
                     )
@@ -1486,8 +1648,8 @@ class LinePlot:
                     ax.hist(line["x"], bins=line["bins"], **line["kwargs"])
                 elif line["plot_type"] == "step":
                     ax.step(
-                        (line["x"] + self._xshift) * self._xscale,
-                        (line["y"] + self._yshift) * self._yscale,
+                        self._shift_x(line["x"]),
+                        self._shift_y(line["y"]),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "stairs":
@@ -1511,16 +1673,15 @@ class LinePlot:
                     ax.violinplot(line["dataset"], **line["kwargs"])
                 elif line["plot_type"] == "eventplot":
                     ax.eventplot(line["positions"], **line["kwargs"])
-                elif line["plot_type"] == "contour":
-                    contour_sets.append(
-                        ax.contour(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] in ("contour", "contourf"):
+                    im = getattr(ax, line["plot_type"])(
+                        line["x"], line["y"], line["z"], **_mpl_mappable_kwargs(line)
                     )
-                elif line["plot_type"] == "contourf":
-                    contour_sets.append(
-                        ax.contourf(line["x"], line["y"], line["z"], **line["kwargs"])
-                    )
+                    contour_sets.append(im)
                 elif line["plot_type"] == "pcolormesh":
-                    ax.pcolormesh(line["x"], line["y"], line["z"], **line["kwargs"])
+                    im = ax.pcolormesh(
+                        line["x"], line["y"], line["z"], **_mpl_mappable_kwargs(line)
+                    )
                 elif line["plot_type"] == "hexbin":
                     ax.hexbin(line["x"], line["y"], **line["kwargs"])
                 elif line["plot_type"] == "matshow":
@@ -1571,7 +1732,7 @@ class LinePlot:
                     ax.table(cellText=line["cellText"], **line["kwargs"])
                 elif line["plot_type"] == "gantt":
                     tasks = line["tasks"]
-                    start_times = (line["start_times"] + self._xshift) * self._xscale
+                    start_times = self._shift_x(line["start_times"])
                     durations = line["durations"] * self._xscale
                     y_positions = np.arange(len(tasks))
                     ax.barh(y_positions, durations, left=start_times, **line["kwargs"])
@@ -1589,7 +1750,7 @@ class LinePlot:
                     if start_times is None:
                         start_times = np.zeros(n)
                     else:
-                        start_times = (start_times + self._xshift) * self._xscale
+                        start_times = self._shift_x(start_times)
 
                     # Calculate depths based on parent relationships
                     for i in range(n):
@@ -1641,21 +1802,21 @@ class LinePlot:
                     ax.set_ylabel("Stack Depth")
                 elif line["plot_type"] == "fill_between":
                     ax.fill_between(
-                        (line["x"] + self._xshift) * self._xscale,
+                        self._shift_x(line["x"]),
                         (
                             line["y1"]
                             if np.isscalar(line["y1"])
-                            else (line["y1"] + self._yshift) * self._yscale
+                            else self._shift_y(line["y1"])
                         ),
                         (
                             line["y2"]
                             if np.isscalar(line["y2"])
-                            else (line["y2"] + self._yshift) * self._yscale
+                            else self._shift_y(line["y2"])
                         ),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "fill_betweenx":
-                    y = (line["y"] + self._yshift) * self._yscale
+                    y = self._shift_y(line["y"])
                     x1 = line["x1"]
                     x2 = line["x2"]
                     if np.isscalar(x1):
@@ -1664,16 +1825,16 @@ class LinePlot:
                         x2 = np.full_like(y, x2, dtype=float)
                     ax.fill_betweenx(
                         y,
-                        (np.asarray(x1) + self._xshift) * self._xscale,
-                        (np.asarray(x2) + self._xshift) * self._xscale,
+                        self._shift_x(np.asarray(x1)),
+                        self._shift_x(np.asarray(x2)),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "fill":
                     ax.fill(*line["args"], **line["kwargs"])
                 elif line["plot_type"] == "errorbar":
                     ax.errorbar(
-                        (line["x"] + self._xshift) * self._xscale,
-                        (line["y"] + self._yshift) * self._yscale,
+                        self._shift_x(line["x"]),
+                        self._shift_y(line["y"]),
                         yerr=line["yerr"],
                         xerr=line["xerr"],
                         **line["kwargs"],
@@ -1715,17 +1876,20 @@ class LinePlot:
                 elif line["plot_type"] == "imshow":
                     im = ax.imshow(
                         line["data"],
-                        **line["kwargs"],
+                        **_mpl_mappable_kwargs(line),
                     )
                 elif line["plot_type"] == "patch":
                     ax.add_patch(
                         line["patch"],
                         **line["kwargs"],
                     )
+                elif line["plot_type"] == "colorbar" and line.get("span_figure"):
+                    # Drawn by the Canvas once every subplot exists.
+                    self._figure_colorbar = (im, line["label"])
                 elif line["plot_type"] == "colorbar":
-                    divider = make_axes_locatable(ax)
-                    cax = divider.append_axes("right", size="5%", pad=0.05)
-                    plt.colorbar(im, cax=cax, label="Potential (V)")
+                    # Shrinks ``ax`` to make room, so the label stays inside
+                    # the figure.
+                    ax.figure.colorbar(im, ax=ax, label=line["label"])
 
                 if "source_artist_id" in line:
                     created = [
@@ -1962,8 +2126,8 @@ class LinePlot:
                         f"{plot_type} is not supported by the tikzfigure backend"
                     )
                 if plot_type == "plot":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y = (line["y"] + self._yshift) * self._yscale
+                    x = self._shift_x(line["x"])
+                    y = self._shift_y(line["y"])
 
                     nodes = [[xi, yi] for xi, yi in zip(x, y)]
                     tikz_figure.draw(
@@ -1971,8 +2135,8 @@ class LinePlot:
                         **_tikz_style_kwargs(line["kwargs"]),
                     )
                 elif plot_type == "scatter":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y = (line["y"] + self._yshift) * self._yscale
+                    x = self._shift_x(line["x"])
+                    y = self._shift_y(line["y"])
                     style = _tikz_style_kwargs(line["kwargs"])
                     style.setdefault("mark", "*")
                     style["line_width"] = 0
@@ -1989,7 +2153,7 @@ class LinePlot:
                     if plot_type == "bar":
                         width = kwargs.get("width", 0.8)
                         for x, height in zip(line["x"], line["height"]):
-                            x = (x + self._xshift) * self._xscale
+                            x = self._shift_x(x)
                             height = height * self._yscale
                             tikz_figure.draw(
                                 nodes=[
@@ -2004,7 +2168,7 @@ class LinePlot:
                     else:
                         height = kwargs.get("height", 0.8)
                         for y, width in zip(line["y"], line["width"]):
-                            y = (y + self._yshift) * self._yscale
+                            y = self._shift_y(y)
                             width = width * self._xscale
                             tikz_figure.draw(
                                 nodes=[
@@ -2017,7 +2181,7 @@ class LinePlot:
                                 **style,
                             )
                 elif plot_type == "fill_between":
-                    x = (line["x"] + self._xshift) * self._xscale
+                    x = self._shift_x(line["x"])
                     y1 = np.asarray(line["y1"])
                     y2 = np.broadcast_to(line["y2"], y1.shape)
                     nodes = [[xi, yi] for xi, yi in zip(x, y1)]
@@ -2028,8 +2192,8 @@ class LinePlot:
                     style["fill_opacity"] = kwargs.get("alpha", 0.25)
                     tikz_figure.draw(nodes=nodes, cycle=True, **style)
                 elif plot_type == "errorbar":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y = (line["y"] + self._yshift) * self._yscale
+                    x = self._shift_x(line["x"])
+                    y = self._shift_y(line["y"])
                     style = _tikz_style_kwargs(line["kwargs"])
                     tikz_figure.draw(nodes=[[xi, yi] for xi, yi in zip(x, y)], **style)
                     y_bounds = _tikz_error_bounds(line["yerr"], y)
@@ -2057,15 +2221,15 @@ class LinePlot:
                         y = np.r_[values, values[-1]]
                         where = "post"
                     x, y = _tikz_step_coordinates(x, y, where=where)
-                    x = (x + self._xshift) * self._xscale
-                    y = (y + self._yshift) * self._yscale
+                    x = self._shift_x(x)
+                    y = self._shift_y(y)
                     tikz_figure.draw(
                         nodes=[[xi, yi] for xi, yi in zip(x, y)],
                         **_tikz_style_kwargs(kwargs),
                     )
                 elif plot_type == "stem":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y = (line["y"] + self._yshift) * self._yscale
+                    x = self._shift_x(line["x"])
+                    y = self._shift_y(line["y"])
                     kwargs = line["kwargs"]
                     style = _tikz_style_kwargs(kwargs)
                     marker_style = dict(style)
@@ -2128,7 +2292,7 @@ class LinePlot:
                     )
                 elif line["plot_type"] == "gantt":
                     tasks = line["tasks"]
-                    start_times = (line["start_times"] + self._xshift) * self._xscale
+                    start_times = self._shift_x(line["start_times"])
                     durations = line["durations"] * self._xscale
                     y_positions = np.arange(len(tasks))
 
@@ -2167,7 +2331,7 @@ class LinePlot:
                     if start_times is None:
                         start_times = np.zeros(n)
                     else:
-                        start_times = (start_times + self._xshift) * self._xscale
+                        start_times = self._shift_x(start_times)
 
                     for i in range(n):
                         if parents[i] is None:
@@ -2345,6 +2509,16 @@ class LinePlot:
 
         for line in self._iter_layer_lines(layers=layers):
             plot_type = line["plot_type"]
+            if plot_type in ("contour", "contourf", "pcolormesh") and (
+                np.ndim(line["x"]) == 2 or np.ndim(line["y"]) == 2
+            ):
+                if allow_unsupported:
+                    continue
+                raise NotImplementedError(
+                    f"Plotly cannot draw {plot_type} on 2-D (curvilinear) "
+                    "coordinates; use the matplotlib backend, or pass "
+                    "allow_unsupported=True to skip it for Plotly"
+                )
             if plot_type in unsupported_plot_types:
                 if allow_unsupported:
                     continue
@@ -2458,6 +2632,8 @@ class LinePlot:
                     marker=marker_dict,
                 )
                 traces.append(trace)
+                if colorscale is not None:
+                    last_heatmap_idx = len(traces) - 1
             elif plot_type == "bar":
                 kwargs = line["kwargs"]
                 base = kwargs.get("bottom")
@@ -2702,10 +2878,15 @@ class LinePlot:
                         y=line["y"],
                         z=line["z"],
                         contours=contours,
-                        colorscale=kwargs.get("cmap", "Viridis"),
+                        colorscale=_colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        ),
                         showscale=kwargs.get("colorbar", True),
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type == "contourf":
                 kwargs = line["kwargs"]
                 contours = {}
@@ -2723,11 +2904,16 @@ class LinePlot:
                         x=line["x"],
                         y=line["y"],
                         z=line["z"],
-                        colorscale=kwargs.get("cmap", "Viridis"),
+                        colorscale=_colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        ),
                         showscale=kwargs.get("colorbar", True),
                         contours=contours,
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type == "pcolormesh":
                 kwargs = line["kwargs"]
                 traces.append(
@@ -2735,10 +2921,15 @@ class LinePlot:
                         x=line["x"],
                         y=line["y"],
                         z=line["z"],
-                        colorscale=kwargs.get("cmap", "Viridis"),
+                        colorscale=_colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        ),
                         showscale=kwargs.get("colorbar", True),
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type in ("pcolor", "pcolorfast"):
                 # Plotly's heatmap is the closest equivalent to Matplotlib's
                 # pseudocolor artists.  The cell-centered rendering differs
@@ -3526,11 +3717,13 @@ class LinePlot:
                 )
             elif plot_type == "colorbar":
                 if last_heatmap_idx is not None:
+                    trace = traces[last_heatmap_idx]
+                    # Value-colored scatter markers carry their own scale.
+                    target = trace.marker if trace.type == "scatter" else trace
+                    target.update(showscale=True)
                     label = line.get("label", "") or line["kwargs"].get("label", "")
                     if label:
-                        traces[last_heatmap_idx].update(
-                            colorbar=dict(title=dict(text=label))
-                        )
+                        target.update(colorbar=dict(title=dict(text=label)))
             elif plot_type == "patch":
                 kwargs = line["kwargs"]
                 patch = line["patch"]
@@ -3918,12 +4111,28 @@ class LinePlot:
     def _plotext_axis_scale(self, axis: str):
         return self._xaxis_scale if axis == "x" else self._yaxis_scale
 
+    def _shift_x(self, values):
+        """Apply ``xshift``/``xscale``; values pass through unchanged by default.
+
+        Skipping the no-op arithmetic keeps non-numeric data, such as
+        datetimes or category labels, plottable.
+        """
+        if self._xshift == 0 and self._xscale == 1:
+            return values
+        return (values + self._xshift) * self._xscale
+
+    def _shift_y(self, values):
+        """Apply ``yshift``/``yscale``; see :meth:`_shift_x`."""
+        if self._yshift == 0 and self._yscale == 1:
+            return values
+        return (values + self._yshift) * self._yscale
+
     def _plotext_axis_transform(self, values, axis: str):
         array = np.asarray(values)
         if axis == "x":
-            transformed = (array + self._xshift) * self._xscale
+            transformed = self._shift_x(array)
         else:
-            transformed = (array + self._yshift) * self._yscale
+            transformed = self._shift_y(array)
         if self._plotext_axis_scale(axis) == "symlog":
             return self._symlog_transform(transformed)
         return transformed
