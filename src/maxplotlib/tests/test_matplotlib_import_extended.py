@@ -309,6 +309,10 @@ def test_secondary_inset_and_annotation_coordinates():
     assert result.texts[0].xycoords == "axes fraction"
 
 
+@pytest.mark.skipif(
+    tuple(int(part) for part in matplotlib.__version__.split(".")[:2]) < (3, 10),
+    reason="indicate_inset_zoom only returns a rebindable InsetIndicator on 3.10+",
+)
 def test_inset_zoom_indicator_rebinds_to_reconstructed_axes():
     fig, ax = plt.subplots()
     ax.plot([0, 1, 2, 3], [0, 1, 4, 9])
