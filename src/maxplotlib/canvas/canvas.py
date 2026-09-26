@@ -394,6 +394,40 @@ class Canvas:
     # ------------------------------------------------------------------
 
     @classmethod
+    def from_matplotlib(
+        cls, source, *, strict=False, trusted=False, fallback="native", **canvas_kwargs
+    ):
+        """Snapshot a Matplotlib figure, axes, or rectangular axes array.
+
+        Portable geometry becomes independent plot entries. With the default
+        ``fallback="native"``, other built-in artists retain detached native
+        geometry for Matplotlib, including transforms and decorations. These
+        entries reject rendering on backends that cannot represent them.
+        ``fallback="skip"`` instead warns about unsupported artists;
+        ``fallback="raster"`` explicitly flattens the selection into an image.
+
+        ``strict=True`` raises on import losses; it does not promise identical
+        output on every backend. ``canvas.import_report`` contains artist
+        identities, severities, representations and backend restrictions.
+
+        Paths, pickle bytes and binary streams require ``trusted=True`` before
+        reading: unpickling can execute arbitrary code. Serialized figures are
+        only suitable for trusted producers and matching Matplotlib versions.
+        ``canvas_kwargs`` override figure defaults. Two-dimensional input
+        arrays define their own slot order; other inputs preserve source layout.
+        """
+        from maxplotlib.backends.matplotlib.importer import import_matplotlib
+
+        return import_matplotlib(
+            cls,
+            source,
+            strict=strict,
+            trusted=trusted,
+            fallback=fallback,
+            **canvas_kwargs,
+        )
+
+    @classmethod
     def subplots(
         cls,
         nrows: int = 1,
@@ -2302,14 +2336,50 @@ class Canvas:
         if verbose:
             print(f"Created Matplotlib figure and axes with shape {axes.shape}")
 
+        if hasattr(self, "_import_layout"):
+            for row in range(self.nrows):
+                for col in range(self.ncols):
+                    if (row, col) not in self._subplot_dict:
+                        axes[row, col].remove()
+                        axes[row, col] = None
+            for slot, bounds in self._import_layout.items():
+                axes[slot].set_position(bounds)
+            if hasattr(self, "_import_layout_specs"):
+                for slot, spec in self._import_layout_specs.clone(fig=fig).items():
+                    if spec is not None:
+                        axes[slot].set_subplotspec(spec)
+                    else:
+                        bounds = axes[slot].get_position(original=True).bounds
+                        axes[slot].remove()
+                        axes[slot] = fig.add_axes(bounds)
+                if self._import_layout_engine is not None:
+                    import copy
+
+                    fig.set_layout_engine(copy.deepcopy(self._import_layout_engine))
+            for slot, in_layout in self._import_in_layout.items():
+                axes[slot].set_in_layout(in_layout)
+            for direction, parent, child in self._import_shared_axes:
+                getattr(axes[child], "share" + direction)(axes[parent])
+            if hasattr(self, "_import_figure_style"):
+                fig.set(**self._import_figure_style)
+                fig.patch = self._import_figure_patch.clone(fig=fig)
+                transform = fig.patch.get_transform()
+                fig._set_artist_props(fig.patch)
+                fig.patch.set_transform(transform)
         for (row, col), subplot in self._subplot_dict.items():
             ax = axes[row][col]
+            if hasattr(subplot, "_import_projection"):
+                position = ax.get_position().bounds
+                ax.remove()
+                ax = subplot._import_projection.clone(fig=fig)
+                fig.add_axes(ax)
+                ax.set_position(position)
+                axes[row, col] = ax
             if isinstance(subplot, TikzFigure):
                 plot_matplotlib(subplot, ax, layers=layers)
+                ax.grid(False)
             else:
                 subplot.plot_matplotlib(ax, layers=layers)
-            # ax.set_title(f"Subplot ({row}, {col})")
-            ax.grid()
 
         if verbose:
             print("Finished plotting subplots.")
@@ -2355,6 +2425,43 @@ class Canvas:
             twin_axis = axes[row][col].twiny()
             twin_subplot.plot_matplotlib(twin_axis, layers=layers)
             self._matplotlib_twiny_axes[(row, col)] = twin_axis
+        if hasattr(self, "_import_layout"):
+            from maxplotlib.backends.matplotlib.import_state import apply_axis_state
+
+            for slot, direction, subplot in self._import_extra_twins:
+                twin_axis = getattr(axes[slot], "twin" + direction)()
+                subplot.plot_matplotlib(twin_axis, layers=layers)
+            for specification in self._import_colorbars:
+                if specification["standalone"] is not None:
+                    import copy
+
+                    from matplotlib.cm import ScalarMappable
+
+                    mappable = ScalarMappable(
+                        **copy.deepcopy(specification["standalone"])
+                    )
+                else:
+                    artists = specification["target"]._import_rendered_artists.get(
+                        specification["artist_id"], []
+                    )
+                    mappable = next(
+                        (artist for artist in artists if hasattr(artist, "get_cmap")),
+                        None,
+                    )
+                if mappable is None:
+                    continue  # Its layer was excluded from this render.
+                cax = fig.add_axes(specification["position"])
+                colorbar = fig.colorbar(mappable, cax=cax, **specification["kwargs"])
+                colorbar.set_label(
+                    specification["label"], **specification["label_style"]
+                )
+                colorbar.set_ticks(specification["ticks"])
+                colorbar.formatter = specification["formatter"].clone(cax)
+                colorbar.update_ticks()
+                apply_axis_state(cax, specification["state"])
+            for snapshot in self._import_figure_artists:
+                artist = snapshot.clone(fig=fig)
+                fig.add_artist(artist)
         if matplotlib_customizations is not None:
             _apply_matplotlib_customizations(fig, axes, matplotlib_customizations)
         if matplotlib_postprocess is not None:
@@ -2362,6 +2469,39 @@ class Canvas:
                 raise TypeError("matplotlib_postprocess must be callable")
             matplotlib_postprocess(fig, axes)
         return fig, axes
+
+    def _validate_import_backend(self, backend, *, allow_unsupported=False):
+        """Never silently drop native imported axes or figure decorations."""
+        if not hasattr(self, "import_report") or allow_unsupported:
+            return
+        reasons = []
+        if getattr(self, "_import_extra_twins", []):
+            reasons.append("multiple twin axes")
+        if getattr(self, "_import_figure_artists", []):
+            reasons.append("native figure decorations")
+        if getattr(self, "_import_colorbars", []):
+            reasons.append("native colorbars")
+        subplots = (
+            list(self._subplot_dict.values())
+            + list(self._twinx_subplots.values())
+            + list(self._twiny_subplots.values())
+        )
+        for subplot in subplots:
+            if hasattr(subplot, "_import_projection"):
+                reasons.append("native projections")
+            if getattr(subplot, "_import_child_axes", []):
+                reasons.append("inset/secondary axes")
+            for state in (
+                getattr(subplot, "_import_axis_state", {}).get("axes", {}).values()
+            ):
+                scale = state["scale"].payload
+                if scale.name not in ("linear", "log"):
+                    reasons.append("native axis scales")
+        if reasons:
+            raise NotImplementedError(
+                f"{backend} cannot render these imported features: {', '.join(sorted(set(reasons)))}. "
+                "Use Matplotlib or import with fallback='raster'."
+            )
 
     def plot_tikzfigure(
         self,
@@ -2380,6 +2520,7 @@ class Canvas:
         Returns:
         TikzFigure: Figure object that can be shown, saved, or compiled.
         """
+        self._validate_import_backend("tikzfigure")
         if verbose:
             print(f"Plotting tikzfigure with {len(self._subplot_dict)} subplot(s)")
 
@@ -2699,6 +2840,7 @@ class Canvas:
         layers: list | None = None,
         verbose: bool = False,
     ) -> PlotextFigure:
+        self._validate_import_backend("plotext")
         if self._twinx_subplots:
             raise NotImplementedError(
                 "twinx plots are not supported by the plotext backend"
@@ -2746,6 +2888,7 @@ class Canvas:
 
         """
 
+        self._validate_import_backend("plotly", allow_unsupported=allow_unsupported)
         resolved_usetex = self._usetex if usetex is None else usetex
 
         for subplot in self._subplot_dict.values():
