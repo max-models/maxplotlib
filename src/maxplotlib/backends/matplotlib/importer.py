@@ -20,6 +20,11 @@ from matplotlib.text import Annotation
 from matplotlib.ticker import FixedLocator
 from matplotlib.transforms import IdentityTransform
 
+try:
+    from matplotlib.inset import InsetIndicator
+except ImportError:  # Matplotlib < 3.10 returns a plain (Rectangle, patches) tuple.
+    InsetIndicator = None
+
 from .import_state import (
     ImportReport,
     ReboundSnapshot,
@@ -785,9 +790,24 @@ def _import_axes(ax, target, unsupported):
             consumed.add(patch)
         else:
             _native(patch, ax, target, unsupported)
+    target._import_inset_indicators = {}
     for artist in _tracked(list(ax.artists) + list(ax.tables), ax, target, unsupported):
-        if not isinstance(artist, Legend):
-            _native(artist, ax, target, unsupported)
+        if isinstance(artist, Legend):
+            continue
+        if (
+            InsetIndicator is not None
+            and isinstance(artist, InsetIndicator)
+            and artist._inset_ax in ax.child_axes
+        ):
+            index = ax.child_axes.index(artist._inset_ax)
+            target._import_inset_indicators[index] = _capture_inset_indicator(artist)
+            unsupported.report.add(
+                artist,
+                "Inset indicator rebuilt from the live inset axes",
+                fallback="native",
+            )
+            continue
+        _native(artist, ax, target, unsupported)
     target._import_child_axes = []
     for child in ax.child_axes:
         _import_child(child, ax, target, unsupported)
@@ -962,6 +982,27 @@ def _capture_colorbar(colorbar, target):
         ticks=copy.deepcopy(colorbar.get_ticks()),
         formatter=ReboundSnapshot(colorbar.formatter, colorbar.ax),
         state=capture_axis_state(colorbar.ax),
+    )
+
+
+def _capture_inset_indicator(indicator):
+    """Style for ``indicate_inset_zoom``; connectors are recomputed on render.
+
+    ``InsetIndicator`` spans two Axes and recomputes its rectangle/connector
+    geometry from live axes limits on every draw, so it cannot be captured as
+    detached geometry the way single-axes artists are. Recreating it with
+    ``Axes.indicate_inset_zoom`` on the reconstructed parent/inset pair keeps
+    that live behavior instead of freezing a stale snapshot.
+    """
+    rectangle = indicator.rectangle
+    return dict(
+        facecolor=copy.deepcopy(rectangle.get_facecolor()),
+        edgecolor=copy.deepcopy(rectangle.get_edgecolor()),
+        linewidth=rectangle.get_linewidth(),
+        linestyle=rectangle.get_linestyle(),
+        alpha=indicator.get_alpha(),
+        zorder=indicator.get_zorder(),
+        visible=indicator.get_visible(),
     )
 
 

@@ -1917,7 +1917,8 @@ class LinePlot:
                     else:
                         ax.legend_ = legend
                         legend._remove_method = ax._remove_legend
-            for child in self._import_child_axes:
+            indicators = getattr(self, "_import_inset_indicators", {})
+            for index, child in enumerate(self._import_child_axes):
                 if child["kind"] == "secondary":
                     secondary = getattr(
                         ax, "secondary_" + child["orientation"] + "axis"
@@ -1929,6 +1930,8 @@ class LinePlot:
                     inset = ax.inset_axes(child["bounds"])
                     inset.set_axes_locator(child["locator"].clone(ax))
                     child["subplot"].plot_matplotlib(inset, layers=layers)
+                    if index in indicators:
+                        ax.indicate_inset_zoom(inset, **indicators[index])
 
     @staticmethod
     def _tag_matplotlib_artists(ax, artists_before, meta):

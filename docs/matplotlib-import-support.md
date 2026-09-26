@@ -48,9 +48,12 @@ conversion is not possible.
   (subfigure rectangles/decorations are flattened into the destination figure).
 - [x] Grid width/height ratios, margins, spacing, constrained/tight layout
   for ordinary/nested GridSpec; subfigures retain their snapshot rectangles.
-- [ ] Arbitrary axes rectangles, overlapping axes, inset axes, inset connectors.
-  Rectangles, overlaps and child insets are implemented; connectors referring to
-  other axes still need live-reference rebinding.
+- [x] Arbitrary axes rectangles, overlapping axes, inset axes, inset-zoom
+  connectors (`indicate_inset_zoom`/`indicate_inset`, Matplotlib 3.10+). The
+  connector spans two Axes and recomputes its geometry from live limits on
+  every draw, so it is rebuilt against the reconstructed parent/inset pair
+  rather than snapshotted. Matplotlib < 3.10's tuple-returning API still falls
+  back to native geometry.
 - [x] Secondary axes with forward/inverse coordinate functions.
 - [x] Figure backgrounds, frame styling, and figure-level text/patches/images.
 - [x] Figure title/shared-label typography and placement.
