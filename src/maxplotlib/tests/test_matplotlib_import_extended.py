@@ -42,8 +42,10 @@ def test_trusted_pickle_boundary_and_report(tmp_path, monkeypatch):
     path = tmp_path / "figure.pickle"
     path.write_bytes(data)
     with monkeypatch.context() as boundary:
+
         def reject_unpickling(*args, **kwargs):
             pytest.fail("Untrusted input reached pickle")
+
         boundary.setattr(pickle, "load", reject_unpickling)
         boundary.setattr(pickle, "loads", reject_unpickling)
         for source in (data, path, io.BytesIO(data)):
@@ -319,9 +321,7 @@ def test_inset_zoom_indicator_rebinds_to_reconstructed_axes():
     _, copied, axes = render(fig)
     result = axes[0, 0]
     indicators = [
-        artist
-        for artist in result.artists
-        if type(artist).__name__ == "InsetIndicator"
+        artist for artist in result.artists if type(artist).__name__ == "InsetIndicator"
     ]
     assert len(indicators) == 1
     indicator = indicators[0]
@@ -446,9 +446,7 @@ def test_composite_text_boxes_effects_and_clip_boxes():
     fig, ax = plt.subplots()
     ax.add_artist(AnnotationBbox(TextArea("boxed"), (0.5, 0.5)))
     ax.add_artist(AnchoredText("anchor", loc="upper left"))
-    ax.text(
-        0.2, 0.4, "$x^2$\nline two", linespacing=1.7, bbox={"facecolor": "yellow"}
-    )
+    ax.text(0.2, 0.4, "$x^2$\nline two", linespacing=1.7, bbox={"facecolor": "yellow"})
     (line,) = ax.plot(
         [0, 1], [0, 1], path_effects=[pe.Stroke(linewidth=4), pe.Normal()]
     )
@@ -565,7 +563,9 @@ def test_arbitrary_axes_rectangles_are_preserved():
     second.plot([1, 0])
     _, _, copied = render(fig)
     for source, result in zip((first, second), copied.flat):
-        np.testing.assert_allclose(source.get_position().bounds, result.get_position().bounds)
+        np.testing.assert_allclose(
+            source.get_position().bounds, result.get_position().bounds
+        )
 
 
 def test_hidden_fixed_ticks_and_secondary_data_location():
@@ -578,6 +578,7 @@ def test_hidden_fixed_ticks_and_secondary_data_location():
 
 def test_standalone_and_projection_colorbars():
     from matplotlib.cm import ScalarMappable
+
     fig = plt.figure()
     ax = fig.add_subplot(projection="3d")
     points = ax.scatter([1, 2], [2, 3], [3, 4], c=[1, 2])
@@ -587,7 +588,6 @@ def test_standalone_and_projection_colorbars():
     bars = [axis._colorbar for axis in copied.axes if hasattr(axis, "_colorbar")]
     assert bars[0].mappable is axes[0, 0].collections[0]
     assert isinstance(bars[1].norm, LogNorm)
-
 
 
 def test_custom_title_placement_and_clearing_imported_settings():

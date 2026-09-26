@@ -421,8 +421,10 @@ def _import_errorbar(container, ax, target, unsupported):
     ):
         return False
     components = [line, *caps, *ranges]
-    if any(_needs_native_style(artist) or artist.get_visible() != line.get_visible()
-           for artist in components):
+    if any(
+        _needs_native_style(artist) or artist.get_visible() != line.get_visible()
+        for artist in components
+    ):
         return False
     if any(cap.get_marker() not in ("_", "|") for cap in caps):
         return False
@@ -466,7 +468,9 @@ def _import_errorbar(container, ax, target, unsupported):
     if ranges:
         base_zorder = ranges[0].get_zorder()
         delta = line.get_zorder() - base_zorder
-        if not np.isclose(abs(delta), 0.1) or any(bar.get_zorder() != base_zorder for bar in ranges):
+        if not np.isclose(abs(delta), 0.1) or any(
+            bar.get_zorder() != base_zorder for bar in ranges
+        ):
             return False
         kwargs["zorder"] = base_zorder
         kwargs["barsabove"] = delta < 0
@@ -491,7 +495,10 @@ def _collection_style(collection, index):
         ("facecolor", collection.get_facecolors()),
         ("edgecolor", collection.get_edgecolors()),
         ("linewidth", collection.get_linewidths()),
-        ("linestyle", getattr(collection, "_us_linestyles", collection.get_linestyles())),
+        (
+            "linestyle",
+            getattr(collection, "_us_linestyles", collection.get_linestyles()),
+        ),
         ("antialiased", collection._antialiaseds),
     ):
         kwargs[key] = (
@@ -828,14 +835,14 @@ def _import_axes(ax, target, unsupported):
     target.set_ylim(*ax.get_ylim())
     for name in ("x", "y"):
         scale = getattr(ax, f"get_{name}scale")()
-        getattr(target, f"set_{name}scale")(
-            scale
-        )
+        getattr(target, f"set_{name}scale")(scale)
         axis = getattr(ax, f"{name}axis")
         if isinstance(axis.get_major_locator(), FixedLocator):
             getattr(target, f"set_{name}ticks")(
                 axis.get_majorticklocs().copy(),
-                labels=axis.get_major_formatter().format_ticks(axis.get_majorticklocs()),
+                labels=axis.get_major_formatter().format_ticks(
+                    axis.get_majorticklocs()
+                ),
             )
     target.set_grid(
         any(line.get_visible() for line in ax.get_xgridlines() + ax.get_ygridlines())
@@ -1029,8 +1036,12 @@ def _import_child(child, ax, target, unsupported):
         _import_axes(child, subplot, unsupported)
         bounds = ax.transAxes.inverted().transform_bbox(child.bbox).bounds
         target._import_child_axes.append(
-            dict(kind="inset", bounds=tuple(bounds), subplot=subplot,
-                 locator=ReboundSnapshot(child.get_axes_locator(), ax))
+            dict(
+                kind="inset",
+                bounds=tuple(bounds),
+                subplot=subplot,
+                locator=ReboundSnapshot(child.get_axes_locator(), ax),
+            )
         )
     unsupported.report.add(
         child, "Child axes retained for Matplotlib", fallback="native"

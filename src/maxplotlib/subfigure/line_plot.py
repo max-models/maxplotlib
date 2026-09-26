@@ -1761,8 +1761,11 @@ class LinePlot:
             ax.set_ylabel(self._ylabel, **self._ylabel_kwargs)
         if self._legend and len(self.line_data) > 0:
             ax.legend(**self._legend_kwargs)
-        if (not hasattr(self, "_import_grid") or self._grid != self._import_grid
-                or getattr(self, "_import_grid_edited", False)):
+        if (
+            not hasattr(self, "_import_grid")
+            or self._grid != self._import_grid
+            or getattr(self, "_import_grid_edited", False)
+        ):
             ax.grid(self._grid)
         if self._axis_settings:
             axis_settings = dict(self._axis_settings)
