@@ -491,3 +491,66 @@ def test_pint_units_override_attrs_and_mesh():
     x, y, z, *_ = xarray_support.mesh_data(da)
     assert type(z) is np.ndarray
     np.testing.assert_allclose(z, _mesh().values)
+
+
+# ---------------------------------------------------------------------------
+# da.maxplot accessor
+# ---------------------------------------------------------------------------
+
+
+def test_accessor_methods_return_canvases():
+    import maxplotlib.xarray  # noqa: F401
+
+    canvas = _line().maxplot.line(color="red")
+    assert isinstance(canvas, Canvas)
+    fig, axes = canvas.get_matplotlib_figaxs()
+    ax = np.ravel(axes)[0]
+    assert ax.get_lines()[0].get_color() == "red"
+    assert ax.get_xlabel() == "Time [s]"
+    plt.close(fig)
+
+    for method in ("pcolormesh", "imshow", "contour", "contourf"):
+        canvas = getattr(_mesh().maxplot, method)()
+        fig = canvas.render(backend="plotly")
+        np.testing.assert_allclose(fig.data[0].z, _mesh().values)
+
+    canvas = _species().maxplot.scatter(hue="species")
+    assert len(canvas.render(backend="plotly").data) == 2
+
+
+def test_accessor_canvas_kwargs_and_facets():
+    import maxplotlib.xarray  # noqa: F401
+
+    canvas = _mesh().maxplot.pcolormesh(canvas_kwargs={"fontsize": 14})
+    assert canvas.fontsize == 14
+
+    canvas = _cube().maxplot.pcolormesh(col="t", col_wrap=2, cmap="magma")
+    assert (canvas.nrows, canvas.ncols) == (2, 2)
+    fig = canvas.render(backend="plotly")
+    assert [trace.showscale for trace in fig.data] == [True, False, False]
+
+    canvas = _cube().isel(y=0).maxplot.line(col="t", sharey=False)
+    assert canvas.ncols == 3
+
+
+def test_accessor_call_picks_kind():
+    import maxplotlib.xarray  # noqa: F401
+
+    fig = _line().maxplot().render(backend="plotly")
+    assert fig.data[0].type == "scatter"
+    fig = _mesh().maxplot().render(backend="plotly")
+    assert fig.data[0].type == "heatmap"
+    fig = _species().maxplot(hue="species").render(backend="plotly")
+    assert [trace.type for trace in fig.data] == ["scatter", "scatter"]
+    canvas = _cube().maxplot(col="t")
+    assert canvas.ncols == 3
+    with pytest.raises(ValueError, match="1-D or 2-D"):
+        _cube().maxplot()
+
+
+def test_maxplotlib_does_not_import_xarray():
+    import subprocess
+    import sys
+
+    code = "import sys, maxplotlib; assert 'xarray' not in sys.modules"
+    subprocess.run([sys.executable, "-c", code], check=True)

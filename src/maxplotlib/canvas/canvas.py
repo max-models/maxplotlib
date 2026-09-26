@@ -578,7 +578,11 @@ class Canvas:
             kwargs.setdefault("vmin", float(np.nanmin(values)))
             kwargs.setdefault("vmax", float(np.nanmax(values)))
             if kind in ("contour", "contourf") and "levels" not in kwargs:
-                kwargs["levels"] = np.linspace(kwargs["vmin"], kwargs["vmax"], 11)
+                from matplotlib.ticker import MaxNLocator
+
+                kwargs["levels"] = MaxNLocator(10).tick_values(
+                    kwargs["vmin"], kwargs["vmax"]
+                )
             # One colorbar for the figure, added below; "colorbar" hides the
             # per-trace scale Plotly would otherwise show.
             kwargs["add_colorbar"] = False
