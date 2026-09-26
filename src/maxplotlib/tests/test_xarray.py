@@ -176,3 +176,318 @@ def test_imshow_colorbar_uses_given_label():
     fig, axes = canvas.get_matplotlib_figaxs()
     assert fig.axes[-1].get_ylabel() == "density"
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Titles from single-value coordinates
+# ---------------------------------------------------------------------------
+
+
+def _cube():
+    t = np.array([0.0, 0.5, 1.0])
+    return xr.DataArray(
+        np.arange(36.0).reshape(3, 3, 4),
+        dims=("t", "y", "x"),
+        coords={
+            "t": ("t", t, {"units": "s"}),
+            "x": np.linspace(0, 1, 4),
+            "y": np.linspace(0, 2, 3),
+        },
+        name="phi",
+        attrs={"long_name": "Potential", "units": "V"},
+    )
+
+
+def test_title_from_selected_coordinates():
+    da = _cube().sel(t=0.5).isel(y=1)
+    assert xarray_support.title(da) == "t = 0.5 s, y = 1"
+    canvas = Canvas()
+    canvas.plot(da)
+    fig, axes = canvas.get_matplotlib_figaxs()
+    assert np.ravel(axes)[0].get_title() == "t = 0.5 s, y = 1"
+    plt.close(fig)
+
+
+def test_title_formats_strings_and_datetimes():
+    da = xr.DataArray(
+        np.zeros((2, 2)),
+        dims=("species", "time"),
+        coords={
+            "species": ["ions", "electrons"],
+            "time": np.array(["2026-01-01", "2026-01-02"], dtype="datetime64[D]"),
+        },
+    )
+    assert xarray_support.title(da.isel(species=0, time=1)) == (
+        "species = ions, time = 2026-01-02"
+    )
+
+
+def test_explicit_title_wins():
+    canvas, ax = Canvas.subplots()
+    ax.set_title("mine")
+    ax.pcolormesh(_cube().isel(t=0))
+    fig = canvas.render(backend="plotly")
+    assert "mine" in [a.text for a in fig.layout.annotations]
+    assert not any("t = " in (a.text or "") for a in fig.layout.annotations)
+
+
+def test_no_title_without_scalar_coords():
+    canvas, ax = Canvas.subplots()
+    ax.plot(_line())
+    assert ax._title is None
+
+
+# ---------------------------------------------------------------------------
+# imshow, contour, contourf, scatter
+# ---------------------------------------------------------------------------
+
+
+def test_imshow_dataarray_extent_and_labels():
+    da = _mesh()
+    canvas = Canvas()
+    canvas.imshow(da)
+    fig, axes = canvas.get_matplotlib_figaxs()
+    ax = np.ravel(axes)[0]
+    image = ax.get_images()[0]
+    # x: 0..1 in 4 steps of 1/3, y: 0..2 in 3 steps of 1.
+    np.testing.assert_allclose(image.get_extent(), [-1 / 6, 7 / 6, -0.5, 2.5])
+    assert image.origin == "lower"
+    np.testing.assert_allclose(image.get_array(), da.values)
+    assert ax.get_xlabel() == "x [m]"
+    assert fig.axes[-1].get_ylabel() == "Potential [V]"
+    plt.close(fig)
+
+
+def test_imshow_dataarray_plotly_shows_colorbar():
+    canvas = Canvas()
+    canvas.imshow(_mesh())
+    fig = canvas.render(backend="plotly")
+    heatmap = fig.data[0]
+    assert heatmap.showscale is True
+    assert heatmap.colorbar.title.text == "Potential [V]"
+    np.testing.assert_allclose(heatmap.x0, 0.0, atol=1e-12)
+    np.testing.assert_allclose(heatmap.dx, 1 / 3)
+
+
+def test_imshow_dataarray_rejects_uneven_coordinates():
+    da = _mesh().assign_coords(x=[0.0, 0.1, 0.5, 2.0])
+    with pytest.raises(ValueError, match="'x' is not.*pcolormesh"):
+        Canvas().imshow(da)
+
+
+def test_contour_and_contourf_dataarray():
+    da = _mesh()
+    canvas, (left, right) = Canvas.subplots(ncols=2)
+    left.contour(da, levels=3)
+    right.contourf(da)
+    fig, axes = canvas.get_matplotlib_figaxs()
+    axes = np.ravel(axes)
+    assert axes[0].get_xlabel() == "x [m]"
+    # contour adds no colorbar by default, contourf does.
+    colorbars = [a for a in fig.axes if a not in axes]
+    assert [a.get_ylabel() for a in colorbars] == ["Potential [V]"]
+    plt.close(fig)
+
+
+def test_contour_colorbar_flag_does_not_reach_matplotlib():
+    canvas = Canvas()
+    canvas.contourf(_mesh(), colorbar=False)
+    fig, _ = canvas.get_matplotlib_figaxs()
+    plt.close(fig)
+
+
+def test_scatter_dataarray():
+    da = _line()
+    canvas = Canvas()
+    canvas.scatter(da, color="k")
+    fig, axes = canvas.get_matplotlib_figaxs()
+    ax = np.ravel(axes)[0]
+    np.testing.assert_allclose(ax.collections[0].get_offsets()[:, 1], da.values)
+    assert ax.get_ylabel() == "energy [J]"
+    plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# hue
+# ---------------------------------------------------------------------------
+
+
+def _species():
+    t = np.linspace(0, 1, 5)
+    return xr.DataArray(
+        np.stack([t, 2 * t]),
+        dims=("species", "t"),
+        coords={"species": ["ions", "electrons"], "t": ("t", t, {"units": "s"})},
+        name="density",
+    )
+
+
+def test_plot_hue_draws_one_labelled_line_per_value():
+    da = _species()
+    canvas = Canvas()
+    canvas.plot(da, hue="species")
+    fig, axes = canvas.get_matplotlib_figaxs()
+    ax = np.ravel(axes)[0]
+    lines = ax.get_lines()
+    assert [line.get_label() for line in lines] == [
+        "species = ions",
+        "species = electrons",
+    ]
+    np.testing.assert_allclose(lines[1].get_ydata(), da.sel(species="electrons"))
+    assert ax.get_legend() is not None
+    assert ax.get_xlabel() == "t [s]"
+    plt.close(fig)
+
+
+def test_hue_on_first_dimension_and_without_coordinate():
+    da = _species().T.drop_vars("species")
+    x, lines, _, _ = xarray_support.line_data(da, hue="species")
+    assert [label for _, label in lines] == ["species = 0", "species = 1"]
+    np.testing.assert_allclose(lines[1][0], 2 * x)
+
+
+def test_hue_errors_and_add_legend():
+    canvas = Canvas()
+    with pytest.raises(ValueError, match="hue=<dim>"):
+        canvas.plot(_species())
+    with pytest.raises(ValueError, match="hue= needs a 2-D"):
+        canvas.plot(_line(), hue="t")
+    with pytest.raises(TypeError, match="label="):
+        canvas.plot(_species(), hue="species", label="x")
+    canvas, ax = Canvas.subplots()
+    ax.scatter(_species(), hue="species", add_legend=False)
+    assert not ax._legend
+    fig = canvas.render(backend="plotly")
+    assert [trace.name for trace in fig.data] == [
+        "species = ions",
+        "species = electrons",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# facets
+# ---------------------------------------------------------------------------
+
+
+def test_facet_col_wrap_shares_scale_and_colorbar():
+    da = _cube()
+    canvas, axes = Canvas.facet(da, col="t", col_wrap=2)
+    assert len(axes) == 2 and len(axes[0]) == 2
+    assert axes[1][1] is None
+    fig, mpl_axes = canvas.get_matplotlib_figaxs()
+    assert not mpl_axes[1][1].get_visible()
+    meshes = [mpl_axes[r][c].collections[0] for r, c in [(0, 0), (0, 1), (1, 0)]]
+    assert {mesh.norm.vmin for mesh in meshes} == {0.0}
+    assert {mesh.norm.vmax for mesh in meshes} == {35.0}
+    assert [ax.get_title() for ax in fig.axes[:4] if ax.get_visible()] == [
+        "t = 0 s",
+        "t = 0.5 s",
+        "t = 1 s",
+    ]
+    # One figure-wide colorbar: 4 grid axes + 1 colorbar axis.
+    assert len(fig.axes) == 5
+    assert fig.axes[-1].get_ylabel() == "Potential [V]"
+    # Outer labels only: (0, 1) has nothing below it, so keeps its x label.
+    assert mpl_axes[0][0].get_xlabel() == ""
+    assert mpl_axes[0][1].get_xlabel() == "x"
+    assert mpl_axes[1][0].get_ylabel() == "y"
+    assert mpl_axes[0][1].get_ylabel() == ""
+    plt.close(fig)
+
+
+def test_facet_plotly_single_colorbar():
+    canvas, _ = Canvas.facet(_cube(), col="t")
+    fig = canvas.render(backend="plotly")
+    assert [trace.showscale for trace in fig.data] == [True, False, False]
+    assert {trace.zmin for trace in fig.data} == {0.0}
+    assert {trace.zmax for trace in fig.data} == {35.0}
+    assert fig.data[0].colorbar.title.text == "Potential [V]"
+
+
+def test_facet_row_and_col_lines():
+    da = _cube()
+    canvas, axes = Canvas.facet(da.isel(y=0), row="t", kind="plot")
+    assert len(axes) == 3 and len(axes[0]) == 1
+    assert axes[2][0]._title == "t = 1 s, y = 0"
+    canvas, axes = Canvas.facet(da, row="t", col="y", kind="plot", color="k")
+    assert len(axes) == 3 and len(axes[0]) == 3
+    fig, _ = canvas.get_matplotlib_figaxs()
+    assert len(fig.axes) == 9  # no colorbar for lines
+    plt.close(fig)
+
+
+def test_facet_lines_share_y_range_and_hide_inner_ticks():
+    da = _cube().isel(y=0)  # values 0..27 over t
+    canvas, axes = Canvas.facet(da, col="t", kind="plot")
+    fig, mpl_axes = canvas.get_matplotlib_figaxs()
+    limits = {tuple(ax.get_ylim()) for ax in np.ravel(mpl_axes)}
+    assert len(limits) == 1
+    np.testing.assert_allclose(limits.pop(), (-1.35, 28.35))  # data range + 5 %
+    assert mpl_axes[0][0].yaxis.get_tick_params()["labelleft"]
+    assert not mpl_axes[0][1].yaxis.get_tick_params()["labelleft"]
+    plt.close(fig)
+
+    canvas, axes = Canvas.facet(da, col="t", kind="plot", sharey=False)
+    fig, mpl_axes = canvas.get_matplotlib_figaxs()
+    assert len({tuple(ax.get_ylim()) for ax in np.ravel(mpl_axes)}) == 3
+    assert mpl_axes[0][1].get_ylabel() == "Potential [V]"
+    plt.close(fig)
+
+
+def test_facet_contourf_shares_levels_and_can_skip_colorbar():
+    canvas, axes = Canvas.facet(_cube(), col="t", kind="contourf", add_colorbar=False)
+    fig, mpl_axes = canvas.get_matplotlib_figaxs()
+    levels = [ax.collections[0].levels for ax in np.ravel(mpl_axes)]
+    np.testing.assert_allclose(levels[0], levels[2])
+    assert len(fig.axes) == 3
+    plt.close(fig)
+
+
+def test_facet_errors():
+    da = _cube()
+    with pytest.raises(ValueError, match="col= and/or row="):
+        Canvas.facet(da)
+    with pytest.raises(ValueError, match="not a dimension"):
+        Canvas.facet(da, col="z")
+    with pytest.raises(ValueError, match="kind must be"):
+        Canvas.facet(da, col="t", kind="bar")
+    with pytest.raises(ValueError, match="col_wrap"):
+        Canvas.facet(da, row="t", col_wrap=2)
+    with pytest.raises(ValueError, match="2-D DataArray"):
+        Canvas.facet(da.isel(x=0), col="t")  # leaves 1-D (y) panels
+
+
+# ---------------------------------------------------------------------------
+# pint units
+# ---------------------------------------------------------------------------
+
+
+def test_pint_units_label_and_values():
+    pint = pytest.importorskip("pint")
+    ureg = pint.UnitRegistry()
+    t = np.linspace(0, 1, 4)
+    da = xr.DataArray(
+        ureg.Quantity(t * 3.0, "m/s"),
+        dims="t",
+        coords={"t": ("t", t, {"units": "s"})},
+        name="speed",
+    )
+    assert xarray_support.value_label(da) == "speed [m/s]"
+    canvas = Canvas()
+    canvas.plot(da)
+    fig, axes = canvas.get_matplotlib_figaxs()
+    ax = np.ravel(axes)[0]
+    np.testing.assert_allclose(ax.get_lines()[0].get_ydata(), t * 3.0)
+    assert ax.get_ylabel() == "speed [m/s]"
+    plt.close(fig)
+
+
+def test_pint_units_override_attrs_and_mesh():
+    pint = pytest.importorskip("pint")
+    ureg = pint.UnitRegistry()
+    da = _mesh().copy(data=ureg.Quantity(_mesh().values, "kV"))
+    # attrs still say "V"; the quantity is authoritative.
+    assert xarray_support.value_label(da) == "Potential [kV]"
+    x, y, z, *_ = xarray_support.mesh_data(da)
+    assert type(z) is np.ndarray
+    np.testing.assert_allclose(z, _mesh().values)

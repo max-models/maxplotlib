@@ -12,6 +12,16 @@ from maxplotlib.utils import xarray_support
 # maxplotlib itself rather than being forwarded to a backend drawing call.
 _NEUTRAL_KWARGS = ("hover", "meta")
 
+
+def _mpl_mappable_kwargs(line):
+    """Kwargs for a Matplotlib color-mapped artist.
+
+    ``colorbar`` is a Plotly-only flag; Matplotlib adds colorbars through a
+    separate ``colorbar()`` entry, and would reject it as an artist property.
+    """
+    return {k: v for k, v in line["kwargs"].items() if k != "colorbar"}
+
+
 _TIKZ_SUPPORTED_PLOT_TYPES = {
     "plot",
     "scatter",
@@ -394,25 +404,67 @@ class LinePlot:
         """Matplotlib-style alias for :meth:`add_line`.
 
         ``plot(da)`` with a 1-D ``xarray.DataArray`` plots it against its
-        coordinate and labels axes that have no label yet.
+        coordinate; see :meth:`_plot_dataarray`.
         """
         if y is None:
             if not xarray_support.is_dataarray(x):
                 raise TypeError("plot(x, y) requires both x and y data")
-            x, y, xlabel, ylabel = xarray_support.line_data(x)
-            self._set_default_labels(xlabel, ylabel)
+            self._plot_dataarray(self.add_line, x, layer, kwargs)
+            return
         self.add_line(x, y, layer=layer, **kwargs)
 
-    def _set_default_labels(self, xlabel, ylabel):
-        """Set axis labels that the user has not set."""
+    def _set_default_labels(self, xlabel, ylabel, da=None):
+        """Set axis labels, and a title from ``da``, that the user has not set."""
         if not self._xlabel and xlabel:
             self._xlabel = xlabel
         if not self._ylabel and ylabel:
             self._ylabel = ylabel
+        if da is not None and not self._title:
+            self._title = xarray_support.title(da) or self._title
 
-    def scatter(self, x, y, layer=0, **kwargs):
+    def _plot_dataarray(self, method, da, layer, kwargs):
+        """Draw a DataArray as lines or points with ``method(x, y, ...)``.
+
+        Axes are labelled from the array's attributes and the title from its
+        single-value coordinates, unless already set. ``hue=<dim>`` draws a
+        2-D array as one labelled series per value of ``dim`` and shows the
+        legend unless ``add_legend=False``.
+        """
+        hue = kwargs.pop("hue", None)
+        add_legend = kwargs.pop("add_legend", True)
+        if hue is not None and "label" in kwargs:
+            raise TypeError("label= cannot be combined with hue=")
+        x, lines, xlabel, ylabel = xarray_support.line_data(da, hue=hue)
+        self._set_default_labels(xlabel, ylabel, da)
+        for y, label in lines:
+            line_kwargs = dict(kwargs) if label is None else {**kwargs, "label": label}
+            method(x, y, layer=layer, **line_kwargs)
+        if hue is not None and add_legend:
+            self._legend = True
+
+    def _mesh_dataarray(self, method, da, layer, kwargs, add_colorbar=True, name=None):
+        """Draw a 2-D DataArray with ``method(x, y, z, ...)``.
+
+        ``xdim=``/``ydim=`` pick which dimension goes on each axis. A colorbar
+        labelled from the array is added unless ``add_colorbar=False``.
+        """
+        add_colorbar = kwargs.pop("add_colorbar", add_colorbar)
+        x, y, z, xlabel, ylabel, zlabel = xarray_support.mesh_data(
+            da,
+            x=kwargs.pop("xdim", None),
+            y=kwargs.pop("ydim", None),
+            method=name or method.__name__,
+        )
+        self._set_default_labels(xlabel, ylabel, da)
+        method(x, y, z, layer=layer, **kwargs)
+        if add_colorbar:
+            self.add_colorbar(label=zlabel, layer=layer)
+
+    def scatter(self, x, y=None, layer=0, **kwargs):
         """
         Add a scatter plot to the subplot.
+
+        ``scatter(da)`` accepts an ``xarray.DataArray`` like :meth:`plot`.
 
         Parameters:
         x (array-like): X-axis data.
@@ -421,6 +473,11 @@ class LinePlot:
         **kwargs: Additional keyword arguments forwarded to the backend
             (e.g., color, marker, s, label).
         """
+        if y is None:
+            if not xarray_support.is_dataarray(x):
+                raise TypeError("scatter(x, y) requires both x and y data")
+            self._plot_dataarray(self.scatter, x, layer, kwargs)
+            return
         ld = {
             "x": np.array(x),
             "y": np.array(y),
@@ -598,8 +655,19 @@ class LinePlot:
             layer,
         )
 
-    def contour(self, x, y, z, layer=0, **kwargs):
-        """Add contour lines for a 2D scalar field."""
+    def contour(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add contour lines for a 2D scalar field.
+
+        ``contour(da)`` accepts a 2-D ``xarray.DataArray`` like
+        :meth:`pcolormesh`, but adds no colorbar by default.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("contour(da) takes no y or z data")
+            self._mesh_dataarray(self.contour, x, layer, kwargs, add_colorbar=False)
+            return
+        if y is None or z is None:
+            raise TypeError("contour(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -612,8 +680,19 @@ class LinePlot:
             layer,
         )
 
-    def contourf(self, x, y, z, layer=0, **kwargs):
-        """Add filled contours for a 2D scalar field."""
+    def contourf(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add filled contours for a 2D scalar field.
+
+        ``contourf(da)`` accepts a 2-D ``xarray.DataArray`` like
+        :meth:`pcolormesh`.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("contourf(da) takes no y or z data")
+            self._mesh_dataarray(self.contourf, x, layer, kwargs, add_colorbar=True)
+            return
+        if y is None or z is None:
+            raise TypeError("contourf(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -629,22 +708,16 @@ class LinePlot:
     def pcolormesh(self, x, y=None, z=None, layer=0, **kwargs):
         """Add a pseudocolor mesh.
 
-        ``pcolormesh(da)`` with a 2-D ``xarray.DataArray`` uses its coordinates
-        and labels axes that have no label yet. ``xdim=``/``ydim=`` pick which
-        dimension goes on each axis, and a labelled colorbar is added unless
-        ``add_colorbar=False``.
+        ``pcolormesh(da)`` with a 2-D ``xarray.DataArray`` uses its coordinates.
+        Axes are labelled from its attributes and the title from its
+        single-value coordinates, unless already set. ``xdim=``/``ydim=`` pick
+        which dimension goes on each axis, and a labelled colorbar is added
+        unless ``add_colorbar=False``.
         """
         if xarray_support.is_dataarray(x):
             if y is not None or z is not None:
                 raise TypeError("pcolormesh(da) takes no y or z data")
-            add_colorbar = kwargs.pop("add_colorbar", True)
-            x, y, z, xlabel, ylabel, zlabel = xarray_support.mesh_data(
-                x, x=kwargs.pop("xdim", None), y=kwargs.pop("ydim", None)
-            )
-            self._set_default_labels(xlabel, ylabel)
-            self.pcolormesh(x, y, z, layer=layer, **kwargs)
-            if add_colorbar:
-                self.add_colorbar(label=zlabel, layer=layer)
+            self._mesh_dataarray(self.pcolormesh, x, layer, kwargs)
             return
         if y is None or z is None:
             raise TypeError("pcolormesh(x, y, z) requires x, y and z data")
@@ -1419,6 +1492,28 @@ class LinePlot:
         self._add(ld, layer)
 
     def add_imshow(self, data, layer=0, **kwargs):
+        """Add an image.
+
+        ``add_imshow(da)`` with a 2-D ``xarray.DataArray`` places the image by
+        its evenly spaced coordinates (``origin="lower"``) and otherwise
+        behaves like :meth:`pcolormesh` with a DataArray.
+        """
+        if xarray_support.is_dataarray(data):
+            xdim, ydim = xarray_support.mesh_dims(
+                data, kwargs.get("xdim"), kwargs.get("ydim"), "imshow"
+            )
+            kwargs.setdefault("origin", "lower")
+            kwargs.setdefault(
+                "extent",
+                xarray_support.image_extent(
+                    xarray_support.coord_values(data, xdim),
+                    xarray_support.coord_values(data, ydim),
+                    xdim,
+                    ydim,
+                ),
+            )
+            self._mesh_dataarray(self._imshow_xyz, data, layer, kwargs, name="imshow")
+            return
         ld = {
             "data": np.asanyarray(data).copy(),
             "layer": layer,
@@ -1426,6 +1521,9 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
+
+    def _imshow_xyz(self, x, y, z, layer=0, **kwargs):
+        self.add_imshow(z, layer=layer, **kwargs)
 
     def add_image(self, data, layer=0, **kwargs):
         """Matplotlib-style alias for ``imshow``."""
@@ -1469,6 +1567,7 @@ class LinePlot:
         ax (matplotlib.axes.Axes): Axis on which to plot the lines.
         """
         im = None
+        self._figure_colorbar = None
         self._import_rendered_artists = {}
         if hasattr(self, "_import_projection_artist_ids"):
             for name, identifiers in self._import_projection_artist_ids.items():
@@ -1549,17 +1648,14 @@ class LinePlot:
                     ax.violinplot(line["dataset"], **line["kwargs"])
                 elif line["plot_type"] == "eventplot":
                     ax.eventplot(line["positions"], **line["kwargs"])
-                elif line["plot_type"] == "contour":
-                    contour_sets.append(
-                        ax.contour(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] in ("contour", "contourf"):
+                    im = getattr(ax, line["plot_type"])(
+                        line["x"], line["y"], line["z"], **_mpl_mappable_kwargs(line)
                     )
-                elif line["plot_type"] == "contourf":
-                    contour_sets.append(
-                        ax.contourf(line["x"], line["y"], line["z"], **line["kwargs"])
-                    )
+                    contour_sets.append(im)
                 elif line["plot_type"] == "pcolormesh":
                     im = ax.pcolormesh(
-                        line["x"], line["y"], line["z"], **line["kwargs"]
+                        line["x"], line["y"], line["z"], **_mpl_mappable_kwargs(line)
                     )
                 elif line["plot_type"] == "hexbin":
                     ax.hexbin(line["x"], line["y"], **line["kwargs"])
@@ -1755,13 +1851,16 @@ class LinePlot:
                 elif line["plot_type"] == "imshow":
                     im = ax.imshow(
                         line["data"],
-                        **line["kwargs"],
+                        **_mpl_mappable_kwargs(line),
                     )
                 elif line["plot_type"] == "patch":
                     ax.add_patch(
                         line["patch"],
                         **line["kwargs"],
                     )
+                elif line["plot_type"] == "colorbar" and line.get("span_figure"):
+                    # Drawn by the Canvas once every subplot exists.
+                    self._figure_colorbar = (im, line["label"])
                 elif line["plot_type"] == "colorbar":
                     divider = make_axes_locatable(ax)
                     cax = divider.append_axes("right", size="5%", pad=0.05)
@@ -2744,8 +2843,11 @@ class LinePlot:
                         contours=contours,
                         colorscale=kwargs.get("cmap", "Viridis"),
                         showscale=kwargs.get("colorbar", True),
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type == "contourf":
                 kwargs = line["kwargs"]
                 contours = {}
@@ -2766,8 +2868,11 @@ class LinePlot:
                         colorscale=kwargs.get("cmap", "Viridis"),
                         showscale=kwargs.get("colorbar", True),
                         contours=contours,
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type == "pcolormesh":
                 kwargs = line["kwargs"]
                 traces.append(
@@ -2777,6 +2882,8 @@ class LinePlot:
                         z=line["z"],
                         colorscale=kwargs.get("cmap", "Viridis"),
                         showscale=kwargs.get("colorbar", True),
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
                 last_heatmap_idx = len(traces) - 1
@@ -3567,11 +3674,11 @@ class LinePlot:
                 )
             elif plot_type == "colorbar":
                 if last_heatmap_idx is not None:
+                    trace = traces[last_heatmap_idx]
+                    trace.update(showscale=True)
                     label = line.get("label", "") or line["kwargs"].get("label", "")
                     if label:
-                        traces[last_heatmap_idx].update(
-                            colorbar=dict(title=dict(text=label))
-                        )
+                        trace.update(colorbar=dict(title=dict(text=label)))
             elif plot_type == "patch":
                 kwargs = line["kwargs"]
                 patch = line["patch"]

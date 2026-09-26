@@ -371,6 +371,7 @@ class Canvas:
         self._supylabel_kwargs: dict = {}
         self._subplots_adjust_kwargs: dict = {}
         self._tight_layout_kwargs: dict | None = None
+        self._hide_empty_subplots = False
         self._set_tight_layout = None
         self._align_labels = False
         self._align_titles = False
@@ -485,6 +486,148 @@ class Canvas:
                 return canvas, axes[0]
             if ncols == 1:
                 return canvas, [row[0] for row in axes]
+        return canvas, axes
+
+    _FACET_KINDS = {
+        "plot": "plot",
+        "scatter": "scatter",
+        "pcolormesh": "pcolormesh",
+        "imshow": "add_imshow",
+        "contour": "contour",
+        "contourf": "contourf",
+    }
+
+    @classmethod
+    def facet(
+        cls,
+        da,
+        col=None,
+        row=None,
+        col_wrap: int | None = None,
+        kind: str = "pcolormesh",
+        sharey: bool = True,
+        canvas_kwargs: dict | None = None,
+        **kwargs,
+    ):
+        """
+        Create a Canvas with one subplot per value of a DataArray dimension.
+
+        Parameters:
+        da (xarray.DataArray): The data. After removing ``col``/``row``, it
+            must have the dimensions ``kind`` needs: 1-D for ``"plot"`` and
+            ``"scatter"`` (2-D with ``hue=``), 2-D for the others.
+        col, row (str): Dimensions to lay out across columns and rows.
+        col_wrap (int): Wrap a ``col`` facet after this many columns.
+        kind (str): ``"plot"``, ``"scatter"``, ``"pcolormesh"``, ``"imshow"``,
+            ``"contour"`` or ``"contourf"``.
+        sharey (bool): For ``"plot"``/``"scatter"``, give every subplot the
+            y-range of the whole array. With ``False`` each subplot scales
+            its own y-axis and keeps its y tick labels.
+        canvas_kwargs (dict): Forwarded to the Canvas constructor.
+        **kwargs: Forwarded to each subplot's ``kind`` method.
+
+        Color-mapped kinds share one color scale (``vmin``/``vmax`` default to
+        the data range, and contour levels are shared) and one colorbar for
+        the whole figure, which ``add_colorbar=False`` turns off. Axis and
+        tick labels are kept on the outer subplots only, and each subplot is
+        titled with its coordinate values.
+
+        Returns:
+        (canvas, axes): The Canvas and a 2-D list of LinePlots, with ``None``
+            where a wrapped grid has no subplot.
+
+        Examples:
+        >>> canvas, axes = Canvas.facet(da, col="t", col_wrap=3)
+        >>> canvas, axes = Canvas.facet(da, row="species", kind="plot")
+        """
+        if not xarray_support.is_dataarray(da):
+            raise TypeError("facet() needs an xarray.DataArray")
+        if kind not in cls._FACET_KINDS:
+            raise ValueError(
+                f"kind must be one of {sorted(cls._FACET_KINDS)}, got {kind!r}"
+            )
+        if col is None and row is None:
+            raise ValueError("facet() needs col= and/or row=")
+        if col == row:
+            raise ValueError("col and row must be different dimensions")
+        for dim in (col, row):
+            if dim is not None and dim not in da.dims:
+                raise ValueError(f"{dim!r} is not a dimension of {da.dims}")
+        if col_wrap is not None and (col is None or row is not None):
+            raise ValueError("col_wrap= needs col= and no row=")
+
+        ncol_values = da.sizes[col] if col is not None else 1
+        nrow_values = da.sizes[row] if row is not None else 1
+        if col_wrap is not None:
+            ncols = max(1, min(col_wrap, ncol_values))
+            nrows = -(-ncol_values // ncols)
+            panels = [(j // ncols, j % ncols, {col: j}) for j in range(ncol_values)]
+        else:
+            ncols, nrows = ncol_values, nrow_values
+            panels = [
+                (i, j, {d: k for d, k in ((row, i), (col, j)) if d is not None})
+                for i in range(nrows)
+                for j in range(ncols)
+            ]
+
+        mapped = kind not in ("plot", "scatter")
+        sharey = sharey or mapped
+        add_colorbar = kwargs.pop("add_colorbar", kind != "contour")
+        values = xarray_support.magnitude(da)
+        if mapped:
+            kwargs.setdefault("vmin", float(np.nanmin(values)))
+            kwargs.setdefault("vmax", float(np.nanmax(values)))
+            if kind in ("contour", "contourf") and "levels" not in kwargs:
+                kwargs["levels"] = np.linspace(kwargs["vmin"], kwargs["vmax"], 11)
+            # One colorbar for the figure, added below; "colorbar" hides the
+            # per-trace scale Plotly would otherwise show.
+            kwargs["add_colorbar"] = False
+            kwargs["colorbar"] = False
+
+        canvas_kwargs = dict(canvas_kwargs or {})
+        if not {"subplot_spacing", "gridspec_kw"} & canvas_kwargs.keys():
+            canvas_kwargs["subplot_spacing"] = SubplotSpacing(
+                wspace=0.1 if sharey else 0.3, hspace=0.3
+            )
+        canvas = cls(nrows=nrows, ncols=ncols, **canvas_kwargs)
+        canvas._hide_empty_subplots = True
+        axes = [[None] * ncols for _ in range(nrows)]
+        method = cls._FACET_KINDS[kind]
+        for r, c, selection in panels:
+            subplot = canvas.add_subplot(row=r, col=c)
+            getattr(subplot, method)(da.isel(selection), **kwargs)
+            axes[r][c] = subplot
+
+        if not mapped and sharey:
+            low, high = float(np.nanmin(values)), float(np.nanmax(values))
+            margin = 0.05 * (high - low)
+        for r, c, _ in panels:
+            subplot = axes[r][c]
+            tick_params = {}
+            if r + 1 < nrows and axes[r + 1][c] is not None:
+                subplot._xlabel = None
+                tick_params["labelbottom"] = False
+            if c > 0 and sharey:
+                subplot._ylabel = None
+                tick_params["labelleft"] = False
+            if tick_params:
+                subplot.tick_params(**tick_params)
+            if not mapped and sharey:
+                subplot.set_ylim(low - margin, high + margin)
+            if (r, c) != panels[0][:2]:
+                subplot._legend = False
+        if mapped and add_colorbar:
+            first = axes[panels[0][0]][panels[0][1]]
+            first._add(
+                {
+                    "label": xarray_support.value_label(da),
+                    "layer": 0,
+                    "plot_type": "colorbar",
+                    "kwargs": {},
+                    "span_figure": True,
+                },
+                0,
+            )
         return canvas, axes
 
     @property
@@ -610,7 +753,7 @@ class Canvas:
     def scatter(
         self,
         x,
-        y,
+        y=None,
         layer=0,
         row: int | None = None,
         col: int | None = None,
@@ -625,6 +768,8 @@ class Canvas:
         layer (int): Layer index (default 0).
         row, col (int): Subplot position (default top-left).
         **kwargs: Forwarded to the backend (e.g., color, marker, s, label).
+
+        ``scatter(da)`` accepts an ``xarray.DataArray`` like ``plot(da)``.
         """
         sp = self._get_or_create_subplot(row, col)
         sp.scatter(x, y, layer=layer, **kwargs)
@@ -831,27 +976,27 @@ class Canvas:
     def contour(
         self,
         x,
-        y,
-        z,
+        y=None,
+        z=None,
         layer=0,
         row: int | None = None,
         col: int | None = None,
         **kwargs,
     ):
-        """Add contour lines to a subplot."""
+        """Add contour lines to a subplot; ``contour(da)`` takes a DataArray."""
         self._get_or_create_subplot(row, col).contour(x, y, z, layer=layer, **kwargs)
 
     def contourf(
         self,
         x,
-        y,
-        z,
+        y=None,
+        z=None,
         layer=0,
         row: int | None = None,
         col: int | None = None,
         **kwargs,
     ):
-        """Add filled contours to a subplot."""
+        """Add filled contours to a subplot; ``contourf(da)`` takes a DataArray."""
         self._get_or_create_subplot(row, col).contourf(x, y, z, layer=layer, **kwargs)
 
     def pcolormesh(
@@ -1598,7 +1743,7 @@ class Canvas:
         col: int | None = None,
         **kwargs,
     ):
-        """Add an image/matrix plot to a subplot."""
+        """Add an image/matrix plot to a subplot; ``imshow(da)`` takes a DataArray."""
         self._get_or_create_subplot(row, col).add_imshow(data, layer=layer, **kwargs)
 
     def add_image(
@@ -2088,7 +2233,8 @@ class Canvas:
 
         ``canvas.plot(x, y, **style)`` is the convenient direct plotting form.
         ``canvas.plot(da)`` plots a 1-D ``xarray.DataArray`` against its
-        coordinate, labelling the axes from its attributes.
+        coordinate, labelling the axes from its attributes; ``hue=<dim>``
+        draws a 2-D one as one line per value of ``dim``.
         Rendering is named explicitly by ``canvas.render(...)``; the legacy
         ``canvas.plot(backend=...)`` form remains supported.
         """
@@ -2393,6 +2539,18 @@ class Canvas:
                 ax.grid(False)
             else:
                 subplot.plot_matplotlib(ax, layers=layers)
+
+        if self._hide_empty_subplots:
+            for row in range(self.nrows):
+                for col in range(self.ncols):
+                    if (row, col) not in self._subplot_dict:
+                        axes[row][col].set_visible(False)
+        figure_axes = [ax for ax in fig.axes if ax.get_visible()]
+        for subplot in self._subplot_dict.values():
+            figure_colorbar = getattr(subplot, "_figure_colorbar", None)
+            if figure_colorbar is not None and figure_colorbar[0] is not None:
+                mappable, label = figure_colorbar
+                fig.colorbar(mappable, ax=figure_axes, label=label)
 
         if verbose:
             print("Finished plotting subplots.")
@@ -2939,6 +3097,12 @@ class Canvas:
             subplot_titles=subplot_titles,
             specs=specs,
         )
+        if self._hide_empty_subplots:
+            for row in range(self.nrows):
+                for col in range(self.ncols):
+                    if (row, col) not in self._subplot_dict:
+                        fig.update_xaxes(visible=False, row=row + 1, col=col + 1)
+                        fig.update_yaxes(visible=False, row=row + 1, col=col + 1)
 
         # Plot each subplot and propagate axis labels/scale
         for (row, col), line_plot in self._subplot_dict.items():
