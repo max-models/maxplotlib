@@ -684,11 +684,14 @@ def test_2d_coordinate_errors_and_plotly():
         Canvas().pcolormesh(da, xcoord="R")
     with pytest.raises(ValueError, match="imshow.*pcolormesh"):
         Canvas().imshow(da, xcoord="R", ycoord="Z")
+    # Curvilinear contourf/pcolormesh/contour are now rasterized to a Plotly
+    # image trace (see PLOTLY_BACKEND_COVERAGE.md's "Curvilinear meshes"
+    # section), so this no longer raises and no longer needs
+    # allow_unsupported=True.
     canvas = Canvas()
     canvas.contourf(da, xcoord="R", ycoord="Z")
-    with pytest.raises(NotImplementedError, match="curvilinear"):
-        canvas.render(backend="plotly")
-    canvas.render(backend="plotly", allow_unsupported=True)
+    fig = canvas.render(backend="plotly")
+    assert any(trace.type == "image" for trace in fig.data)
 
 
 def test_mesh_with_one_axis_coordinate():

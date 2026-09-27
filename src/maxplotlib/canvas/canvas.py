@@ -3097,14 +3097,24 @@ class Canvas:
                 subplot._secondary_xaxis_settings is not None
                 or subplot._secondary_yaxis_settings is not None
             ):
+                # Unlike twinx/twiny (a plain mirrored overlay axis),
+                # secondary_xaxis/secondary_yaxis let Matplotlib apply an
+                # arbitrary user Python ``functions=(forward, inverse)``
+                # pair to compute the secondary axis' own tick positions
+                # and labels from the primary axis. Plotly's overlaying-axis
+                # mechanism (used below for twinx/twiny) has no equivalent
+                # of "run this Python function to relabel the ticks", so
+                # this would need per-tick numeric evaluation of the
+                # supplied function and manual placement of `tickvals`/
+                # `ticktext` — a materially bigger feature than a mirrored
+                # overlay, and not implemented here.
                 raise NotImplementedError(
-                    "secondary_xaxis and secondary_yaxis are currently supported "
-                    "only by the matplotlib backend"
+                    "secondary_xaxis/secondary_yaxis are only supported by the "
+                    "matplotlib backend: they apply an arbitrary Matplotlib "
+                    "'functions=' transform to compute the secondary axis's "
+                    "ticks, which has no Plotly equivalent (unlike twinx/twiny, "
+                    "which just mirror the same axis and are supported)"
                 )
-        if self._twiny_subplots:
-            raise NotImplementedError(
-                "twiny is currently supported only by the matplotlib backend"
-            )
 
         setup_tex_fonts(
             fontsize=self.fontsize,
@@ -3133,6 +3143,25 @@ class Canvas:
                     if (row, col) not in self._subplot_dict:
                         fig.update_xaxes(visible=False, row=row + 1, col=col + 1)
                         fig.update_yaxes(visible=False, row=row + 1, col=col + 1)
+
+        # ``twiny`` mirrors ``twinx``: a second axis overlaid on the same
+        # plotting area sharing the other axis. Plotly's ``make_subplots``
+        # has a built-in ``secondary_y`` spec (used above for twinx) but no
+        # "secondary_x" equivalent, so a twiny x-axis is created manually
+        # below, one new ``xaxis`` id per twiny subplot, reusing whatever
+        # numbering ``make_subplots`` did not already take (including the
+        # extra secondary-y axes it may have created for twinx).
+        next_twiny_xaxis_id = (
+            max(
+                (
+                    int(key[len("xaxis") :] or 1)
+                    for key in fig.layout
+                    if key.startswith("xaxis")
+                ),
+                default=1,
+            )
+            + 1
+        )
 
         # Plot each subplot and propagate axis labels/scale
         legend_names = set()
@@ -3183,6 +3212,61 @@ class Canvas:
                     fig.add_shape(shape)
                 for annotation in twin_annotations:
                     fig.add_annotation(dict(annotation))
+
+            twiny_subplot = self._twiny_subplots.get((row, col))
+            twiny_xref = None
+            if twiny_subplot is not None:
+                twiny_xaxis_id = next_twiny_xaxis_id
+                next_twiny_xaxis_id += 1
+                twiny_xref = f"x{twiny_xaxis_id}"
+                (
+                    twiny_traces,
+                    twiny_shapes,
+                    twiny_annotations,
+                ) = twiny_subplot.plot_plotly(
+                    layers=layers, allow_unsupported=allow_unsupported
+                )
+                for trace in twiny_traces:
+                    if trace.type in ("pie", "table"):
+                        fig.add_trace(trace)
+                        continue
+                    # Adding on the same row/col first gives the trace the
+                    # correct y-axis (twiny shares the primary y-axis, just
+                    # like Matplotlib's ax.twiny()); the x-axis reference is
+                    # then swapped to the new overlaid axis below.
+                    fig.add_trace(trace, row=row + 1, col=col + 1)
+                    fig.data[-1].update(xaxis=twiny_xref)
+                # The new axis must reuse this subplot's own domain/anchor
+                # so it lines up with the cell it overlays instead of
+                # spanning the whole figure width.
+                primary_xaxis_key = "xaxis" if axis_index == 1 else f"xaxis{axis_index}"
+                primary_xaxis = fig.layout[primary_xaxis_key]
+                fig.update_layout(
+                    **{
+                        f"xaxis{twiny_xaxis_id}": dict(
+                            overlaying=xref,
+                            side="top",
+                            domain=primary_xaxis.domain,
+                            anchor=primary_xaxis.anchor,
+                            title_text=twiny_subplot._xlabel or None,
+                            type=(
+                                "log"
+                                if twiny_subplot._xaxis_scale == "log"
+                                else None
+                            ),
+                        )
+                    }
+                )
+                for shape in twiny_shapes:
+                    shape = dict(shape)
+                    shape["xref"] = twiny_xref
+                    shape.setdefault("yref", yref)
+                    fig.add_shape(shape)
+                for annotation in twiny_annotations:
+                    annotation = dict(annotation)
+                    annotation.setdefault("xref", twiny_xref)
+                    annotation.setdefault("yref", yref)
+                    fig.add_annotation(annotation)
 
             for shape in shapes:
                 shape = dict(shape)
@@ -3322,12 +3406,21 @@ class Canvas:
             tick_params = line_plot._tick_params
             if tick_params:
                 axis = tick_params.get("axis", "both")
+                which = tick_params.get("which", "major")
                 rotation = tick_params.get("labelrotation", tick_params.get("rotation"))
                 tickfont = {}
                 if tick_params.get("labelsize") is not None:
                     tickfont["size"] = tick_params["labelsize"]
                 if tick_params.get("labelcolor") is not None:
                     tickfont["color"] = tick_params["labelcolor"]
+                # ``labelfontfamily`` is a real Matplotlib ``tick_params()``
+                # keyword (unlike a made-up "labelweight" — Matplotlib's own
+                # ``tick_params`` has no font-weight option for tick labels,
+                # so there is nothing to mirror here without inventing a
+                # Plotly-only keyword that would silently do nothing on the
+                # Matplotlib backend).
+                if tick_params.get("labelfontfamily") is not None:
+                    tickfont["family"] = tick_params["labelfontfamily"]
                 tick_kwargs = {}
                 if rotation is not None:
                     tick_kwargs["tickangle"] = rotation
@@ -3339,11 +3432,35 @@ class Canvas:
                     tick_kwargs["ticklen"] = tick_params["length"]
                 if tick_params.get("width") is not None:
                     tick_kwargs["tickwidth"] = tick_params["width"]
+                # Minor-tick styling: Plotly exposes these as a nested
+                # ``xaxis.minor``/``yaxis.minor`` object rather than a
+                # ``which="minor"`` flag on the same properties.
+                minor_kwargs = {}
+                if which in ("minor", "both"):
+                    if tick_params.get("color") is not None:
+                        minor_kwargs["tickcolor"] = tick_params["color"]
+                    if tick_params.get("length") is not None:
+                        minor_kwargs["ticklen"] = tick_params["length"]
+                    if tick_params.get("width") is not None:
+                        minor_kwargs["tickwidth"] = tick_params["width"]
+                    if minor_kwargs:
+                        minor_kwargs.setdefault("ticks", "outside")
+                        tick_kwargs["minor"] = minor_kwargs
                 if tick_kwargs:
                     if axis in ("x", "both"):
                         fig.update_xaxes(row=row + 1, col=col + 1, **tick_kwargs)
                     if axis in ("y", "both"):
                         fig.update_yaxes(row=row + 1, col=col + 1, **tick_kwargs)
+
+            # ``minorticks_on()``/``minorticks_off()`` toggle whether minor
+            # ticks are drawn at all; Plotly's equivalent is showing/hiding
+            # them via ``xaxis.minor.ticks``/``yaxis.minor.ticks``.
+            if line_plot._minorticks is True:
+                fig.update_xaxes(minor=dict(ticks="outside"), row=row + 1, col=col + 1)
+                fig.update_yaxes(minor=dict(ticks="outside"), row=row + 1, col=col + 1)
+            elif line_plot._minorticks is False:
+                fig.update_xaxes(minor=dict(ticks=""), row=row + 1, col=col + 1)
+                fig.update_yaxes(minor=dict(ticks=""), row=row + 1, col=col + 1)
 
             if line_plot._axis_settings:
                 axis_args = line_plot._axis_settings.get("args", ())

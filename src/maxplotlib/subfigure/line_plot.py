@@ -2437,6 +2437,13 @@ class LinePlot:
         # Indices of shapes that already got their own hover overlay trace and
         # must not receive a second one from the generic ``hover=`` handling.
         hover_handled_shapes: set[int] = set()
+        # Plotly draws traces in the order they are added to the figure and
+        # has no per-trace z-order concept, so a bar's ``zorder`` is honored
+        # by reordering the bar/barh traces relative to each other (not
+        # relative to other plot types, which would require a global
+        # cross-type z-order model this backend does not otherwise have).
+        # Maps index-in-``traces`` -> the zorder recorded for that trace.
+        bar_trace_zorders: dict[int, float] = {}
 
         # These primitives have no faithful 2-D Plotly equivalent in the
         # current backend.  Keep the default strict so a mixed plot cannot
@@ -2491,8 +2498,24 @@ class LinePlot:
                     return value
             return value
 
+        # Matplotlib hatch strings that have a direct Plotly
+        # ``marker.pattern.shape`` equivalent. Matplotlib's ``o``/``O``/``*``
+        # hatches (circles/stars) and multi-character combinations (e.g.
+        # ``"/\\"``) have no Plotly pattern-shape counterpart, so they are
+        # intentionally left unmapped and fall through to "no pattern"
+        # rather than being approximated.
+        hatch_map = {
+            "/": "/",
+            "\\": "\\",
+            "x": "x",
+            ".": ".",
+            "-": "-",
+            "|": "|",
+            "+": "+",
+        }
+
         def bar_marker(kwargs):
-            """Build a go.Bar marker honoring color, edgecolor and linewidth."""
+            """Build a go.Bar marker honoring color, edgecolor, linewidth and hatch."""
             marker = dict(color=plotly_color(kwargs.get("color", None)))
             edgecolor = kwargs.get("edgecolor", kwargs.get("edgecolors", None))
             linewidth = kwargs.get("linewidth", kwargs.get("linewidths", None))
@@ -2505,20 +2528,121 @@ class LinePlot:
                         else (1 if edgecolor is not None else None)
                     ),
                 )
+            hatch = kwargs.get("hatch", None)
+            pattern_shape = hatch_map.get(hatch) if hatch else None
+            if pattern_shape is not None:
+                marker["pattern"] = dict(shape=pattern_shape)
+            # Plotly bar traces support marker.line.width/color but have no
+            # dash style for the border — go.bar.marker.Line has no "dash"
+            # attribute, unlike go.scatter.Line — so a matplotlib bar-edge
+            # ``linestyle`` genuinely has no Plotly equivalent and is left
+            # dropped (rather than faked with something misleading).
             return marker
+
+        def rasterize_curvilinear_mesh(plot_type, line):
+            """Render a curvilinear contour/contourf/pcolormesh as an image.
+
+            Plotly's ``go.Heatmap``/``go.Contour`` only accept 1-D x/y
+            (rectilinear) coordinates, so a 2-D (curvilinear) coordinate
+            grid has no direct Plotly trace. The standard workaround (also
+            used e.g. by struphy-plots' Plotly backend for the same
+            problem) is to rasterize the mesh with Matplotlib, off screen,
+            into an RGBA image sized to the data's bounding box, and place
+            that image as a ``go.Image`` trace positioned over the same
+            box, so it still participates in Plotly panning/zooming like
+            any other trace.  A fully transparent dummy ``go.Heatmap`` is
+            added alongside it purely to carry the colorbar, since
+            ``go.Image`` has no colorscale/colorbar of its own.
+            """
+            import io
+
+            import matplotlib.image as mpl_image
+            from matplotlib.backends.backend_agg import FigureCanvasAgg
+            from matplotlib.figure import Figure
+
+            kwargs = line["kwargs"]
+            X = np.asarray(tx(np.asarray(line["x"], dtype=float)))
+            Y = np.asarray(ty(np.asarray(line["y"], dtype=float)))
+            Z = np.ma.masked_invalid(np.asarray(line["z"], dtype=float))
+            cmap = kwargs.get("cmap", "viridis")
+            vmin = kwargs.get("vmin")
+            vmax = kwargs.get("vmax")
+            alpha = kwargs.get("alpha")
+            levels = kwargs.get("levels")
+
+            x0, x1 = float(np.nanmin(X)), float(np.nanmax(X))
+            y0, y1 = float(np.nanmin(Y)), float(np.nanmax(Y))
+
+            # Raster resolution scales with the mesh's own cell count (more
+            # cells -> a sharper image) but is capped so a huge mesh doesn't
+            # produce an oversized data: URI.
+            rows, cols = (Z.shape + (1,))[:2]
+            px_w = int(np.clip(cols * 8, 200, 1600))
+            px_h = int(np.clip(rows * 8, 200, 1600))
+            raster = Figure(figsize=(px_w / 100.0, px_h / 100.0), dpi=100)
+            FigureCanvasAgg(raster)
+            target = raster.add_axes((0, 0, 1, 1))
+            target.set_axis_off()
+            target.set_xlim(x0, x1)
+            target.set_ylim(y0, y1)
+            common = dict(cmap=cmap, vmin=vmin, vmax=vmax)
+            if plot_type == "pcolormesh":
+                target.pcolormesh(X, Y, Z, shading="auto", alpha=alpha, **common)
+            elif plot_type == "contourf":
+                target.contourf(X, Y, Z, levels=levels, alpha=alpha, **common)
+            else:  # "contour"
+                target.contour(X, Y, Z, levels=levels, **common)
+
+            buffer = io.BytesIO()
+            raster.savefig(buffer, format="png", transparent=True, dpi=100)
+            buffer.seek(0)
+            rgba = mpl_image.imread(buffer)  # (H, W, 4) floats in [0, 1]
+            pixels = rgba * 255.0
+            height_px, width_px = pixels.shape[0], pixels.shape[1]
+            dx = (x1 - x0) / width_px
+            dy = (y1 - y0) / height_px
+            traces.append(
+                go.Image(
+                    z=pixels,
+                    colormodel="rgba",
+                    # go.Image anchors x0/y0 at the *center* of the first
+                    # pixel and lays rows out top-to-bottom, so the first
+                    # row (top of the raster) sits at the data's y-maximum.
+                    x0=x0 + dx / 2,
+                    y0=y1 - dy / 2,
+                    dx=dx,
+                    dy=-dy,
+                    hoverinfo="skip",
+                    visible=kwargs.get("visible", True),
+                )
+            )
+            if kwargs.get("colorbar", True):
+                vmin_eff = vmin if vmin is not None else float(Z.min())
+                vmax_eff = vmax if vmax is not None else float(Z.max())
+                traces.append(
+                    go.Heatmap(
+                        x=[x0, x1],
+                        y=[y0, y1],
+                        z=[[vmin_eff, vmin_eff], [vmax_eff, vmax_eff]],
+                        colorscale=_colormap_to_plotly_colorscale(cmap),
+                        zmin=vmin_eff,
+                        zmax=vmax_eff,
+                        showscale=True,
+                        opacity=0,
+                        hoverinfo="skip",
+                        visible=kwargs.get("visible", True),
+                    )
+                )
+                nonlocal last_heatmap_idx
+                last_heatmap_idx = len(traces) - 1
 
         for line in self._iter_layer_lines(layers=layers):
             plot_type = line["plot_type"]
             if plot_type in ("contour", "contourf", "pcolormesh") and (
                 np.ndim(line["x"]) == 2 or np.ndim(line["y"]) == 2
             ):
-                if allow_unsupported:
-                    continue
-                raise NotImplementedError(
-                    f"Plotly cannot draw {plot_type} on 2-D (curvilinear) "
-                    "coordinates; use the matplotlib backend, or pass "
-                    "allow_unsupported=True to skip it for Plotly"
-                )
+                rasterize_curvilinear_mesh(plot_type, line)
+                continue
             if plot_type in unsupported_plot_types:
                 if allow_unsupported:
                     continue
@@ -2640,11 +2764,20 @@ class LinePlot:
                 if base is not None:
                     base = np.asarray(base, dtype=float) * self._yscale
                     self._plotly_barmode_hint = "overlay"
+                bar_width = kwargs.get("width", None)
+                bar_x = tx(line["x"])
+                if kwargs.get("align", "center") == "edge" and bar_width is not None:
+                    # Plotly always centers a bar on its x; matplotlib's
+                    # align="edge" instead treats x as the left edge, so
+                    # shift x by half the (scaled) width to match.
+                    bar_x = np.asarray(bar_x, dtype=float) + np.asarray(
+                        bar_width, dtype=float
+                    ) * self._xscale / 2.0
                 trace = go.Bar(
-                    x=tx(line["x"]),
+                    x=bar_x,
                     y=np.asarray(line["height"]) * self._yscale,
                     base=base,
-                    width=kwargs.get("width", None),
+                    width=bar_width,
                     orientation="v",
                     name=kwargs.get("label", ""),
                     showlegend=bool(kwargs.get("label")) and bool(self._legend),
@@ -2653,18 +2786,26 @@ class LinePlot:
                     offsetgroup=kwargs.get("offsetgroup", None),
                 )
                 traces.append(trace)
+                if kwargs.get("zorder") is not None:
+                    bar_trace_zorders[len(traces) - 1] = kwargs["zorder"]
             elif plot_type == "barh":
                 kwargs = line["kwargs"]
                 base = kwargs.get("left")
                 if base is not None:
                     base = np.asarray(base, dtype=float) * self._xscale
                     self._plotly_barmode_hint = "overlay"
+                bar_height = kwargs.get("height", None)
+                bar_y = ty(line["y"])
+                if kwargs.get("align", "center") == "edge" and bar_height is not None:
+                    bar_y = np.asarray(bar_y, dtype=float) + np.asarray(
+                        bar_height, dtype=float
+                    ) * self._yscale / 2.0
                 traces.append(
                     go.Bar(
                         x=np.asarray(line["width"]) * self._xscale,
-                        y=ty(line["y"]),
+                        y=bar_y,
                         base=base,
-                        width=kwargs.get("height", None),
+                        width=bar_height,
                         orientation="h",
                         name=kwargs.get("label", ""),
                         showlegend=bool(kwargs.get("label")) and bool(self._legend),
@@ -2673,6 +2814,8 @@ class LinePlot:
                         offsetgroup=kwargs.get("offsetgroup", None),
                     )
                 )
+                if kwargs.get("zorder") is not None:
+                    bar_trace_zorders[len(traces) - 1] = kwargs["zorder"]
             elif plot_type == "hist":
                 kwargs = line["kwargs"]
                 bins = line["bins"]
@@ -3611,6 +3754,8 @@ class LinePlot:
                     "center": "middle",
                     "baseline": "bottom",
                 }
+                ha = kwargs.get("ha", kwargs.get("horizontalalignment"))
+                va = kwargs.get("va", kwargs.get("verticalalignment"))
                 font_family = kwargs.get("fontfamily", kwargs.get("family", None))
                 if isinstance(font_family, (list, tuple)):
                     font_family = ", ".join(font_family)
@@ -3630,8 +3775,8 @@ class LinePlot:
                             y=y,
                             text=text,
                             showarrow=False,
-                            xanchor=ha_to_xanchor.get(kwargs.get("ha"), "left"),
-                            yanchor=va_to_yanchor.get(kwargs.get("va"), "bottom"),
+                            xanchor=ha_to_xanchor.get(ha, "left"),
+                            yanchor=va_to_yanchor.get(va, "bottom"),
                             font=font,
                         )
                     )
@@ -3647,6 +3792,8 @@ class LinePlot:
                         ax=0,
                         ay=-30,
                         font=font,
+                        xanchor=ha_to_xanchor.get(ha, "center"),
+                        yanchor=va_to_yanchor.get(va, "middle"),
                     )
                     if line.get("xytext") is not None:
                         tx_val = txs(float(line["xytext"][0]))
@@ -3727,6 +3874,11 @@ class LinePlot:
             elif plot_type == "patch":
                 kwargs = line["kwargs"]
                 patch = line["patch"]
+                # ``hatch`` is intentionally not translated here: patches are
+                # rendered as Plotly layout shapes (see module docstring),
+                # and layout.shape has no fill-pattern property at all (only
+                # traces, e.g. go.Bar, expose marker.pattern.shape), so there
+                # is no Plotly equivalent to map it onto.
                 try:
                     import matplotlib.patches as mpl_patches
                 except Exception:
@@ -3998,6 +4150,19 @@ class LinePlot:
                                 xshift=label_kwargs.get("padding", 0),
                             )
                         )
+
+        if bar_trace_zorders:
+            # Stable-reorder only the bar/barh traces among their own slots
+            # so a higher zorder draws later (on top), leaving traces of
+            # other plot types exactly where they were.
+            bar_slots = [i for i, t in enumerate(traces) if isinstance(t, go.Bar)]
+            originals = [traces[i] for i in bar_slots]
+            order = sorted(
+                range(len(bar_slots)),
+                key=lambda k: (bar_trace_zorders.get(bar_slots[k], 0.0), bar_slots[k]),
+            )
+            for slot, k in zip(bar_slots, order):
+                traces[slot] = originals[k]
 
         return traces, shapes, annotations
 
