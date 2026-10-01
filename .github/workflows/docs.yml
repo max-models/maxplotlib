@@ -25,10 +25,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install pandoc
+      - name: Install pandoc and LaTeX
         run: |
           sudo apt-get update
           sudo apt-get install -y pandoc
+          # pdflatex with pgfplots: the tutorials compile tikzfigure figures
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-extra texlive-pictures \
+            texlive-fonts-recommended lmodern
 
       - name: Install Python dependencies
         run: |
