@@ -194,9 +194,12 @@ Or plot with the TikZ backend:
 canvas.show(backend="tikzfigure")
 ```
 
-### Horizontal Subplots with TikZ Backend
+### Subplots and Meshes with the TikZ Backend
 
-The tikzfigure backend supports creating side-by-side subplots (1×n layouts):
+The tikzfigure backend draws the canvas with Matplotlib and converts the drawn figure into
+pgfplots axes, so every layout converts (rows, columns, grids, twin axes), with LaTeX text,
+legends and colorbars. Lines, markers, bars and text are pgfplots code; meshes and images are
+included as images:
 
 ```{python}
 #| label: fig-showcase-subplots
@@ -204,19 +207,24 @@ The tikzfigure backend supports creating side-by-side subplots (1×n layouts):
 #| fig-height: 6
 
 x = np.linspace(0, 2 * np.pi, 200)
-canvas, (ax1, ax2) = Canvas.subplots(ncols=2, width="10cm", ratio=0.3)
+canvas, (ax1, ax2) = Canvas.subplots(ncols=2, width="12cm", ratio=0.45)
 
-ax1.plot(x, np.sin(x), color="royalblue")
-ax1.set_title("sin(x)")
+ax1.plot(x, np.sin(x), color="royalblue", label="$\\sin x$")
+ax1.plot(x, np.cos(x), color="tomato", label="$\\cos x$")
+ax1.set_title("Lines")
+ax1.set_legend(True)
 
-ax2.plot(x, np.cos(x), color="tomato")
-ax2.set_title("cos(x)")
+xx, yy = np.meshgrid(x, x)
+ax2.pcolormesh(xx, yy, np.sin(xx) * np.cos(yy), cmap="RdBu_r")
+ax2.add_colorbar(label="$\\sin x \\cos y$")
+ax2.set_title("A mesh")
 
-canvas.suptitle("Trigonometric Functions")
-canvas.show(backend="tikzfigure")  # Generates LaTeX subfigures
+canvas.show(backend="tikzfigure")  # compiles with pdflatex
 ```
 
-**Note:** Only horizontal layouts (1×n) are currently supported with the tikzfigure backend. Vertical/grid layouts will raise `NotImplementedError`. See the tutorials for more examples.
+`canvas.render(backend="tikzfigure").savefig("figure.tikz")` writes the code for `\\input` in a
+LaTeX document, with the images next to it. Any Matplotlib figure converts the same way with
+`maxplotlib.backends.tikzfigure.figure_to_tikz(fig)`. See the tutorials for more examples.
 
 ### Terminal Backend with plotext
 
