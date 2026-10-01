@@ -2,6 +2,8 @@
 Tests for gantt chart functionality across all backends.
 """
 
+import shutil
+
 import numpy as np
 import pytest
 
@@ -133,6 +135,13 @@ def test_gantt_chart_tikzfigure_backend(sample_gantt_data, tmp_path):
     canvas.set_xlabel("Time (days)")
     canvas.set_title("Project Timeline")
 
+    # the TikZ code needs no LaTeX; compiling it to PDF needs pdflatex
+    tikz_file = tmp_path / "test_gantt_tikz.tikz"
+    canvas.savefig(str(tikz_file), backend="tikzfigure")
+    assert "\\begin{axis}" in tikz_file.read_text()
+
+    if shutil.which("pdflatex") is None:
+        pytest.skip("pdflatex not installed")
     output_file = tmp_path / "test_gantt_tikz.pdf"
     canvas.savefig(str(output_file), backend="tikzfigure")
 

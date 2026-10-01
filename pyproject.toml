@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "maxplotlibx"
-version = "0.1.9"
+version = "0.2.0"
 description = "A reproducible plotting module with various backends and export options."
 readme = "README.md"
 requires-python = ">=3.8"
@@ -19,14 +19,19 @@ dependencies = [
     "pint",
     "plotly",
     "plotext >= 6.0, < 7",
-    "tikzfigure[vis]>=0.3.0",
+    "tikzfigure[vis]>=0.4.0",
 ]
 [project.optional-dependencies]
 test = [
     "pytest",
     "coverage",
+    "xarray",
+]
+xarray = [
+    "xarray",
 ]
 docs = [
+    "xarray",
     "myst-parser",
     "sphinx",
     "sphinx-rtd-theme",

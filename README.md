@@ -1,4 +1,4 @@
-# Maxlotlib
+# Maxplotlib
 
 
 # Maxplotlib
@@ -219,23 +219,29 @@ canvas.show(backend="tikzfigure")
 
 ![](README_files/figure-commonmark/cell-14-output-1.png)
 
-### Horizontal Subplots with TikZ Backend
+### Subplots and Meshes with the TikZ Backend
 
-The tikzfigure backend supports creating side-by-side subplots (1×n
-layouts):
+The tikzfigure backend draws the canvas with Matplotlib and converts the
+drawn figure into pgfplots axes, so every layout converts (rows, columns,
+grids, twin axes), with LaTeX text, legends and colorbars. Lines,
+markers, bars and text are pgfplots code; meshes and images are included
+as images:
 
 ``` python
 x = np.linspace(0, 2 * np.pi, 200)
-canvas, (ax1, ax2) = Canvas.subplots(ncols=2, width="10cm", ratio=0.3)
+canvas, (ax1, ax2) = Canvas.subplots(ncols=2, width="12cm", ratio=0.45)
 
-ax1.plot(x, np.sin(x), color="royalblue")
-ax1.set_title("sin(x)")
+ax1.plot(x, np.sin(x), color="royalblue", label="$\\sin x$")
+ax1.plot(x, np.cos(x), color="tomato", label="$\\cos x$")
+ax1.set_title("Lines")
+ax1.set_legend(True)
 
-ax2.plot(x, np.cos(x), color="tomato")
-ax2.set_title("cos(x)")
+xx, yy = np.meshgrid(x, x)
+ax2.pcolormesh(xx, yy, np.sin(xx) * np.cos(yy), cmap="RdBu_r")
+ax2.add_colorbar(label="$\\sin x \\cos y$")
+ax2.set_title("A mesh")
 
-canvas.suptitle("Trigonometric Functions")
-canvas.show(backend="tikzfigure")  # Generates LaTeX subfigures
+canvas.show(backend="tikzfigure")  # compiles with pdflatex
 ```
 
 <div id="fig-showcase-subplots">
@@ -248,9 +254,11 @@ Figure 2
 
 </div>
 
-**Note:** Only horizontal layouts (1×n) are currently supported with the
-tikzfigure backend. Vertical/grid layouts will raise
-`NotImplementedError`. See the tutorials for more examples.
+`canvas.render(backend="tikzfigure").savefig("figure.tikz")` writes the
+code for `\\input` in a LaTeX document, with the images next to it. Any
+Matplotlib figure converts the same way with
+`maxplotlib.backends.tikzfigure.figure_to_tikz(fig)`. See the tutorials
+for more examples.
 
 ### Terminal Backend with plotext
 
@@ -349,3 +357,49 @@ canvas.show()
 
     (<Figure size 590.551x324.803 with 1 Axes>,
      array([[<Axes: xlabel='x'>]], dtype=object))
+
+### xarray data
+
+Plot labelled [xarray](https://docs.xarray.dev) data directly
+(`pip install maxplotlibx[xarray]`). Axes come from the coordinates,
+labels from the `long_name` and `units` attributes, and titles from the
+coordinates you selected. `import maxplotlib.xarray` adds a `.maxplot`
+accessor that mirrors xarray’s own `.plot` API and returns an ordinary
+`Canvas`, so the backend is still chosen when rendering:
+
+``` python
+import xarray as xr
+
+import maxplotlib.xarray  # registers da.maxplot and ds.maxplot
+
+t = np.linspace(0, 1.5, 6)
+xs = np.linspace(0, 2 * np.pi, 80)
+ys = np.linspace(-1, 1, 50)
+wave = xr.DataArray(
+    np.sin(xs - 2 * t[:, None, None]) * np.exp(-3 * ys[None, :, None] ** 2),
+    dims=("t", "y", "x"),
+    coords={"t": ("t", t, {"units": "s"}), "y": ys, "x": ("x", xs, {"units": "m"})},
+    name="phi",
+    attrs={"long_name": "Potential", "units": "V"},
+)
+
+wave.maxplot.pcolormesh(col="t", col_wrap=3, canvas_kwargs={"width": "16cm", "ratio": 0.6}).show()
+```
+
+![](README_files/figure-commonmark/cell-20-output-1.png)
+
+    (<Figure size 944.882x566.929 with 7 Axes>,
+     array([[<Axes: title={'center': 't = 0 s'}, ylabel='y'>,
+             <Axes: title={'center': 't = 0.3 s'}>,
+             <Axes: title={'center': 't = 0.6 s'}>],
+            [<Axes: title={'center': 't = 0.9 s'}, xlabel='x [m]', ylabel='y'>,
+             <Axes: title={'center': 't = 1.2 s'}, xlabel='x [m]'>,
+             <Axes: title={'center': 't = 1.5 s'}, xlabel='x [m]'>]],
+           dtype=object))
+
+The same works through Canvas methods,
+e.g. `canvas.plot(da, hue="species")`,
+`ax.pcolormesh(da, xcoord="R", ycoord="Z")` for curvilinear grids, or
+`Canvas.facet(da, col="t")`. `ds.maxplot.scatter(x=..., y=..., hue=...)`
+plots one Dataset variable against another. See the [xarray
+tutorial](tutorials/tutorial_17_xarray.ipynb) for more.

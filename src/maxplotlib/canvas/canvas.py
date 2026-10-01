@@ -18,13 +18,8 @@ from maxplotlib.backends.matplotlib.utils import (
 from maxplotlib.backends.plotext import PlotextFigure, create_plotext_figure
 from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
-from maxplotlib.subfigure.line_plot import (
-    _TIKZ_SUPPORTED_PLOT_TYPES,
-    LinePlot,
-    _tikz_error_bounds,
-    _tikz_step_coordinates,
-    _tikz_style_kwargs,
-)
+from maxplotlib.subfigure.line_plot import LinePlot
+from maxplotlib.utils import xarray_support
 from maxplotlib.utils.options import Backends
 
 
@@ -370,6 +365,10 @@ class Canvas:
         self._supylabel_kwargs: dict = {}
         self._subplots_adjust_kwargs: dict = {}
         self._tight_layout_kwargs: dict | None = None
+        self._hide_empty_subplots = False
+        # Set by Canvas.facet: merge Plotly legend entries across subplots and
+        # leave room for the figure title above the subplot titles.
+        self._facet = False
         self._set_tight_layout = None
         self._align_labels = False
         self._align_titles = False
@@ -392,6 +391,40 @@ class Canvas:
     # ------------------------------------------------------------------
     # Factory
     # ------------------------------------------------------------------
+
+    @classmethod
+    def from_matplotlib(
+        cls, source, *, strict=False, trusted=False, fallback="native", **canvas_kwargs
+    ):
+        """Snapshot a Matplotlib figure, axes, or rectangular axes array.
+
+        Portable geometry becomes independent plot entries. With the default
+        ``fallback="native"``, other built-in artists retain detached native
+        geometry for Matplotlib, including transforms and decorations. These
+        entries reject rendering on backends that cannot represent them.
+        ``fallback="skip"`` instead warns about unsupported artists;
+        ``fallback="raster"`` explicitly flattens the selection into an image.
+
+        ``strict=True`` raises on import losses; it does not promise identical
+        output on every backend. ``canvas.import_report`` contains artist
+        identities, severities, representations and backend restrictions.
+
+        Paths, pickle bytes and binary streams require ``trusted=True`` before
+        reading: unpickling can execute arbitrary code. Serialized figures are
+        only suitable for trusted producers and matching Matplotlib versions.
+        ``canvas_kwargs`` override figure defaults. Two-dimensional input
+        arrays define their own slot order; other inputs preserve source layout.
+        """
+        from maxplotlib.backends.matplotlib.importer import import_matplotlib
+
+        return import_matplotlib(
+            cls,
+            source,
+            strict=strict,
+            trusted=trusted,
+            fallback=fallback,
+            **canvas_kwargs,
+        )
 
     @classmethod
     def subplots(
@@ -450,6 +483,171 @@ class Canvas:
                 return canvas, axes[0]
             if ncols == 1:
                 return canvas, [row[0] for row in axes]
+        return canvas, axes
+
+    _FACET_KINDS = {
+        "plot": "plot",
+        "scatter": "scatter",
+        "pcolormesh": "pcolormesh",
+        "imshow": "add_imshow",
+        "contour": "contour",
+        "contourf": "contourf",
+    }
+
+    @classmethod
+    def facet(
+        cls,
+        da,
+        col=None,
+        row=None,
+        col_wrap: int | None = None,
+        kind: str = "pcolormesh",
+        sharey: bool = True,
+        canvas_kwargs: dict | None = None,
+        **kwargs,
+    ):
+        """
+        Create a Canvas with one subplot per value of a DataArray dimension.
+
+        Parameters:
+        da (xarray.DataArray): The data. After removing ``col``/``row``, it
+            must have the dimensions ``kind`` needs: 1-D for ``"plot"`` and
+            ``"scatter"`` (2-D with ``hue=``), 2-D for the others.
+        col, row (str): Dimensions to lay out across columns and rows.
+        col_wrap (int): Wrap a ``col`` facet after this many columns.
+        kind (str): ``"plot"``, ``"scatter"``, ``"pcolormesh"``, ``"imshow"``,
+            ``"contour"`` or ``"contourf"``.
+        sharey (bool): For ``"plot"``/``"scatter"``, give every subplot the
+            value range of the whole array (on the x-axis with ``ycoord=``).
+            With ``False`` each subplot scales its own axis and keeps its y
+            tick labels.
+        canvas_kwargs (dict): Forwarded to the Canvas constructor.
+        **kwargs: Forwarded to each subplot's ``kind`` method.
+
+        Color-mapped kinds share one color scale (``vmin``/``vmax`` default to
+        the data range, and contour levels are shared) and one colorbar for
+        the whole figure, which ``add_colorbar=False`` turns off. Axis and
+        tick labels are kept on the outer subplots only. Each subplot is
+        titled with the coordinate values that differ between subplots, and
+        the figure with the ones they share.
+
+        Returns:
+        (canvas, axes): The Canvas and a 2-D list of LinePlots, with ``None``
+            where a wrapped grid has no subplot.
+
+        Examples:
+        >>> canvas, axes = Canvas.facet(da, col="t", col_wrap=3)
+        >>> canvas, axes = Canvas.facet(da, row="species", kind="plot")
+        """
+        if not xarray_support.is_dataarray(da):
+            raise TypeError("facet() needs an xarray.DataArray")
+        if kind not in cls._FACET_KINDS:
+            raise ValueError(
+                f"kind must be one of {sorted(cls._FACET_KINDS)}, got {kind!r}"
+            )
+        if col is None and row is None:
+            raise ValueError("facet() needs col= and/or row=")
+        if col == row:
+            raise ValueError("col and row must be different dimensions")
+        for dim in (col, row):
+            if dim is not None and dim not in da.dims:
+                raise ValueError(f"{dim!r} is not a dimension of {da.dims}")
+        if col_wrap is not None and (col is None or row is not None):
+            raise ValueError("col_wrap= needs col= and no row=")
+
+        ncol_values = da.sizes[col] if col is not None else 1
+        nrow_values = da.sizes[row] if row is not None else 1
+        if col_wrap is not None:
+            ncols = max(1, min(col_wrap, ncol_values))
+            nrows = -(-ncol_values // ncols)
+            panels = [(j // ncols, j % ncols, {col: j}) for j in range(ncol_values)]
+        else:
+            ncols, nrows = ncol_values, nrow_values
+            panels = [
+                (i, j, {d: k for d, k in ((row, i), (col, j)) if d is not None})
+                for i in range(nrows)
+                for j in range(ncols)
+            ]
+
+        mapped = kind not in ("plot", "scatter")
+        sharey = sharey or mapped
+        add_colorbar = kwargs.pop("add_colorbar", kind != "contour")
+        values = xarray_support.magnitude(da)
+        if mapped:
+            # Shared limits for every panel, with xarray's color defaults.
+            xarray_support.color_limits(values, kwargs)
+            kwargs.setdefault("vmin", float(np.nanmin(values)))
+            kwargs.setdefault("vmax", float(np.nanmax(values)))
+            if kind in ("contour", "contourf") and "levels" not in kwargs:
+                from matplotlib.ticker import MaxNLocator
+
+                kwargs["levels"] = MaxNLocator(10).tick_values(
+                    kwargs["vmin"], kwargs["vmax"]
+                )
+            # One colorbar for the figure, added below; "colorbar" hides the
+            # per-trace scale Plotly would otherwise show.
+            kwargs["add_colorbar"] = False
+            kwargs["colorbar"] = False
+
+        canvas_kwargs = dict(canvas_kwargs or {})
+        if not {"subplot_spacing", "gridspec_kw"} & canvas_kwargs.keys():
+            canvas_kwargs["subplot_spacing"] = SubplotSpacing(
+                wspace=0.1 if sharey else 0.3, hspace=0.3
+            )
+        canvas = cls(nrows=nrows, ncols=ncols, **canvas_kwargs)
+        canvas._hide_empty_subplots = True
+        canvas._facet = True
+        # Coordinates shared by every panel go in the figure title, so the
+        # panel titles only show what differs between them.
+        common = [name for name, coord in da.coords.items() if coord.ndim == 0]
+        common_title = xarray_support.title(da)
+        if common_title:
+            canvas.suptitle(common_title)
+        axes = [[None] * ncols for _ in range(nrows)]
+        method = cls._FACET_KINDS[kind]
+        for r, c, selection in panels:
+            subplot = canvas.add_subplot(row=r, col=c)
+            panel = da.isel(selection)
+            subplot.set_title(
+                xarray_support.title(panel, exclude=common)
+                or ", ".join(f"{dim} = {index}" for dim, index in selection.items())
+            )
+            getattr(subplot, method)(panel, **kwargs)
+            axes[r][c] = subplot
+
+        vertical = "ycoord" in kwargs
+        if not mapped and sharey:
+            low, high = float(np.nanmin(values)), float(np.nanmax(values))
+            margin = 0.05 * (high - low)
+        for r, c, _ in panels:
+            subplot = axes[r][c]
+            tick_params = {}
+            if r + 1 < nrows and axes[r + 1][c] is not None:
+                subplot._xlabel = None
+                tick_params["labelbottom"] = False
+            if c > 0 and sharey:
+                subplot._ylabel = None
+                tick_params["labelleft"] = False
+            if tick_params:
+                subplot.tick_params(**tick_params)
+            if not mapped and sharey and vertical:
+                subplot.set_xlim(low - margin, high + margin)
+            elif not mapped and sharey:
+                subplot.set_ylim(low - margin, high + margin)
+            if (r, c) != panels[0][:2]:
+                subplot._legend = False
+        if mapped and add_colorbar:
+            first = axes[panels[0][0]][panels[0][1]]
+            first._add(
+                {
+                    "label": xarray_support.value_label(da),
+                    "layer": 0,
+                    "plot_type": "colorbar",
+                    "kwargs": {},
+                    "span_figure": True,
+                },
+                0,
+            )
         return canvas, axes
 
     @property
@@ -575,7 +773,7 @@ class Canvas:
     def scatter(
         self,
         x,
-        y,
+        y=None,
         layer=0,
         row: int | None = None,
         col: int | None = None,
@@ -590,6 +788,8 @@ class Canvas:
         layer (int): Layer index (default 0).
         row, col (int): Subplot position (default top-left).
         **kwargs: Forwarded to the backend (e.g., color, marker, s, label).
+
+        ``scatter(da)`` accepts an ``xarray.DataArray`` like ``plot(da)``.
         """
         sp = self._get_or_create_subplot(row, col)
         sp.scatter(x, y, layer=layer, **kwargs)
@@ -796,40 +996,44 @@ class Canvas:
     def contour(
         self,
         x,
-        y,
-        z,
+        y=None,
+        z=None,
         layer=0,
         row: int | None = None,
         col: int | None = None,
         **kwargs,
     ):
-        """Add contour lines to a subplot."""
+        """Add contour lines to a subplot; ``contour(da)`` takes a DataArray."""
         self._get_or_create_subplot(row, col).contour(x, y, z, layer=layer, **kwargs)
 
     def contourf(
         self,
         x,
-        y,
-        z,
+        y=None,
+        z=None,
         layer=0,
         row: int | None = None,
         col: int | None = None,
         **kwargs,
     ):
-        """Add filled contours to a subplot."""
+        """Add filled contours to a subplot; ``contourf(da)`` takes a DataArray."""
         self._get_or_create_subplot(row, col).contourf(x, y, z, layer=layer, **kwargs)
 
     def pcolormesh(
         self,
         x,
-        y,
-        z,
+        y=None,
+        z=None,
         layer=0,
         row: int | None = None,
         col: int | None = None,
         **kwargs,
     ):
-        """Add a pseudocolor mesh to a subplot."""
+        """Add a pseudocolor mesh to a subplot.
+
+        ``pcolormesh(da)`` accepts a 2-D ``xarray.DataArray``; see
+        :meth:`LinePlot.pcolormesh`.
+        """
         self._get_or_create_subplot(row, col).pcolormesh(x, y, z, layer=layer, **kwargs)
 
     def hexbin(
@@ -1559,7 +1763,7 @@ class Canvas:
         col: int | None = None,
         **kwargs,
     ):
-        """Add an image/matrix plot to a subplot."""
+        """Add an image/matrix plot to a subplot; ``imshow(da)`` takes a DataArray."""
         self._get_or_create_subplot(row, col).add_imshow(data, layer=layer, **kwargs)
 
     def add_image(
@@ -1867,7 +2071,17 @@ class Canvas:
         layers: list | None = None,
         layer_by_layer: bool = False,
         verbose: bool = False,
+        include_plotlyjs: bool | str = True,
     ):
+        """Render and save the canvas.
+
+        ``include_plotlyjs`` only applies to the Plotly backend when saving
+        to an ``.html``/``.htm`` file (see ``fig.write_html`` in the Plotly
+        docs). It defaults to ``True``, which bundles plotly.js into the
+        file so it works offline. Pass ``"cdn"`` to instead reference
+        plotly.js from a CDN, producing a much smaller file that requires
+        network access to render.
+        """
         filename_no_extension, extension = os.path.splitext(filename)
         if backend == "matplotlib":
             if layer_by_layer:
@@ -1942,7 +2156,9 @@ class Canvas:
                         savefig=False,
                         layers=layers,
                     )
-                    self._save_plotly(fig, full_filepath)
+                    self._save_plotly(
+                        fig, full_filepath, include_plotlyjs=include_plotlyjs
+                    )
                     if verbose:
                         print(f"Saved {full_filepath}")
             else:
@@ -1956,7 +2172,7 @@ class Canvas:
                     savefig=False,
                     layers=layers,
                 )
-                self._save_plotly(fig, full_filepath)
+                self._save_plotly(fig, full_filepath, include_plotlyjs=include_plotlyjs)
                 if verbose:
                     print(f"Saved {full_filepath}")
         elif backend == "tikzfigure":
@@ -2028,7 +2244,7 @@ class Canvas:
                 verbose=verbose,
             )
         elif backend == "tikzfigure":
-            return self.plot_tikzfigure(savefig=savefig, verbose=verbose)
+            return self.plot_tikzfigure(savefig=savefig, layers=layers, verbose=verbose)
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
@@ -2036,10 +2252,19 @@ class Canvas:
         """Add a line, or render when called with backend options.
 
         ``canvas.plot(x, y, **style)`` is the convenient direct plotting form.
+        ``canvas.plot(da)`` plots a 1-D ``xarray.DataArray`` against its
+        coordinate, labelling the axes from its attributes; ``hue=<dim>``
+        draws a 2-D one as one line per value of ``dim``.
         Rendering is named explicitly by ``canvas.render(...)``; the legacy
         ``canvas.plot(backend=...)`` form remains supported.
         """
         explicit_render = backend is not None or (args and isinstance(args[0], str))
+        if len(args) == 1 and xarray_support.is_dataarray(args[0]):
+            layer = kwargs.pop("layer", 0)
+            row = kwargs.pop("row", None)
+            col = kwargs.pop("col", None)
+            self._get_or_create_subplot(row, col).plot(args[0], layer=layer, **kwargs)
+            return self
         if args and not isinstance(args[0], str):
             if len(args) < 2:
                 raise TypeError("plot(x, y) requires both x and y data")
@@ -2290,14 +2515,62 @@ class Canvas:
         if verbose:
             print(f"Created Matplotlib figure and axes with shape {axes.shape}")
 
+        if hasattr(self, "_import_layout"):
+            for row in range(self.nrows):
+                for col in range(self.ncols):
+                    if (row, col) not in self._subplot_dict:
+                        axes[row, col].remove()
+                        axes[row, col] = None
+            for slot, bounds in self._import_layout.items():
+                axes[slot].set_position(bounds)
+            if hasattr(self, "_import_layout_specs"):
+                for slot, spec in self._import_layout_specs.clone(fig=fig).items():
+                    if spec is not None:
+                        axes[slot].set_subplotspec(spec)
+                    else:
+                        bounds = axes[slot].get_position(original=True).bounds
+                        axes[slot].remove()
+                        axes[slot] = fig.add_axes(bounds)
+                if self._import_layout_engine is not None:
+                    import copy
+
+                    fig.set_layout_engine(copy.deepcopy(self._import_layout_engine))
+            for slot, in_layout in self._import_in_layout.items():
+                axes[slot].set_in_layout(in_layout)
+            for direction, parent, child in self._import_shared_axes:
+                getattr(axes[child], "share" + direction)(axes[parent])
+            if hasattr(self, "_import_figure_style"):
+                fig.set(**self._import_figure_style)
+                fig.patch = self._import_figure_patch.clone(fig=fig)
+                transform = fig.patch.get_transform()
+                fig._set_artist_props(fig.patch)
+                fig.patch.set_transform(transform)
         for (row, col), subplot in self._subplot_dict.items():
             ax = axes[row][col]
+            if hasattr(subplot, "_import_projection"):
+                position = ax.get_position().bounds
+                ax.remove()
+                ax = subplot._import_projection.clone(fig=fig)
+                fig.add_axes(ax)
+                ax.set_position(position)
+                axes[row, col] = ax
             if isinstance(subplot, TikzFigure):
                 plot_matplotlib(subplot, ax, layers=layers)
+                ax.grid(False)
             else:
                 subplot.plot_matplotlib(ax, layers=layers)
-            # ax.set_title(f"Subplot ({row}, {col})")
-            ax.grid()
+
+        if self._hide_empty_subplots:
+            for row in range(self.nrows):
+                for col in range(self.ncols):
+                    if (row, col) not in self._subplot_dict:
+                        axes[row][col].set_visible(False)
+        figure_axes = [ax for ax in fig.axes if ax.get_visible()]
+        for subplot in self._subplot_dict.values():
+            figure_colorbar = getattr(subplot, "_figure_colorbar", None)
+            if figure_colorbar is not None and figure_colorbar[0] is not None:
+                mappable, label = figure_colorbar
+                fig.colorbar(mappable, ax=figure_axes, label=label)
 
         if verbose:
             print("Finished plotting subplots.")
@@ -2311,6 +2584,10 @@ class Canvas:
             fig.supxlabel(self._supxlabel, **self._supxlabel_kwargs)
         if self._supylabel:
             fig.supylabel(self._supylabel, **self._supylabel_kwargs)
+        if self._facet and self._suptitle and "top" not in self._subplots_adjust_kwargs:
+            # About four font heights: the figure title plus subplot titles.
+            room = 4 * self.fontsize / 72
+            fig.subplots_adjust(top=max(0.5, 1 - room / fig.get_figheight()))
         if self._subplots_adjust_kwargs:
             fig.subplots_adjust(**self._subplots_adjust_kwargs)
         if self._tight_layout_kwargs is not None:
@@ -2343,6 +2620,43 @@ class Canvas:
             twin_axis = axes[row][col].twiny()
             twin_subplot.plot_matplotlib(twin_axis, layers=layers)
             self._matplotlib_twiny_axes[(row, col)] = twin_axis
+        if hasattr(self, "_import_layout"):
+            from maxplotlib.backends.matplotlib.import_state import apply_axis_state
+
+            for slot, direction, subplot in self._import_extra_twins:
+                twin_axis = getattr(axes[slot], "twin" + direction)()
+                subplot.plot_matplotlib(twin_axis, layers=layers)
+            for specification in self._import_colorbars:
+                if specification["standalone"] is not None:
+                    import copy
+
+                    from matplotlib.cm import ScalarMappable
+
+                    mappable = ScalarMappable(
+                        **copy.deepcopy(specification["standalone"])
+                    )
+                else:
+                    artists = specification["target"]._import_rendered_artists.get(
+                        specification["artist_id"], []
+                    )
+                    mappable = next(
+                        (artist for artist in artists if hasattr(artist, "get_cmap")),
+                        None,
+                    )
+                if mappable is None:
+                    continue  # Its layer was excluded from this render.
+                cax = fig.add_axes(specification["position"])
+                colorbar = fig.colorbar(mappable, cax=cax, **specification["kwargs"])
+                colorbar.set_label(
+                    specification["label"], **specification["label_style"]
+                )
+                colorbar.set_ticks(specification["ticks"])
+                colorbar.formatter = specification["formatter"].clone(cax)
+                colorbar.update_ticks()
+                apply_axis_state(cax, specification["state"])
+            for snapshot in self._import_figure_artists:
+                artist = snapshot.clone(fig=fig)
+                fig.add_artist(artist)
         if matplotlib_customizations is not None:
             _apply_matplotlib_customizations(fig, axes, matplotlib_customizations)
         if matplotlib_postprocess is not None:
@@ -2351,335 +2665,123 @@ class Canvas:
             matplotlib_postprocess(fig, axes)
         return fig, axes
 
+    def _validate_import_backend(self, backend, *, allow_unsupported=False):
+        """Never silently drop native imported axes or figure decorations."""
+        if not hasattr(self, "import_report") or allow_unsupported:
+            return
+        reasons = []
+        if getattr(self, "_import_extra_twins", []):
+            reasons.append("multiple twin axes")
+        if getattr(self, "_import_figure_artists", []):
+            reasons.append("native figure decorations")
+        if getattr(self, "_import_colorbars", []):
+            reasons.append("native colorbars")
+        subplots = (
+            list(self._subplot_dict.values())
+            + list(self._twinx_subplots.values())
+            + list(self._twiny_subplots.values())
+        )
+        for subplot in subplots:
+            if hasattr(subplot, "_import_projection"):
+                reasons.append("native projections")
+            if getattr(subplot, "_import_child_axes", []):
+                reasons.append("inset/secondary axes")
+            for state in (
+                getattr(subplot, "_import_axis_state", {}).get("axes", {}).values()
+            ):
+                scale = state["scale"].payload
+                if scale.name not in ("linear", "log"):
+                    reasons.append("native axis scales")
+        if reasons:
+            raise NotImplementedError(
+                f"{backend} cannot render these imported features: {', '.join(sorted(set(reasons)))}. "
+                "Use Matplotlib or import with fallback='raster'."
+            )
+
     def plot_tikzfigure(
         self,
         savefig: bool = False,
         verbose: bool = False,
+        *,
+        layers: list | None = None,
+        raster_dpi: float = 300,
+        max_markers: int = 2000,
+        max_items: int = 500,
+        max_points: int = 20000,
+        precision: int = 6,
     ) -> TikzFigure:
-        """
-        Generate a TikZ figure from subplots.
+        """Render the canvas as a TikZ/pgfplots figure.
 
-        For now, returns the first subplot's TikzFigure.
-        Full multi-subplot support requires TikzFigure's subfigure_axis API.
+        The canvas is drawn with Matplotlib, off screen, and the drawn figure
+        is converted with
+        :func:`~maxplotlib.backends.tikzfigure.figure_to_tikz`: every subplot
+        becomes a pgfplots axis at the same place and size, with its labels,
+        ticks, legend and colorbar, lines, markers, bars, fills and text as
+        pgfplots code, and meshes, images and other artists without a vector
+        counterpart as images Matplotlib renders (``\\addplot graphics``).
+        Every layout, twin axes and imported figure therefore converts.
 
         Parameters:
-        verbose (bool): If True, print debug information.
+        savefig (bool): Unused; kept for the other backends' signature.
+        verbose (bool): If True, print progress.
+        layers (list): Draw only these layers, as with Matplotlib.
+        raster_dpi (float): Resolution of the parts drawn as images.
+        max_markers (int): Scatter plots with more points are drawn as an image.
+        max_items (int): Collections with more differently styled items are
+            drawn as an image.
+        max_points (int): Lines with more points (after simplification) are
+            drawn as an image.
+        precision (int): Significant digits of the written coordinates.
 
         Returns:
-        TikzFigure: Figure object that can be shown, saved, or compiled.
+        TikzFigure: Figure object that can be shown, saved (``.tikz`` and
+        ``.tex`` with the images next to them, ``.pdf``, ``.png``) or
+        compiled.
         """
+        from maxplotlib.backends.tikzfigure import figure_to_tikz
+
         if verbose:
-            print(f"Plotting tikzfigure with {len(self._subplot_dict)} subplot(s)")
-
-        if self._twinx_subplots:
-            raise NotImplementedError(
-                "twinx plots are currently supported only by the matplotlib and plotly backends"
+            print("Drawing the canvas with Matplotlib for the tikzfigure backend")
+        # drawing with Matplotlib changes the global style and this canvas's
+        # record of its Matplotlib figure; neither is meant to change here
+        state = {
+            name: getattr(self, name)
+            for name in (
+                "_plotted",
+                "_matplotlib_fig",
+                "_matplotlib_axes",
+                "_matplotlib_twin_axes",
+                "_matplotlib_twiny_axes",
             )
-
-        # Check for unsupported layouts
-        if self.nrows > 1:
-            raise NotImplementedError(
-                "Vertical/grid layouts (nrows > 1) are not yet supported for tikzfigure backend. "
-                "Use horizontal layouts (1×n) only."
-            )
-
-        # Validate that at least one subplot exists
-        if len(self._subplot_dict) == 0:
-            raise ValueError(
-                "No subplots to plot. Call add_subplot() or Canvas.subplots() first."
-            )
-
-        axis_width, axis_height = self._get_tikzfigure_axis_dimensions()
-        fig = TikzFigure()
-
-        # Add each subplot as a subfigure axis
-        for (row, col), line_plot in self._subplot_dict.items():
-            if verbose:
-                print(f"Plotting subplot at row {row}, col {col}")
-
-            # Create subfigure axis with subplot metadata
-            ax = fig.subfigure_axis(
-                xlabel=line_plot._xlabel or "",
-                ylabel=line_plot._ylabel or "",
-                xlim=(
-                    (line_plot._xmin, line_plot._xmax)
-                    if line_plot._xmin is not None
-                    else None
-                ),
-                ylim=(
-                    (line_plot._ymin, line_plot._ymax)
-                    if line_plot._ymin is not None
-                    else None
-                ),
-                grid=line_plot._grid,
-                title=line_plot._title or f"Subplot {col + 1}",
-                width=0.45,
-                axis_width=axis_width,
-                height=axis_height,
-            )
-
-            # Add each plot line to the subfigure
-            for line_data in line_plot.line_data:
-                plot_type = line_data.get("plot_type")
-                if plot_type not in _TIKZ_SUPPORTED_PLOT_TYPES:
-                    raise NotImplementedError(
-                        f"{plot_type} is not supported by the tikzfigure backend"
-                    )
-                if plot_type == "plot":
-                    # Extract and transform x, y data
-                    x = (line_data["x"] + line_plot._xshift) * line_plot._xscale
-                    y = (line_data["y"] + line_plot._yshift) * line_plot._yscale
-                    kwargs = line_data.get("kwargs", {})
-                    if verbose:
-                        print(f"Line {kwargs = }")
-                    # Add plot to subfigure axis
-                    ax.add_plot(
-                        x=x,
-                        y=y,
-                        **_tikz_style_kwargs(kwargs),
-                    )
-                elif plot_type == "scatter":
-                    x = (line_data["x"] + line_plot._xshift) * line_plot._xscale
-                    y = (line_data["y"] + line_plot._yshift) * line_plot._yscale
-                    kwargs = _tikz_style_kwargs(line_data.get("kwargs", {}))
-                    kwargs.setdefault("mark", "*")
-                    kwargs["line_width"] = 0
-                    ax.add_plot(x=x, y=y, **kwargs)
-                elif plot_type in {"bar", "barh"}:
-                    source_kwargs = line_data.get("kwargs", {})
-                    kwargs = _tikz_style_kwargs(source_kwargs)
-                    kwargs["fill"] = source_kwargs.get("color", "blue")
-                    kwargs["fill_opacity"] = source_kwargs.get("alpha", 1.0)
-                    kwargs["line_width"] = source_kwargs.get("linewidth", 0)
-                    if plot_type == "bar":
-                        width = source_kwargs.get("width", 0.8)
-                        for x, height in zip(line_data["x"], line_data["height"]):
-                            ax.add_plot(
-                                x=[
-                                    x - width / 2,
-                                    x + width / 2,
-                                    x + width / 2,
-                                    x - width / 2,
-                                ],
-                                y=[0, 0, height, height],
-                                cycle=True,
-                                **kwargs,
-                            )
-                    else:
-                        height = source_kwargs.get("height", 0.8)
-                        for y, width in zip(line_data["y"], line_data["width"]):
-                            ax.add_plot(
-                                x=[0, width, width, 0],
-                                y=[
-                                    y - height / 2,
-                                    y - height / 2,
-                                    y + height / 2,
-                                    y + height / 2,
-                                ],
-                                cycle=True,
-                                **kwargs,
-                            )
-                elif plot_type == "fill_between":
-                    x = line_data["x"]
-                    y1 = np.asarray(line_data["y1"])
-                    y2 = np.broadcast_to(line_data["y2"], y1.shape)
-                    source_kwargs = line_data.get("kwargs", {})
-                    kwargs = _tikz_style_kwargs(source_kwargs)
-                    kwargs["fill"] = source_kwargs.get("color", "blue")
-                    kwargs["fill_opacity"] = source_kwargs.get("alpha", 0.25)
-                    ax.add_plot(
-                        x=list(x) + list(x[::-1]),
-                        y=list(y1) + list(y2[::-1]),
-                        cycle=True,
-                        **kwargs,
-                    )
-                elif plot_type == "errorbar":
-                    x = line_data["x"]
-                    y = line_data["y"]
-                    kwargs = _tikz_style_kwargs(line_data.get("kwargs", {}))
-                    ax.add_plot(x=x, y=y, **kwargs)
-                    y_bounds = _tikz_error_bounds(line_data["yerr"], y)
-                    if y_bounds is not None:
-                        lower, upper = y_bounds
-                        for xi, low, high in zip(x, y - lower, y + upper):
-                            ax.add_plot(x=[xi, xi], y=[low, high], **kwargs)
-                    x_bounds = _tikz_error_bounds(line_data["xerr"], x)
-                    if x_bounds is not None:
-                        lower, upper = x_bounds
-                        for yi, low, high in zip(y, x - lower, x + upper):
-                            ax.add_plot(x=[low, high], y=[yi, yi], **kwargs)
-                elif plot_type in {"step", "stairs"}:
-                    source_kwargs = line_data.get("kwargs", {})
-                    if plot_type == "step":
-                        x = line_data["x"]
-                        y = line_data["y"]
-                        where = source_kwargs.get("where", "pre")
-                    else:
-                        values = line_data["values"]
-                        edges = line_data["edges"]
-                        if edges is None:
-                            edges = np.arange(len(values) + 1)
-                        x = edges
-                        y = np.r_[values, values[-1]]
-                        where = "post"
-                    x, y = _tikz_step_coordinates(x, y, where=where)
-                    ax.add_plot(
-                        x=x,
-                        y=y,
-                        **_tikz_style_kwargs(source_kwargs),
-                    )
-                elif plot_type == "stem":
-                    x = line_data["x"]
-                    y = line_data["y"]
-                    source_kwargs = line_data.get("kwargs", {})
-                    style = _tikz_style_kwargs(source_kwargs)
-                    marker_style = dict(style)
-                    marker_style.update(
-                        mark=source_kwargs.get("marker", "*"), line_width=0
-                    )
-                    ax.add_plot(x=x, y=y, **marker_style)
-                    for xi, yi in zip(x, y):
-                        ax.add_plot(x=[xi, xi], y=[0, yi], **style)
-                elif plot_type in {"hlines", "vlines"}:
-                    style = _tikz_style_kwargs(line_data.get("kwargs", {}))
-                    if plot_type == "hlines":
-                        for yi, left, right in zip(
-                            np.atleast_1d(line_data["y"]),
-                            np.atleast_1d(line_data["xmin"]),
-                            np.atleast_1d(line_data["xmax"]),
-                        ):
-                            ax.add_plot(x=[left, right], y=[yi, yi], **style)
-                    else:
-                        for xi, bottom, top in zip(
-                            np.atleast_1d(line_data["x"]),
-                            np.atleast_1d(line_data["ymin"]),
-                            np.atleast_1d(line_data["ymax"]),
-                        ):
-                            ax.add_plot(x=[xi, xi], y=[bottom, top], **style)
-                elif plot_type in {"axvspan", "axhspan"}:
-                    source_kwargs = line_data.get("kwargs", {})
-                    style = _tikz_style_kwargs(source_kwargs)
-                    style["fill"] = source_kwargs.get("color", "blue")
-                    style["fill_opacity"] = source_kwargs.get("alpha", 0.2)
-                    if plot_type == "axvspan":
-                        xmin, xmax = line_data["xmin"], line_data["xmax"]
-                        ymin, ymax = line_plot._ymin or 0, line_plot._ymax or 1
-                        x = [xmin, xmax, xmax, xmin]
-                        y = [ymin, ymin, ymax, ymax]
-                    else:
-                        ymin, ymax = line_data["ymin"], line_data["ymax"]
-                        xmin, xmax = line_plot._xmin or 0, line_plot._xmax or 1
-                        x = [xmin, xmax, xmax, xmin]
-                        y = [ymin, ymin, ymax, ymax]
-                    ax.add_plot(x=x, y=y, cycle=True, **style)
-                elif plot_type == "fill":
-                    if len(line_data["args"]) < 2:
-                        raise ValueError("tikzfigure fill requires x and y coordinates")
-                    x, y = line_data["args"][:2]
-                    source_kwargs = line_data.get("kwargs", {})
-                    style = _tikz_style_kwargs(source_kwargs)
-                    style["fill"] = source_kwargs.get("color", "blue")
-                    style["fill_opacity"] = source_kwargs.get("alpha", 0.25)
-                    ax.add_plot(x=x, y=y, cycle=True, **style)
-                elif plot_type == "flame_chart":
-                    labels = line_data["labels"]
-                    parents = line_data["parents"]
-                    values = line_data["values"] * line_plot._xscale
-                    start_times = line_data["start_times"]
-                    depths = np.zeros(len(labels), dtype=int)
-                    if start_times is None:
-                        start_times = np.zeros(len(labels))
-                    else:
-                        start_times = (
-                            start_times + line_plot._xshift
-                        ) * line_plot._xscale
-                    for index, parent in enumerate(parents):
-                        if parent is not None:
-                            parent_index = (
-                                parent
-                                if isinstance(parent, int)
-                                else labels.index(parent)
-                            )
-                            depths[index] = depths[parent_index] + 1
-                    colors = ["red", "blue", "green", "orange", "purple", "cyan"]
-                    for index, (start, value) in enumerate(zip(start_times, values)):
-                        y = depths[index]
-                        ax.add_plot(
-                            x=[start, start + value, start + value, start],
-                            y=[y - 0.4, y - 0.4, y + 0.4, y + 0.4],
-                            cycle=True,
-                            fill=colors[y % len(colors)],
-                            line_width=0,
-                        )
-                elif plot_type == "gantt":
-                    tasks = line_data["tasks"]
-                    start_times = (
-                        line_data["start_times"] + line_plot._xshift
-                    ) * line_plot._xscale
-                    durations = line_data["durations"] * line_plot._xscale
-                    y_positions = np.arange(len(tasks))
-                    kwargs = line_data.get("kwargs", {})
-
-                    # Draw horizontal bars for each task as filled rectangles
-                    for i, (task, start, duration) in enumerate(
-                        zip(tasks, start_times, durations)
-                    ):
-                        x_start = float(start)
-                        x_end = float(start + duration)
-                        y_pos = float(y_positions[i])
-                        bar_height = 0.8
-
-                        # Create rectangle coordinates for the bar
-                        x_coords = [x_start, x_end, x_end, x_start, x_start]
-                        y_coords = [
-                            y_pos - bar_height / 2,
-                            y_pos - bar_height / 2,
-                            y_pos + bar_height / 2,
-                            y_pos + bar_height / 2,
-                            y_pos - bar_height / 2,
-                        ]
-
-                        # Add as a filled plot
-                        color = kwargs.get("color", "blue")
-                        ax.add_plot(
-                            x=x_coords,
-                            y=y_coords,
-                            color=color,
-                            fill=True,
-                            line_width=0,
-                        )
-
-                    # Set y-axis ticks to show task names
-                    if line_plot._yticks is None:
-                        ax.set_ticks("y", list(y_positions), tasks)
-
-            # Add legend if requested
-            if line_plot._legend and len(line_plot.line_data) > 0:
-                ax.set_legend(position="north east")
-
-        return fig
-
-    def _get_tikzfigure_axis_dimensions(self) -> tuple[str | None, str | None]:
-        if self._width is None:
-            return None, None
-
-        total_width_in, total_height_in = set_size(
-            width=self._width,
-            ratio=self._ratio,
-            dpi=self._dpi if self._dpi is not None else 300,
-        )
-        total_width_cm = total_width_in * 2.54
-        total_height_cm = total_height_in * 2.54
-        horizontal_sep_cm = getattr(TikzFigure, "GROUPPLOT_HORIZONTAL_SEP_CM", 1.5)
-        available_width_cm = total_width_cm - horizontal_sep_cm * (self.ncols - 1)
-        if available_width_cm <= 0:
-            raise ValueError(
-                f'Canvas width "{self._width}" is too small for {self.ncols} '
-                "tikzfigure subplot(s)."
-            )
-
-        axis_width_cm = available_width_cm / self.ncols
-        return f"{axis_width_cm:.6g}cm", f"{total_height_cm:.6g}cm"
+            if hasattr(self, name)
+        }
+        with plt.rc_context(), plt.ioff():
+            fig, _ = self.plot_matplotlib(savefig=False, layers=layers, verbose=verbose)
+            try:
+                tikz = figure_to_tikz(
+                    fig,
+                    raster_dpi=raster_dpi,
+                    max_markers=max_markers,
+                    max_items=max_items,
+                    max_points=max_points,
+                    precision=precision,
+                )
+            finally:
+                plt.close(fig)
+                for name in (
+                    "_plotted",
+                    "_matplotlib_fig",
+                    "_matplotlib_axes",
+                    "_matplotlib_twin_axes",
+                    "_matplotlib_twiny_axes",
+                ):
+                    if name in state:
+                        setattr(self, name, state[name])
+                    elif hasattr(self, name):
+                        delattr(self, name)
+        if verbose:
+            print(f"Converted {len(tikz.axes)} axes")
+        return tikz
 
     def plot_plotext(
         self,
@@ -2687,6 +2789,7 @@ class Canvas:
         layers: list | None = None,
         verbose: bool = False,
     ) -> PlotextFigure:
+        self._validate_import_backend("plotext")
         if self._twinx_subplots:
             raise NotImplementedError(
                 "twinx plots are not supported by the plotext backend"
@@ -2734,6 +2837,7 @@ class Canvas:
 
         """
 
+        self._validate_import_backend("plotly", allow_unsupported=allow_unsupported)
         resolved_usetex = self._usetex if usetex is None else usetex
 
         for subplot in self._subplot_dict.values():
@@ -2771,12 +2875,30 @@ class Canvas:
             subplot_titles=subplot_titles,
             specs=specs,
         )
+        if self._hide_empty_subplots:
+            for row in range(self.nrows):
+                for col in range(self.ncols):
+                    if (row, col) not in self._subplot_dict:
+                        fig.update_xaxes(visible=False, row=row + 1, col=col + 1)
+                        fig.update_yaxes(visible=False, row=row + 1, col=col + 1)
 
         # Plot each subplot and propagate axis labels/scale
+        legend_names = set()
         for (row, col), line_plot in self._subplot_dict.items():
             traces, shapes, annotations = line_plot.plot_plotly(
                 layers=layers, allow_unsupported=allow_unsupported
             )
+            if self._facet:
+                # One legend entry per label across all subplots; clicking it
+                # toggles the matching trace in every subplot.
+                for trace in traces:
+                    name = getattr(trace, "name", None)
+                    if not name or trace.type in ("pie", "table"):
+                        continue
+                    trace.legendgroup = name
+                    if name in legend_names:
+                        trace.showlegend = False
+                    legend_names.add(name)
             for trace in traces:
                 if trace.type in ("pie", "table"):
                     fig.add_trace(trace)
@@ -3037,11 +3159,13 @@ class Canvas:
         self._plotly_fig = fig
         return fig
 
-    def _save_plotly(self, fig, filename: str) -> None:
+    def _save_plotly(
+        self, fig, filename: str, include_plotlyjs: bool | str = True
+    ) -> None:
         _, extension = os.path.splitext(filename)
         extension = extension.lower()
         if extension in {".html", ".htm"}:
-            fig.write_html(filename)
+            fig.write_html(filename, include_plotlyjs=include_plotlyjs)
             return
         try:
             fig.write_image(filename)
@@ -3050,6 +3174,33 @@ class Canvas:
                 "Plotly image export failed. For PNG/PDF/SVG export, install kaleido "
                 "(e.g., `pip install -U kaleido`), or export to HTML instead."
             ) from exc
+
+    def to_html(
+        self,
+        layers: list | None = None,
+        include_plotlyjs: bool | str = "cdn",
+        full_html: bool = True,
+        verbose: bool = False,
+        allow_unsupported: bool = False,
+    ) -> str:
+        """Render the canvas with the Plotly backend and return standalone HTML.
+
+        The returned markup embeds the figure data and calls plotly.js to
+        render it in a browser. By default ``include_plotlyjs="cdn"``
+        references plotly.js from a CDN instead of bundling it, producing a
+        much smaller string suited to embedding in an existing page; pass
+        ``include_plotlyjs=True`` to inline plotly.js for offline use, as
+        ``savefig(..., backend="plotly")`` does. Set ``full_html=False`` to
+        get just the ``<div>``/``<script>`` fragment for embedding inside a
+        larger page (you must include plotly.js yourself in that case).
+        """
+        fig = self.plot_plotly(
+            show=False,
+            layers=layers,
+            verbose=verbose,
+            allow_unsupported=allow_unsupported,
+        )
+        return fig.to_html(include_plotlyjs=include_plotlyjs, full_html=full_html)
 
     # Property getters
 

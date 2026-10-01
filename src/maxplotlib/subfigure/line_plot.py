@@ -3,31 +3,21 @@ import re
 import matplotlib.pyplot as plt
 import numpy as np
 import plotly.graph_objects as go
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-from tikzfigure import TikzFigure
+
+from maxplotlib.utils import xarray_support
 
 # Keyword arguments that every drawing method accepts and that are handled by
 # maxplotlib itself rather than being forwarded to a backend drawing call.
 _NEUTRAL_KWARGS = ("hover", "meta")
 
-_TIKZ_SUPPORTED_PLOT_TYPES = {
-    "plot",
-    "scatter",
-    "bar",
-    "barh",
-    "fill_between",
-    "errorbar",
-    "step",
-    "stairs",
-    "stem",
-    "hlines",
-    "vlines",
-    "axvspan",
-    "axhspan",
-    "fill",
-    "gantt",
-    "flame_chart",
-}
+
+def _mpl_mappable_kwargs(line):
+    """Kwargs for a Matplotlib color-mapped artist.
+
+    ``colorbar`` is a Plotly-only flag; Matplotlib adds colorbars through a
+    separate ``colorbar()`` entry, and would reject it as an artist property.
+    """
+    return {k: v for k, v in line["kwargs"].items() if k != "colorbar"}
 
 
 def _sample_colormap(colormap, count, *, css=True):
@@ -120,64 +110,6 @@ def _colormap_to_plotly_colorscale(colormap, steps=17):
     positions = np.linspace(0, 1, steps)
     colors = _sample_colormap(colormap, steps, css=True)
     return [[float(position), color] for position, color in zip(positions, colors)]
-
-
-def _tikz_style_kwargs(kwargs, *, default_color="black"):
-    """Translate common Matplotlib-style options to pgfplots/TikZ options."""
-    kwargs = dict(kwargs)
-    style = {}
-    if kwargs.get("color") is not None:
-        style["color"] = kwargs["color"]
-    else:
-        style["color"] = default_color
-    if kwargs.get("linewidth") is not None:
-        style["line_width"] = kwargs["linewidth"]
-    if kwargs.get("alpha") is not None:
-        style["opacity"] = kwargs["alpha"]
-    if kwargs.get("linestyle") in {"--", "dashed"}:
-        style["dash_pattern"] = "on 4pt off 2pt"
-    elif kwargs.get("linestyle") in {":", "dotted"}:
-        style["dash_pattern"] = "on 1pt off 2pt"
-    elif kwargs.get("linestyle") == "-.":
-        style["dash_pattern"] = "on 4pt off 2pt on 1pt off 2pt"
-    if kwargs.get("marker") is not None:
-        style["mark"] = kwargs["marker"]
-    if kwargs.get("markersize") is not None:
-        style["mark_size"] = f"{kwargs['markersize']}pt"
-    return style
-
-
-def _tikz_error_bounds(error, values):
-    """Return lower and upper error arrays in Matplotlib's common formats."""
-    if error is None:
-        return None
-    error = np.asarray(error, dtype=float)
-    values = np.asarray(values, dtype=float)
-    if error.ndim == 0:
-        error = np.full(values.shape, error.item())
-    if error.ndim == 2 and error.shape[0] == 2:
-        return error[0], error[1]
-    return error, error
-
-
-def _tikz_step_coordinates(x, y, where="pre"):
-    """Expand line data into explicit coordinates for a stepped path."""
-    x = np.asarray(x)
-    y = np.asarray(y)
-    if len(x) < 2:
-        return x, y
-    if where == "post":
-        step_x = np.repeat(x, 2)[1:]
-        step_y = np.repeat(y, 2)[:-1]
-    elif where == "mid":
-        mids = (x[:-1] + x[1:]) / 2
-        step_x = np.ravel(np.column_stack((x[:-1], mids, mids, x[1:])))
-        step_y = np.ravel(np.column_stack((y[:-1], y[:-1], y[1:], y[1:])))
-        return step_x, step_y
-    else:
-        step_x = np.repeat(x, 2)[:-1]
-        step_y = np.repeat(y, 2)[1:]
-    return step_x, step_y
 
 
 class Node:
@@ -354,6 +286,9 @@ class LinePlot:
             for key in _NEUTRAL_KWARGS:
                 if key in kwargs:
                     obj[key] = kwargs.pop(key)
+            # TikZ's spelling of Matplotlib's linewidth, accepted by every backend
+            if "line_width" in kwargs and "linewidth" not in kwargs:
+                kwargs["linewidth"] = kwargs.pop("line_width")
         for key in _NEUTRAL_KWARGS:
             obj.setdefault(key, None)
         self.line_data.append(obj)
@@ -388,13 +323,95 @@ class LinePlot:
         }
         self._add(ld, layer)
 
-    def plot(self, x, y, layer=0, **kwargs):
-        """Matplotlib-style alias for :meth:`add_line`."""
+    def plot(self, x, y=None, layer=0, **kwargs):
+        """Matplotlib-style alias for :meth:`add_line`.
+
+        ``plot(da)`` with a 1-D ``xarray.DataArray`` plots it against its
+        coordinate; see :meth:`_plot_dataarray`.
+        """
+        if y is None:
+            if not xarray_support.is_dataarray(x):
+                raise TypeError("plot(x, y) requires both x and y data")
+            self._plot_dataarray(self.add_line, x, layer, kwargs)
+            return
         self.add_line(x, y, layer=layer, **kwargs)
 
-    def scatter(self, x, y, layer=0, **kwargs):
+    def _set_default_labels(self, xlabel, ylabel, da=None):
+        """Set axis labels, and a title from ``da``, that the user has not set."""
+        if not self._xlabel and xlabel:
+            self._xlabel = xlabel
+        if not self._ylabel and ylabel:
+            self._ylabel = ylabel
+        if da is not None and not self._title:
+            self._title = xarray_support.title(da) or self._title
+
+    def _plot_dataarray(self, method, da, layer, kwargs):
+        """Draw a DataArray as lines or points with ``method(x, y, ...)``.
+
+        Axes are labelled from the array's attributes and the title from its
+        single-value coordinates, unless already set. ``xcoord=`` names the
+        dimension or 1-D coordinate to plot against; ``ycoord=`` does the same
+        with the coordinate on the y-axis, e.g. for vertical profiles.
+        ``hue=<dim>`` draws a 2-D array as one labelled series per value of
+        ``dim``, colored ``C0``, ``C1``, ... unless ``color`` is given, and
+        shows the legend unless ``add_legend=False``.
+        """
+        hue = kwargs.pop("hue", None)
+        add_legend = kwargs.pop("add_legend", True)
+        if hue is not None and "label" in kwargs:
+            raise TypeError("label= cannot be combined with hue=")
+        data = xarray_support.line_data(
+            da, hue=hue, x=kwargs.pop("xcoord", None), y=kwargs.pop("ycoord", None)
+        )
+        if data.vertical:
+            self._set_default_labels(data.value_label, data.coord_label, da)
+        else:
+            self._set_default_labels(data.coord_label, data.value_label, da)
+        cycle_colors = hue is not None and not {"color", "c"} & kwargs.keys()
+        for i, (positions, values, label) in enumerate(data.lines):
+            line_kwargs = dict(kwargs)
+            if label is not None:
+                line_kwargs["label"] = label
+            if cycle_colors:
+                line_kwargs["color"] = f"C{i % 10}"
+            if data.vertical:
+                method(values, positions, layer=layer, **line_kwargs)
+            else:
+                method(positions, values, layer=layer, **line_kwargs)
+        if hue is not None and add_legend:
+            self._legend = True
+
+    def _mesh_dataarray(self, method, da, layer, kwargs, add_colorbar=True, name=None):
+        """Draw a 2-D DataArray with ``method(x, y, z, ...)``.
+
+        ``xcoord=``/``ycoord=`` name the dimension or coordinate for each
+        axis; 2-D coordinates give a curvilinear mesh. Colors follow xarray's
+        defaults (see :func:`xarray_support.color_limits`, including
+        ``robust=`` and ``center=``). A colorbar labelled from the array is
+        added unless ``add_colorbar=False``.
+        """
+        add_colorbar = kwargs.pop("add_colorbar", add_colorbar)
+        mesh = self._mesh_of(da, kwargs, name or method.__name__)
+        self._set_default_labels(mesh.xlabel, mesh.ylabel, da)
+        xarray_support.color_limits(mesh.z, kwargs)
+        method(mesh.x, mesh.y, mesh.z, layer=layer, **kwargs)
+        if add_colorbar:
+            self.add_colorbar(label=mesh.zlabel, layer=layer)
+
+    @staticmethod
+    def _mesh_of(da, kwargs, method):
+        return xarray_support.mesh_data(
+            da,
+            x=kwargs.pop("xcoord", None),
+            y=kwargs.pop("ycoord", None),
+            method=method,
+        )
+
+    def scatter(self, x, y=None, layer=0, **kwargs):
         """
         Add a scatter plot to the subplot.
+
+        ``scatter(da)`` accepts an ``xarray.DataArray`` like :meth:`plot`.
 
         Parameters:
         x (array-like): X-axis data.
@@ -403,6 +420,11 @@ class LinePlot:
         **kwargs: Additional keyword arguments forwarded to the backend
             (e.g., color, marker, s, label).
         """
+        if y is None:
+            if not xarray_support.is_dataarray(x):
+                raise TypeError("scatter(x, y) requires both x and y data")
+            self._plot_dataarray(self.scatter, x, layer, kwargs)
+            return
         ld = {
             "x": np.array(x),
             "y": np.array(y),
@@ -580,8 +602,19 @@ class LinePlot:
             layer,
         )
 
-    def contour(self, x, y, z, layer=0, **kwargs):
-        """Add contour lines for a 2D scalar field."""
+    def contour(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add contour lines for a 2D scalar field.
+
+        ``contour(da)`` accepts a 2-D ``xarray.DataArray`` like
+        :meth:`pcolormesh`, but adds no colorbar by default.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("contour(da) takes no y or z data")
+            self._mesh_dataarray(self.contour, x, layer, kwargs, add_colorbar=False)
+            return
+        if y is None or z is None:
+            raise TypeError("contour(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -594,8 +627,19 @@ class LinePlot:
             layer,
         )
 
-    def contourf(self, x, y, z, layer=0, **kwargs):
-        """Add filled contours for a 2D scalar field."""
+    def contourf(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add filled contours for a 2D scalar field.
+
+        ``contourf(da)`` accepts a 2-D ``xarray.DataArray`` like
+        :meth:`pcolormesh`.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("contourf(da) takes no y or z data")
+            self._mesh_dataarray(self.contourf, x, layer, kwargs, add_colorbar=True)
+            return
+        if y is None or z is None:
+            raise TypeError("contourf(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -608,8 +652,23 @@ class LinePlot:
             layer,
         )
 
-    def pcolormesh(self, x, y, z, layer=0, **kwargs):
-        """Add a pseudocolor mesh."""
+    def pcolormesh(self, x, y=None, z=None, layer=0, **kwargs):
+        """Add a pseudocolor mesh.
+
+        ``pcolormesh(da)`` with a 2-D ``xarray.DataArray`` uses its coordinates.
+        Axes are labelled from its attributes and the title from its
+        single-value coordinates, unless already set. ``xcoord=``/``ycoord=``
+        pick the dimension or coordinate for each axis (2-D coordinates give
+        a curvilinear mesh), and a labelled colorbar is added unless
+        ``add_colorbar=False``. See :meth:`_mesh_dataarray` for colors.
+        """
+        if xarray_support.is_dataarray(x):
+            if y is not None or z is not None:
+                raise TypeError("pcolormesh(da) takes no y or z data")
+            self._mesh_dataarray(self.pcolormesh, x, layer, kwargs)
+            return
+        if y is None or z is None:
+            raise TypeError("pcolormesh(x, y, z) requires x, y and z data")
         self._add(
             {
                 "x": x,
@@ -900,6 +959,8 @@ class LinePlot:
     def set_grid(self, visible: bool = True):
         """Show or hide the grid."""
         self._grid = visible
+        if hasattr(self, "_import_grid"):
+            self._import_grid_edited = True
 
     def tick_params(self, **kwargs):
         """Configure tick appearance using Matplotlib-style keyword arguments."""
@@ -913,10 +974,14 @@ class LinePlot:
     def set_xscale(self, scale: str):
         """Set the x-axis scale type: 'linear', 'log', or 'symlog'."""
         self._xaxis_scale = scale
+        if hasattr(self, "_import_scales"):
+            self._import_xscale_edited = True
 
     def set_yscale(self, scale: str):
         """Set the y-axis scale type: 'linear', 'log', or 'symlog'."""
         self._yaxis_scale = scale
+        if hasattr(self, "_import_scales"):
+            self._import_yscale_edited = True
 
     def set_axis_off(self):
         """Hide the axis frame, ticks, and labels."""
@@ -1375,13 +1440,39 @@ class LinePlot:
         self._add(ld, layer)
 
     def add_imshow(self, data, layer=0, **kwargs):
+        """Add an image.
+
+        ``add_imshow(da)`` with a 2-D ``xarray.DataArray`` places the image by
+        its evenly spaced coordinates (``origin="lower"``) and otherwise
+        behaves like :meth:`pcolormesh` with a DataArray.
+        """
+        if xarray_support.is_dataarray(data):
+            mesh = self._mesh_of(data, dict(kwargs), "imshow")
+            if mesh.curvilinear:
+                raise ValueError(
+                    "imshow() cannot draw on 2-D coordinates; use pcolormesh() instead"
+                )
+            kwargs.setdefault("origin", "lower")
+            kwargs.setdefault(
+                "extent",
+                xarray_support.image_extent(mesh.x, mesh.y, mesh.xname, mesh.yname),
+            )
+            self._mesh_dataarray(self._imshow_xyz, data, layer, kwargs, name="imshow")
+            return
         ld = {
-            "data": np.array(data),
+            "data": np.asanyarray(data).copy(),
             "layer": layer,
             "plot_type": "imshow",
             "kwargs": kwargs,
         }
         self._add(ld, layer)
+
+    def _imshow_xyz(self, x, y, z, layer=0, **kwargs):
+        self.add_imshow(z, layer=layer, **kwargs)
+
+    def imshow(self, data, layer=0, **kwargs):
+        """Matplotlib-style alias for :meth:`add_imshow`."""
+        self.add_imshow(data, layer=layer, **kwargs)
 
     def add_image(self, data, layer=0, **kwargs):
         """Matplotlib-style alias for ``imshow``."""
@@ -1425,6 +1516,16 @@ class LinePlot:
         ax (matplotlib.axes.Axes): Axis on which to plot the lines.
         """
         im = None
+        self._figure_colorbar = None
+        self._import_rendered_artists = {}
+        if hasattr(self, "_import_projection_artist_ids"):
+            for name, identifiers in self._import_projection_artist_ids.items():
+                for identifier, artist in zip(identifiers, getattr(ax, name)):
+                    self._import_rendered_artists[identifier] = [artist]
+        if hasattr(self, "_import_axis_state"):
+            from maxplotlib.backends.matplotlib.import_state import apply_axis_state
+
+            apply_axis_state(ax, self._import_axis_state, units=False)
         contour_sets = []
         for layer_name, layer_lines in self.layered_line_data.items():
             if layers and layer_name not in layers:
@@ -1432,13 +1533,15 @@ class LinePlot:
             for line in layer_lines:
                 artists_before = (
                     set(map(id, ax.get_children()))
-                    if line.get("meta") is not None
+                    if line.get("meta") is not None or "source_artist_id" in line
                     else None
                 )
-                if line["plot_type"] == "plot":
+                if line["plot_type"] == "matplotlib_artist":
+                    line["snapshot"].draw(ax, **line["kwargs"])
+                elif line["plot_type"] == "plot":
                     ax.plot(
-                        (line["x"] + self._xshift) * self._xscale,
-                        (line["y"] + self._yshift) * self._yscale,
+                        self._shift_x(line["x"]),
+                        self._shift_y(line["y"]),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "scatter":
@@ -1448,14 +1551,14 @@ class LinePlot:
                     scatter_kwargs = {
                         k: v for k, v in line["kwargs"].items() if k != "colorbar"
                     }
-                    ax.scatter(
-                        (line["x"] + self._xshift) * self._xscale,
-                        (line["y"] + self._yshift) * self._yscale,
+                    im = ax.scatter(
+                        self._shift_x(line["x"]),
+                        self._shift_y(line["y"]),
                         **scatter_kwargs,
                     )
                 elif line["plot_type"] == "bar":
                     ax.bar(
-                        (line["x"] + self._xshift) * self._xscale,
+                        self._shift_x(line["x"]),
                         line["height"] * self._yscale,
                         **line["kwargs"],
                     )
@@ -1469,8 +1572,8 @@ class LinePlot:
                     ax.hist(line["x"], bins=line["bins"], **line["kwargs"])
                 elif line["plot_type"] == "step":
                     ax.step(
-                        (line["x"] + self._xshift) * self._xscale,
-                        (line["y"] + self._yshift) * self._yscale,
+                        self._shift_x(line["x"]),
+                        self._shift_y(line["y"]),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "stairs":
@@ -1494,16 +1597,15 @@ class LinePlot:
                     ax.violinplot(line["dataset"], **line["kwargs"])
                 elif line["plot_type"] == "eventplot":
                     ax.eventplot(line["positions"], **line["kwargs"])
-                elif line["plot_type"] == "contour":
-                    contour_sets.append(
-                        ax.contour(line["x"], line["y"], line["z"], **line["kwargs"])
+                elif line["plot_type"] in ("contour", "contourf"):
+                    im = getattr(ax, line["plot_type"])(
+                        line["x"], line["y"], line["z"], **_mpl_mappable_kwargs(line)
                     )
-                elif line["plot_type"] == "contourf":
-                    contour_sets.append(
-                        ax.contourf(line["x"], line["y"], line["z"], **line["kwargs"])
-                    )
+                    contour_sets.append(im)
                 elif line["plot_type"] == "pcolormesh":
-                    ax.pcolormesh(line["x"], line["y"], line["z"], **line["kwargs"])
+                    im = ax.pcolormesh(
+                        line["x"], line["y"], line["z"], **_mpl_mappable_kwargs(line)
+                    )
                 elif line["plot_type"] == "hexbin":
                     ax.hexbin(line["x"], line["y"], **line["kwargs"])
                 elif line["plot_type"] == "matshow":
@@ -1554,7 +1656,7 @@ class LinePlot:
                     ax.table(cellText=line["cellText"], **line["kwargs"])
                 elif line["plot_type"] == "gantt":
                     tasks = line["tasks"]
-                    start_times = (line["start_times"] + self._xshift) * self._xscale
+                    start_times = self._shift_x(line["start_times"])
                     durations = line["durations"] * self._xscale
                     y_positions = np.arange(len(tasks))
                     ax.barh(y_positions, durations, left=start_times, **line["kwargs"])
@@ -1572,7 +1674,7 @@ class LinePlot:
                     if start_times is None:
                         start_times = np.zeros(n)
                     else:
-                        start_times = (start_times + self._xshift) * self._xscale
+                        start_times = self._shift_x(start_times)
 
                     # Calculate depths based on parent relationships
                     for i in range(n):
@@ -1621,24 +1723,31 @@ class LinePlot:
                             )
 
                     ax.set_ylim(-0.5, max_depth)
+                    # patches do not autoscale the view; the subplot's own
+                    # limits, if any, are applied afterwards
+                    if n:
+                        ax.set_xlim(
+                            float(np.min(start_times)),
+                            float(np.max(start_times + values)),
+                        )
                     ax.set_ylabel("Stack Depth")
                 elif line["plot_type"] == "fill_between":
                     ax.fill_between(
-                        (line["x"] + self._xshift) * self._xscale,
+                        self._shift_x(line["x"]),
                         (
                             line["y1"]
                             if np.isscalar(line["y1"])
-                            else (line["y1"] + self._yshift) * self._yscale
+                            else self._shift_y(line["y1"])
                         ),
                         (
                             line["y2"]
                             if np.isscalar(line["y2"])
-                            else (line["y2"] + self._yshift) * self._yscale
+                            else self._shift_y(line["y2"])
                         ),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "fill_betweenx":
-                    y = (line["y"] + self._yshift) * self._yscale
+                    y = self._shift_y(line["y"])
                     x1 = line["x1"]
                     x2 = line["x2"]
                     if np.isscalar(x1):
@@ -1647,16 +1756,16 @@ class LinePlot:
                         x2 = np.full_like(y, x2, dtype=float)
                     ax.fill_betweenx(
                         y,
-                        (np.asarray(x1) + self._xshift) * self._xscale,
-                        (np.asarray(x2) + self._xshift) * self._xscale,
+                        self._shift_x(np.asarray(x1)),
+                        self._shift_x(np.asarray(x2)),
                         **line["kwargs"],
                     )
                 elif line["plot_type"] == "fill":
                     ax.fill(*line["args"], **line["kwargs"])
                 elif line["plot_type"] == "errorbar":
                     ax.errorbar(
-                        (line["x"] + self._xshift) * self._xscale,
-                        (line["y"] + self._yshift) * self._yscale,
+                        self._shift_x(line["x"]),
+                        self._shift_y(line["y"]),
                         yerr=line["yerr"],
                         xerr=line["xerr"],
                         **line["kwargs"],
@@ -1693,28 +1802,53 @@ class LinePlot:
                     ax.text(line["x"], line["y"], line["s"], **line["kwargs"])
                 elif line["plot_type"] == "axvline":
                     ax.axvline(x=line["x"], **line["kwargs"])
+                elif line["plot_type"] == "axhline":
+                    ax.axhline(y=line["y"], **line["kwargs"])
                 elif line["plot_type"] == "imshow":
                     im = ax.imshow(
                         line["data"],
-                        **line["kwargs"],
+                        **_mpl_mappable_kwargs(line),
                     )
                 elif line["plot_type"] == "patch":
                     ax.add_patch(
                         line["patch"],
                         **line["kwargs"],
                     )
+                elif line["plot_type"] == "colorbar" and line.get("span_figure"):
+                    # Drawn by the Canvas once every subplot exists.
+                    self._figure_colorbar = (im, line["label"])
                 elif line["plot_type"] == "colorbar":
-                    divider = make_axes_locatable(ax)
-                    cax = divider.append_axes("right", size="5%", pad=0.05)
-                    plt.colorbar(im, cax=cax, label="Potential (V)")
+                    # Shrinks ``ax`` to make room, so the label stays inside
+                    # the figure.
+                    ax.figure.colorbar(im, ax=ax, label=line["label"])
 
+                if "source_artist_id" in line:
+                    created = [
+                        artist
+                        for artist in ax.get_children()
+                        if id(artist) not in artists_before
+                    ]
+                    for artist in created:
+                        if "source_sticky_edges" in line:
+                            artist.sticky_edges.x[:] = line["source_sticky_edges"][0]
+                            artist.sticky_edges.y[:] = line["source_sticky_edges"][1]
+                        if line.get("source_picker") is not None:
+                            artist.set_picker(line["source_picker"])
+                    if created:
+                        self._import_rendered_artists.setdefault(
+                            line["source_artist_id"], []
+                        ).extend(created)
                 if line.get("meta") is not None:
                     # Mirror the Plotly ``meta=`` tag onto the Matplotlib
                     # artists so callers can find them again by identity
                     # rather than by drawing order.
                     self._tag_matplotlib_artists(ax, artists_before, line["meta"])
 
-        if self._title:
+        if hasattr(self, "_import_projection"):
+            return
+        if hasattr(self, "_import_axis_state"):
+            apply_axis_state(ax, self._import_axis_state)
+        if self._title is not None:
             ax.set_title(self._title, **self._title_kwargs)
         if self._xlabel:
             ax.set_xlabel(self._xlabel, **self._xlabel_kwargs)
@@ -1722,8 +1856,12 @@ class LinePlot:
             ax.set_ylabel(self._ylabel, **self._ylabel_kwargs)
         if self._legend and len(self.line_data) > 0:
             ax.legend(**self._legend_kwargs)
-        if self._grid:
-            ax.grid()
+        if (
+            not hasattr(self, "_import_grid")
+            or self._grid != self._import_grid
+            or getattr(self, "_import_grid_edited", False)
+        ):
+            ax.grid(self._grid)
         if self._axis_settings:
             axis_settings = dict(self._axis_settings)
             axis_args = axis_settings.pop("args", ())
@@ -1736,9 +1874,17 @@ class LinePlot:
             ax.axis(ymin=self.ymin)
         if self.ymax is not None:
             ax.axis(ymax=self.ymax)
-        if self._xaxis_scale is not None:
+        if self._xaxis_scale is not None and (
+            not hasattr(self, "_import_scales")
+            or self._xaxis_scale != self._import_scales[0]
+            or getattr(self, "_import_xscale_edited", False)
+        ):
             ax.set_xscale(self._xaxis_scale)
-        if self._yaxis_scale is not None:
+        if self._yaxis_scale is not None and (
+            not hasattr(self, "_import_scales")
+            or self._yaxis_scale != self._import_scales[1]
+            or getattr(self, "_import_yscale_edited", False)
+        ):
             ax.set_yscale(self._yaxis_scale)
         if self._xticks is not None:
             ax.set_xticks(
@@ -1850,6 +1996,40 @@ class LinePlot:
                 ax.clabel(contour_set, **self._clabel_kwargs)
         if self._rasterization_zorder is not None:
             ax.set_rasterization_zorder(self._rasterization_zorder)
+        if hasattr(self, "_import_axis_state"):
+            ax.set_xlim(self.xmin, self.xmax, auto=None)
+            ax.set_ylim(self.ymin, self.ymax, auto=None)
+            # Explicit edits made through the neutral setters still win.
+            if self._tick_params:
+                params = dict(self._tick_params)
+                if "rotation" in params:
+                    params["labelrotation"] = params.pop("rotation")
+                ax.tick_params(**params)
+            if self._legend and self._import_legends and not self._legend_kwargs:
+                if ax.legend_ is not None:
+                    ax.legend_.remove()
+                for i, snapshot in enumerate(self._import_legends):
+                    legend = snapshot.clone(ax)
+                    if i < len(self._import_legends) - 1:
+                        ax.add_artist(legend)
+                    else:
+                        ax.legend_ = legend
+                        legend._remove_method = ax._remove_legend
+            indicators = getattr(self, "_import_inset_indicators", {})
+            for index, child in enumerate(self._import_child_axes):
+                if child["kind"] == "secondary":
+                    secondary = getattr(
+                        ax, "secondary_" + child["orientation"] + "axis"
+                    )(child["location"], functions=child["functions"])
+                    secondary.set_axes_locator(child["locator"].clone(ax))
+                    secondary.set(xlabel=child["xlabel"], ylabel=child["ylabel"])
+                    apply_axis_state(secondary, child["state"])
+                else:
+                    inset = ax.inset_axes(child["bounds"])
+                    inset.set_axes_locator(child["locator"].clone(ax))
+                    child["subplot"].plot_matplotlib(inset, layers=layers)
+                    if index in indicators:
+                        ax.indicate_inset_zoom(inset, **indicators[index])
 
     @staticmethod
     def _tag_matplotlib_artists(ax, artists_before, meta):
@@ -1864,279 +2044,11 @@ class LinePlot:
             except AttributeError:
                 continue
 
-    def plot_tikzfigure(self, layers=None, verbose: bool = False) -> TikzFigure:
-
-        tikz_figure = TikzFigure()
-        for layer_name, layer_lines in self.layered_line_data.items():
-            if layers and layer_name not in layers:
-                continue
-            for line in layer_lines:
-                plot_type = line["plot_type"]
-                if plot_type not in _TIKZ_SUPPORTED_PLOT_TYPES:
-                    raise NotImplementedError(
-                        f"{plot_type} is not supported by the tikzfigure backend"
-                    )
-                if plot_type == "plot":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y = (line["y"] + self._yshift) * self._yscale
-
-                    nodes = [[xi, yi] for xi, yi in zip(x, y)]
-                    tikz_figure.draw(
-                        nodes=nodes,
-                        **_tikz_style_kwargs(line["kwargs"]),
-                    )
-                elif plot_type == "scatter":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y = (line["y"] + self._yshift) * self._yscale
-                    style = _tikz_style_kwargs(line["kwargs"])
-                    style.setdefault("mark", "*")
-                    style["line_width"] = 0
-                    tikz_figure.draw(
-                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
-                        **style,
-                    )
-                elif plot_type in {"bar", "barh"}:
-                    kwargs = line["kwargs"]
-                    style = _tikz_style_kwargs(kwargs)
-                    style["fill"] = kwargs.get("color", "blue")
-                    style["fill_opacity"] = kwargs.get("alpha", 1.0)
-                    style["line_width"] = kwargs.get("linewidth", 0)
-                    if plot_type == "bar":
-                        width = kwargs.get("width", 0.8)
-                        for x, height in zip(line["x"], line["height"]):
-                            x = (x + self._xshift) * self._xscale
-                            height = height * self._yscale
-                            tikz_figure.draw(
-                                nodes=[
-                                    [x - width / 2, 0],
-                                    [x + width / 2, 0],
-                                    [x + width / 2, height],
-                                    [x - width / 2, height],
-                                ],
-                                cycle=True,
-                                **style,
-                            )
-                    else:
-                        height = kwargs.get("height", 0.8)
-                        for y, width in zip(line["y"], line["width"]):
-                            y = (y + self._yshift) * self._yscale
-                            width = width * self._xscale
-                            tikz_figure.draw(
-                                nodes=[
-                                    [0, y - height / 2],
-                                    [width, y - height / 2],
-                                    [width, y + height / 2],
-                                    [0, y + height / 2],
-                                ],
-                                cycle=True,
-                                **style,
-                            )
-                elif plot_type == "fill_between":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y1 = np.asarray(line["y1"])
-                    y2 = np.broadcast_to(line["y2"], y1.shape)
-                    nodes = [[xi, yi] for xi, yi in zip(x, y1)]
-                    nodes.extend([[xi, yi] for xi, yi in zip(x[::-1], y2[::-1])])
-                    kwargs = line["kwargs"]
-                    style = _tikz_style_kwargs(kwargs)
-                    style["fill"] = kwargs.get("color", "blue")
-                    style["fill_opacity"] = kwargs.get("alpha", 0.25)
-                    tikz_figure.draw(nodes=nodes, cycle=True, **style)
-                elif plot_type == "errorbar":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y = (line["y"] + self._yshift) * self._yscale
-                    style = _tikz_style_kwargs(line["kwargs"])
-                    tikz_figure.draw(nodes=[[xi, yi] for xi, yi in zip(x, y)], **style)
-                    y_bounds = _tikz_error_bounds(line["yerr"], y)
-                    if y_bounds is not None:
-                        lower, upper = y_bounds
-                        for xi, low, high in zip(x, y - lower, y + upper):
-                            tikz_figure.draw(nodes=[[xi, low], [xi, high]], **style)
-                    x_bounds = _tikz_error_bounds(line["xerr"], x)
-                    if x_bounds is not None:
-                        lower, upper = x_bounds
-                        for yi, low, high in zip(y, x - lower, x + upper):
-                            tikz_figure.draw(nodes=[[low, yi], [high, yi]], **style)
-                elif plot_type in {"step", "stairs"}:
-                    kwargs = line["kwargs"]
-                    if plot_type == "step":
-                        x = line["x"]
-                        y = line["y"]
-                        where = kwargs.get("where", "pre")
-                    else:
-                        values = line["values"]
-                        edges = line["edges"]
-                        if edges is None:
-                            edges = np.arange(len(values) + 1)
-                        x = edges
-                        y = np.r_[values, values[-1]]
-                        where = "post"
-                    x, y = _tikz_step_coordinates(x, y, where=where)
-                    x = (x + self._xshift) * self._xscale
-                    y = (y + self._yshift) * self._yscale
-                    tikz_figure.draw(
-                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
-                        **_tikz_style_kwargs(kwargs),
-                    )
-                elif plot_type == "stem":
-                    x = (line["x"] + self._xshift) * self._xscale
-                    y = (line["y"] + self._yshift) * self._yscale
-                    kwargs = line["kwargs"]
-                    style = _tikz_style_kwargs(kwargs)
-                    marker_style = dict(style)
-                    marker_style.update(mark=kwargs.get("marker", "*"), line_width=0)
-                    tikz_figure.draw(
-                        nodes=[[xi, yi] for xi, yi in zip(x, y)], **marker_style
-                    )
-                    for xi, yi in zip(x, y):
-                        tikz_figure.draw(nodes=[[xi, 0], [xi, yi]], **style)
-                elif plot_type in {"hlines", "vlines"}:
-                    kwargs = _tikz_style_kwargs(line["kwargs"])
-                    if plot_type == "hlines":
-                        for yi, left, right in zip(
-                            np.atleast_1d(line["y"]),
-                            np.atleast_1d(line["xmin"]),
-                            np.atleast_1d(line["xmax"]),
-                        ):
-                            tikz_figure.draw(nodes=[[left, yi], [right, yi]], **kwargs)
-                    else:
-                        for xi, bottom, top in zip(
-                            np.atleast_1d(line["x"]),
-                            np.atleast_1d(line["ymin"]),
-                            np.atleast_1d(line["ymax"]),
-                        ):
-                            tikz_figure.draw(nodes=[[xi, bottom], [xi, top]], **kwargs)
-                elif plot_type in {"axvspan", "axhspan"}:
-                    kwargs = line["kwargs"]
-                    style = _tikz_style_kwargs(kwargs)
-                    style["fill"] = kwargs.get("color", "blue")
-                    style["fill_opacity"] = kwargs.get("alpha", 0.2)
-                    if plot_type == "axvspan":
-                        ymin, ymax = self._ymin or 0, self._ymax or 1
-                        nodes = [
-                            [line["xmin"], ymin],
-                            [line["xmax"], ymin],
-                            [line["xmax"], ymax],
-                            [line["xmin"], ymax],
-                        ]
-                    else:
-                        xmin, xmax = self._xmin or 0, self._xmax or 1
-                        nodes = [
-                            [xmin, line["ymin"]],
-                            [xmax, line["ymin"]],
-                            [xmax, line["ymax"]],
-                            [xmin, line["ymax"]],
-                        ]
-                    tikz_figure.draw(nodes=nodes, cycle=True, **style)
-                elif plot_type == "fill":
-                    if len(line["args"]) < 2:
-                        raise ValueError("tikzfigure fill requires x and y coordinates")
-                    x, y = line["args"][:2]
-                    kwargs = line["kwargs"]
-                    style = _tikz_style_kwargs(kwargs)
-                    style["fill"] = kwargs.get("color", "blue")
-                    style["fill_opacity"] = kwargs.get("alpha", 0.25)
-                    tikz_figure.draw(
-                        nodes=[[xi, yi] for xi, yi in zip(x, y)],
-                        cycle=True,
-                        **style,
-                    )
-                elif line["plot_type"] == "gantt":
-                    tasks = line["tasks"]
-                    start_times = (line["start_times"] + self._xshift) * self._xscale
-                    durations = line["durations"] * self._xscale
-                    y_positions = np.arange(len(tasks))
-
-                    # Draw horizontal bars for each task
-                    for i, (task, start, duration) in enumerate(
-                        zip(tasks, start_times, durations)
-                    ):
-                        # Create rectangle nodes for the bar
-                        x_start = start
-                        x_end = start + duration
-                        y_pos = y_positions[i]
-                        bar_height = 0.8  # Bar thickness
-
-                        # Draw rectangle as a path
-                        rect_nodes = [
-                            [x_start, y_pos - bar_height / 2],
-                            [x_end, y_pos - bar_height / 2],
-                            [x_end, y_pos + bar_height / 2],
-                            [x_start, y_pos + bar_height / 2],
-                        ]
-                        tikz_figure.draw(
-                            nodes=rect_nodes,
-                            cycle=True,
-                            fill=line["kwargs"].get("color", "blue"),
-                            **line["kwargs"],
-                        )
-                elif line["plot_type"] == "flame_chart":
-                    labels = line["labels"]
-                    parents = line["parents"]
-                    values = line["values"] * self._xscale
-                    start_times = line["start_times"]
-
-                    # Calculate depths
-                    n = len(labels)
-                    depths = np.zeros(n, dtype=int)
-                    if start_times is None:
-                        start_times = np.zeros(n)
-                    else:
-                        start_times = (start_times + self._xshift) * self._xscale
-
-                    for i in range(n):
-                        if parents[i] is None:
-                            depths[i] = 0
-                        else:
-                            parent_idx = (
-                                parents[i]
-                                if isinstance(parents[i], int)
-                                else list(labels).index(parents[i])
-                            )
-                            depths[i] = depths[parent_idx] + 1
-
-                    # Draw rectangles for each frame
-                    bar_height = 0.8
-                    explicit_colors = line["kwargs"].get("colors")
-                    if isinstance(explicit_colors, str) or not hasattr(
-                        explicit_colors, "__len__"
-                    ):
-                        explicit_colors = (
-                            None if explicit_colors is None else [explicit_colors]
-                        )
-                    colors = ["red", "blue", "green", "orange", "purple", "cyan"]
-
-                    for i in range(n):
-                        x_start = start_times[i]
-                        x_end = start_times[i] + values[i]
-                        y_pos = depths[i]
-                        if explicit_colors:
-                            color = explicit_colors[i % len(explicit_colors)]
-                        else:
-                            color = colors[depths[i] % len(colors)]
-
-                        rect_nodes = [
-                            [x_start, y_pos - bar_height / 2],
-                            [x_end, y_pos - bar_height / 2],
-                            [x_end, y_pos + bar_height / 2],
-                            [x_start, y_pos + bar_height / 2],
-                        ]
-                        tikz_figure.draw(
-                            nodes=rect_nodes,
-                            cycle=True,
-                            fill=color,
-                            **{
-                                k: v
-                                for k, v in line["kwargs"].items()
-                                if k not in ("colormap", "colors")
-                            },
-                        )
-        if verbose:
-            print("Generated TikZ figure:")
-            print(tikz_figure.generate_tikz())
-        return tikz_figure
-
     def plot_plotly(self, layers=None, allow_unsupported=False):
+        if hasattr(self, "_import_projection"):
+            raise NotImplementedError(
+                "Imported projections require the Matplotlib backend or fallback='raster'"
+            )
         """
         Plot all lines using Plotly.
 
@@ -2189,7 +2101,7 @@ class LinePlot:
         # current backend.  Keep the default strict so a mixed plot cannot
         # silently lose data, while allowing callers to deliberately render
         # the Plotly-compatible portions of a canvas.
-        unsupported_plot_types = set()
+        unsupported_plot_types = {"matplotlib_artist"}
 
         def tx(values):
             return self._transform_x(values)
@@ -2209,6 +2121,8 @@ class LinePlot:
             if isinstance(value, np.generic):
                 value = value.item()
             if isinstance(value, (list, tuple, np.ndarray)):
+                if np.ndim(value) == 2:
+                    return [plotly_color(color) for color in value]
                 arr = np.asarray(value).astype(float).reshape(-1)
                 if arr.size in (3, 4):
                     rgb = (arr[:3] * 255.0) if np.all(arr[:3] <= 1.0) else arr[:3]
@@ -2254,6 +2168,16 @@ class LinePlot:
 
         for line in self._iter_layer_lines(layers=layers):
             plot_type = line["plot_type"]
+            if plot_type in ("contour", "contourf", "pcolormesh") and (
+                np.ndim(line["x"]) == 2 or np.ndim(line["y"]) == 2
+            ):
+                if allow_unsupported:
+                    continue
+                raise NotImplementedError(
+                    f"Plotly cannot draw {plot_type} on 2-D (curvilinear) "
+                    "coordinates; use the matplotlib backend, or pass "
+                    "allow_unsupported=True to skip it for Plotly"
+                )
             if plot_type in unsupported_plot_types:
                 if allow_unsupported:
                     continue
@@ -2301,6 +2225,9 @@ class LinePlot:
                 if kwargs.get("color") is not None or c_values is None:
                     marker_color = plotly_color(kwargs.get("color", None))
                     colorscale = None
+                elif np.ndim(c_values) == 2:
+                    marker_color = plotly_color(c_values)
+                    colorscale = None
                 else:
                     if isinstance(c_values, str) or (
                         np.ndim(c_values) > 0
@@ -2313,6 +2240,14 @@ class LinePlot:
                         colorscale = _colormap_to_plotly_colorscale(
                             kwargs.get("cmap", "viridis")
                         )
+                if c_values is not None and kwargs.get("norm") is not None:
+                    from matplotlib.cm import ScalarMappable
+
+                    mapped = ScalarMappable(
+                        norm=kwargs["norm"], cmap=kwargs.get("cmap", "viridis")
+                    )
+                    marker_color = plotly_color(mapped.to_rgba(np.ma.asarray(c_values)))
+                    colorscale = None
                 marker_dict = dict(
                     color=marker_color,
                     colorscale=colorscale,
@@ -2321,7 +2256,11 @@ class LinePlot:
                     showscale=(colorscale is not None)
                     and bool(kwargs.get("colorbar", False)),
                     symbol=marker_map.get(marker, marker),
-                    size=kwargs.get("s", None),
+                    size=(
+                        np.sqrt(np.asarray(kwargs["s"])) * (96 / 72)
+                        if kwargs.get("s") is not None
+                        else None
+                    ),
                     opacity=kwargs.get("alpha", None),
                 )
                 edgecolor = kwargs.get("edgecolors", kwargs.get("edgecolor"))
@@ -2333,6 +2272,16 @@ class LinePlot:
                         ),
                         width=linewidth if linewidth is not None else 1,
                     )
+                if (
+                    isinstance(kwargs.get("facecolors"), str)
+                    and kwargs["facecolors"] == "none"
+                ):
+                    symbol = marker_dict["symbol"]
+                    if isinstance(symbol, str) and not symbol.endswith("-open"):
+                        marker_dict["symbol"] = symbol + "-open"
+                    marker_dict["color"] = (
+                        plotly_color(edgecolor) if edgecolor is not None else "black"
+                    )
                 trace = go.Scatter(
                     x=tx(line["x"]),
                     y=ty(line["y"]),
@@ -2342,6 +2291,8 @@ class LinePlot:
                     marker=marker_dict,
                 )
                 traces.append(trace)
+                if colorscale is not None:
+                    last_heatmap_idx = len(traces) - 1
             elif plot_type == "bar":
                 kwargs = line["kwargs"]
                 base = kwargs.get("bottom")
@@ -2586,10 +2537,15 @@ class LinePlot:
                         y=line["y"],
                         z=line["z"],
                         contours=contours,
-                        colorscale=kwargs.get("cmap", "Viridis"),
+                        colorscale=_colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        ),
                         showscale=kwargs.get("colorbar", True),
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type == "contourf":
                 kwargs = line["kwargs"]
                 contours = {}
@@ -2607,11 +2563,16 @@ class LinePlot:
                         x=line["x"],
                         y=line["y"],
                         z=line["z"],
-                        colorscale=kwargs.get("cmap", "Viridis"),
+                        colorscale=_colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        ),
                         showscale=kwargs.get("colorbar", True),
                         contours=contours,
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type == "pcolormesh":
                 kwargs = line["kwargs"]
                 traces.append(
@@ -2619,10 +2580,15 @@ class LinePlot:
                         x=line["x"],
                         y=line["y"],
                         z=line["z"],
-                        colorscale=kwargs.get("cmap", "Viridis"),
+                        colorscale=_colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        ),
                         showscale=kwargs.get("colorbar", True),
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
                     )
                 )
+                last_heatmap_idx = len(traces) - 1
             elif plot_type in ("pcolor", "pcolorfast"):
                 # Plotly's heatmap is the closest equivalent to Matplotlib's
                 # pseudocolor artists.  The cell-centered rendering differs
@@ -3074,6 +3040,8 @@ class LinePlot:
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker")
                 mode = "lines+markers" if marker is not None else "lines"
+                if kwargs.get("linestyle") in ("None", "", " "):
+                    mode = "markers" if marker is not None else "none"
                 x_vals = tx(line["x"])
                 y_vals = ty(line["y"])
                 yerr = line.get("yerr")
@@ -3089,6 +3057,26 @@ class LinePlot:
                 capsize = kwargs.get("capsize")
                 error_width = None if capsize is None else float(capsize)
                 error_linewidth = kwargs.get("elinewidth", kwargs.get("capthick"))
+
+                def error_spec(values, scale):
+                    if values is None:
+                        return None
+                    values = np.asarray(values) * abs(scale)
+                    spec = dict(
+                        type="data",
+                        visible=True,
+                        width=error_width,
+                        thickness=error_linewidth,
+                        color=plotly_color(kwargs.get("ecolor", kwargs.get("color"))),
+                    )
+                    if values.ndim == 2:
+                        spec.update(
+                            array=values[1], arrayminus=values[0], symmetric=False
+                        )
+                    else:
+                        spec["array"] = values
+                    return spec
+
                 trace = go.Scatter(
                     x=x_vals,
                     y=y_vals,
@@ -3111,28 +3099,8 @@ class LinePlot:
                         if marker is not None
                         else None
                     ),
-                    error_y=(
-                        dict(
-                            type="data",
-                            array=yerr,
-                            visible=True,
-                            width=error_width,
-                            thickness=error_linewidth,
-                        )
-                        if yerr is not None
-                        else None
-                    ),
-                    error_x=(
-                        dict(
-                            type="data",
-                            array=xerr,
-                            visible=True,
-                            width=error_width,
-                            thickness=error_linewidth,
-                        )
-                        if xerr is not None
-                        else None
-                    ),
+                    error_y=error_spec(yerr, self._yscale),
+                    error_x=error_spec(xerr, self._xscale),
                 )
                 traces.append(trace)
             elif plot_type in ("axhline", "axvline", "hlines", "vlines"):
@@ -3302,10 +3270,13 @@ class LinePlot:
                     "center": "middle",
                     "baseline": "bottom",
                 }
+                font_family = kwargs.get("fontfamily", kwargs.get("family", None))
+                if isinstance(font_family, (list, tuple)):
+                    font_family = ", ".join(font_family)
                 font = dict(
                     color=plotly_color(kwargs.get("color", None)),
                     size=kwargs.get("fontsize", None),
-                    family=kwargs.get("fontfamily", kwargs.get("family", None)),
+                    family=font_family,
                     weight=kwargs.get("fontweight", None),
                 )
                 if plot_type == "text":
@@ -3330,7 +3301,7 @@ class LinePlot:
                         x=x,
                         y=y,
                         text=line["text"],
-                        showarrow=True,
+                        showarrow=kwargs.get("arrowprops", {}) is not None,
                         arrowhead=2,
                         ax=0,
                         ay=-30,
@@ -3339,24 +3310,79 @@ class LinePlot:
                     if line.get("xytext") is not None:
                         tx_val = txs(float(line["xytext"][0]))
                         ty_val = tys(float(line["xytext"][1]))
-                        ann.update(axref="x", ayref="y", ax=tx_val, ay=ty_val)
+                        if ann["showarrow"]:
+                            ann.update(axref="x", ayref="y", ax=tx_val, ay=ty_val)
+                        else:
+                            ann.update(x=tx_val, y=ty_val)
                     annotations.append(ann)
             elif plot_type == "imshow":
                 kwargs = line["kwargs"]
-                heatmap = go.Heatmap(
-                    z=line["data"],
-                    colorscale=kwargs.get("cmap", "Viridis"),
-                    showscale=True,
+                data = np.ma.asarray(line["data"])
+                rows, cols = data.shape[:2]
+                origin = kwargs.get("origin", "upper")
+                extent = kwargs.get(
+                    "extent",
+                    (
+                        -0.5,
+                        cols - 0.5,
+                        rows - 0.5 if origin == "upper" else -0.5,
+                        -0.5 if origin == "upper" else rows - 0.5,
+                    ),
                 )
-                traces.append(heatmap)
-                last_heatmap_idx = len(traces) - 1
+                left, right, bottom, top = extent
+                dx = (right - left) / cols
+                dy = ((bottom - top) if origin == "upper" else (top - bottom)) / rows
+                x0 = left + dx / 2
+                y0 = (top if origin == "upper" else bottom) + dy / 2
+                if data.ndim == 3 or kwargs.get("norm") is not None:
+                    from matplotlib.cm import ScalarMappable
+
+                    mapper = ScalarMappable(
+                        norm=kwargs.get("norm"), cmap=kwargs.get("cmap", "viridis")
+                    )
+                    rgba = mapper.to_rgba(data)
+                    if kwargs.get("alpha") is not None:
+                        rgba[..., 3] *= np.asarray(kwargs["alpha"])
+                    pixels = np.asarray(rgba, dtype=float).copy()
+                    pixels[..., :3] *= 255
+                    trace = go.Image(
+                        z=pixels,
+                        colormodel="rgba",
+                        x0=x0,
+                        y0=y0,
+                        dx=dx,
+                        dy=dy,
+                        visible=kwargs.get("visible", True),
+                    )
+                else:
+                    trace = go.Heatmap(
+                        z=data.astype(float).filled(np.nan),
+                        x0=x0,
+                        y0=y0,
+                        dx=dx,
+                        dy=dy,
+                        colorscale=_colormap_to_plotly_colorscale(
+                            kwargs.get("cmap", "viridis")
+                        ),
+                        zmin=kwargs.get("vmin"),
+                        zmax=kwargs.get("vmax"),
+                        showscale=kwargs.get("colorbar", False),
+                        opacity=kwargs.get("alpha"),
+                        visible=kwargs.get("visible", True),
+                    )
+                traces.append(trace)
+                last_heatmap_idx = (
+                    len(traces) - 1 if isinstance(trace, go.Heatmap) else None
+                )
             elif plot_type == "colorbar":
                 if last_heatmap_idx is not None:
+                    trace = traces[last_heatmap_idx]
+                    # Value-colored scatter markers carry their own scale.
+                    target = trace.marker if trace.type == "scatter" else trace
+                    target.update(showscale=True)
                     label = line.get("label", "") or line["kwargs"].get("label", "")
                     if label:
-                        traces[last_heatmap_idx].update(
-                            colorbar=dict(title=dict(text=label))
-                        )
+                        target.update(colorbar=dict(title=dict(text=label)))
             elif plot_type == "patch":
                 kwargs = line["kwargs"]
                 patch = line["patch"]
@@ -3744,12 +3770,28 @@ class LinePlot:
     def _plotext_axis_scale(self, axis: str):
         return self._xaxis_scale if axis == "x" else self._yaxis_scale
 
+    def _shift_x(self, values):
+        """Apply ``xshift``/``xscale``; values pass through unchanged by default.
+
+        Skipping the no-op arithmetic keeps non-numeric data, such as
+        datetimes or category labels, plottable.
+        """
+        if self._xshift == 0 and self._xscale == 1:
+            return values
+        return (values + self._xshift) * self._xscale
+
+    def _shift_y(self, values):
+        """Apply ``yshift``/``yscale``; see :meth:`_shift_x`."""
+        if self._yshift == 0 and self._yscale == 1:
+            return values
+        return (values + self._yshift) * self._yscale
+
     def _plotext_axis_transform(self, values, axis: str):
         array = np.asarray(values)
         if axis == "x":
-            transformed = (array + self._xshift) * self._xscale
+            transformed = self._shift_x(array)
         else:
-            transformed = (array + self._yshift) * self._yscale
+            transformed = self._shift_y(array)
         if self._plotext_axis_scale(axis) == "symlog":
             return self._symlog_transform(transformed)
         return transformed
