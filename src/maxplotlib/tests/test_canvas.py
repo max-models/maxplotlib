@@ -1,3 +1,6 @@
+import re
+
+
 def test():
     pass
 
@@ -68,30 +71,37 @@ def test_canvas_plot_tikzfigure_respects_width_and_ratio():
 
     tikz = canvas.plot_tikzfigure().generate_tikz()
 
-    assert "width=10cm" in tikz
-    assert "height=20cm" in tikz
+    # the axis box is the Matplotlib axes of the 10cm x 20cm figure
+    width = float(re.search(r"width=([0-9.]+)in", tikz).group(1))
+    height = float(re.search(r"height=([0-9.]+)in", tikz).group(1))
+    assert 0.5 * 10 / 2.54 < width < 10 / 2.54
+    assert 0.5 * 20 / 2.54 < height < 20 / 2.54
     assert "title=Parabola" in tikz
 
 
-def test_canvas_plot_tikzfigure_vertical_not_supported():
-    """Test that vertical layouts raise NotImplementedError."""
+def test_canvas_plot_tikzfigure_vertical_layout():
+    """A 2x1 layout gives two axes, the first above the second."""
     import numpy as np
-    import pytest
 
     from maxplotlib import Canvas
 
     x = np.linspace(0, 2 * np.pi, 50)
-    # Create 2×1 layout (nrows=2)
     canvas, axes = Canvas.subplots(nrows=2, width="10cm")
 
     axes[0].plot(x, np.sin(x))
     axes[1].plot(x, np.cos(x))
 
-    # Should raise NotImplementedError
-    with pytest.raises(NotImplementedError) as exc_info:
-        canvas.plot_tikzfigure()
+    figure = canvas.plot_tikzfigure()
+    tikz = figure.generate_tikz()
 
-    assert "nrows > 1" in str(exc_info.value)
+    assert len(figure.axes) == 2
+    positions = [
+        (float(x), float(y))
+        for x, y in re.findall(r"at=\{\(([0-9.]+)in,([0-9.]+)in\)\}", tikz)
+    ]
+    assert len(positions) == 2
+    assert positions[0][1] > positions[1][1]
+    assert positions[0][0] == positions[1][0]
 
 
 def test_tikzfigure_supports_scatter_bars_fills_and_errorbars():
@@ -109,22 +119,27 @@ def test_tikzfigure_supports_scatter_bars_fills_and_errorbars():
     tikz = canvas.render(backend="tikzfigure").generate_tikz()
 
     assert "mark=*" in tikz
-    assert "fill=blue" in tikz
-    assert "fill=green" in tikz
+    assert "\\definecolor{mpl0000FF}{HTML}{0000FF}" in tikz
+    assert "fill=mpl0000FF" in tikz
+    assert "fill=mpl008000, fill opacity=0.2" in tikz
     assert tikz.count("coordinates") >= 4
 
 
-def test_tikzfigure_rejects_unsupported_plot_types_explicitly():
+def test_tikzfigure_draws_images_as_graphics():
     import numpy as np
-    import pytest
 
     from maxplotlib import Canvas
 
     canvas = Canvas()
-    canvas.imshow(np.ones((2, 2)))
+    canvas.imshow(np.arange(4.0).reshape(2, 2))
 
-    with pytest.raises(NotImplementedError, match="imshow"):
-        canvas.render(backend="tikzfigure")
+    figure = canvas.render(backend="tikzfigure")
+    tikz = figure.generate_tikz()
+
+    assert "\\addplot[forget plot] graphics" in tikz
+    ((name, data),) = figure.files().items()
+    assert name in tikz
+    assert data.startswith(b"\x89PNG")
 
 
 def test_tikzfigure_supports_step_stem_reference_lines_spans_and_fill():
@@ -135,7 +150,7 @@ def test_tikzfigure_supports_step_stem_reference_lines_spans_and_fill():
     x = np.arange(4)
     canvas = Canvas()
     canvas.step(x, [1, 2, 1, 3], color="black")
-    canvas.stem(x, [1, 2, 1, 3], color="purple")
+    canvas.stem(x, [1, 2, 1, 3], linefmt="C4-", markerfmt="C4o")
     canvas.hlines([1, 2], 0, 3, color="gray")
     canvas.vlines([1, 2], 0, 3, color="gray")
     canvas.axvspan(1, 2, color="orange", alpha=0.2)
@@ -145,9 +160,9 @@ def test_tikzfigure_supports_step_stem_reference_lines_spans_and_fill():
     tikz = canvas.render(backend="tikzfigure").generate_tikz()
 
     assert "mark=*" in tikz
-    assert "fill=orange" in tikz
-    assert "fill=cyan" in tikz
-    assert tikz.count("coordinates") >= 10
+    assert "fill=mplFFA500" in tikz
+    assert "fill=mpl00FFFF" in tikz
+    assert tikz.count("coordinates") >= 7
 
 
 def test_canvas_matplotlib_gridspec_kw_affects_row_spacing():

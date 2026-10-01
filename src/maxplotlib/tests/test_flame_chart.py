@@ -2,6 +2,8 @@
 Tests for flame chart functionality across all backends.
 """
 
+import shutil
+
 import numpy as np
 import pytest
 
@@ -162,6 +164,13 @@ def test_flame_chart_tikzfigure_backend(sample_flame_data, tmp_path):
     canvas.set_ylabel("Stack Depth")
     canvas.set_title("Test Flame Chart")
 
+    # the TikZ code needs no LaTeX; compiling it to PDF needs pdflatex
+    tikz_file = tmp_path / "test_flame_tikz.tikz"
+    canvas.savefig(str(tikz_file), backend="tikzfigure")
+    assert "\\begin{axis}" in tikz_file.read_text()
+
+    if shutil.which("pdflatex") is None:
+        pytest.skip("pdflatex not installed")
     output_file = tmp_path / "test_flame_tikz.pdf"
     canvas.savefig(str(output_file), backend="tikzfigure")
 

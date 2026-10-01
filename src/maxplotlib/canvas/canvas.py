@@ -18,13 +18,7 @@ from maxplotlib.backends.matplotlib.utils import (
 from maxplotlib.backends.plotext import PlotextFigure, create_plotext_figure
 from maxplotlib.colors.colors import Color
 from maxplotlib.linestyle.linestyle import Linestyle
-from maxplotlib.subfigure.line_plot import (
-    _TIKZ_SUPPORTED_PLOT_TYPES,
-    LinePlot,
-    _tikz_error_bounds,
-    _tikz_step_coordinates,
-    _tikz_style_kwargs,
-)
+from maxplotlib.subfigure.line_plot import LinePlot
 from maxplotlib.utils import xarray_support
 from maxplotlib.utils.options import Backends
 
@@ -2250,7 +2244,7 @@ class Canvas:
                 verbose=verbose,
             )
         elif backend == "tikzfigure":
-            return self.plot_tikzfigure(savefig=savefig, verbose=verbose)
+            return self.plot_tikzfigure(savefig=savefig, layers=layers, verbose=verbose)
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
@@ -2708,332 +2702,86 @@ class Canvas:
         self,
         savefig: bool = False,
         verbose: bool = False,
+        *,
+        layers: list | None = None,
+        raster_dpi: float = 300,
+        max_markers: int = 2000,
+        max_items: int = 500,
+        max_points: int = 20000,
+        precision: int = 6,
     ) -> TikzFigure:
-        """
-        Generate a TikZ figure from subplots.
+        """Render the canvas as a TikZ/pgfplots figure.
 
-        For now, returns the first subplot's TikzFigure.
-        Full multi-subplot support requires TikzFigure's subfigure_axis API.
+        The canvas is drawn with Matplotlib, off screen, and the drawn figure
+        is converted with
+        :func:`~maxplotlib.backends.tikzfigure.figure_to_tikz`: every subplot
+        becomes a pgfplots axis at the same place and size, with its labels,
+        ticks, legend and colorbar, lines, markers, bars, fills and text as
+        pgfplots code, and meshes, images and other artists without a vector
+        counterpart as images Matplotlib renders (``\\addplot graphics``).
+        Every layout, twin axes and imported figure therefore converts.
 
         Parameters:
-        verbose (bool): If True, print debug information.
+        savefig (bool): Unused; kept for the other backends' signature.
+        verbose (bool): If True, print progress.
+        layers (list): Draw only these layers, as with Matplotlib.
+        raster_dpi (float): Resolution of the parts drawn as images.
+        max_markers (int): Scatter plots with more points are drawn as an image.
+        max_items (int): Collections with more differently styled items are
+            drawn as an image.
+        max_points (int): Lines with more points (after simplification) are
+            drawn as an image.
+        precision (int): Significant digits of the written coordinates.
 
         Returns:
-        TikzFigure: Figure object that can be shown, saved, or compiled.
+        TikzFigure: Figure object that can be shown, saved (``.tikz`` and
+        ``.tex`` with the images next to them, ``.pdf``, ``.png``) or
+        compiled.
         """
-        self._validate_import_backend("tikzfigure")
+        from maxplotlib.backends.tikzfigure import figure_to_tikz
+
         if verbose:
-            print(f"Plotting tikzfigure with {len(self._subplot_dict)} subplot(s)")
-
-        if self._twinx_subplots:
-            raise NotImplementedError(
-                "twinx plots are currently supported only by the matplotlib and plotly backends"
+            print("Drawing the canvas with Matplotlib for the tikzfigure backend")
+        # drawing with Matplotlib changes the global style and this canvas's
+        # record of its Matplotlib figure; neither is meant to change here
+        state = {
+            name: getattr(self, name)
+            for name in (
+                "_plotted",
+                "_matplotlib_fig",
+                "_matplotlib_axes",
+                "_matplotlib_twin_axes",
+                "_matplotlib_twiny_axes",
             )
-
-        # Check for unsupported layouts
-        if self.nrows > 1:
-            raise NotImplementedError(
-                "Vertical/grid layouts (nrows > 1) are not yet supported for tikzfigure backend. "
-                "Use horizontal layouts (1×n) only."
-            )
-
-        # Validate that at least one subplot exists
-        if len(self._subplot_dict) == 0:
-            raise ValueError(
-                "No subplots to plot. Call add_subplot() or Canvas.subplots() first."
-            )
-
-        axis_width, axis_height = self._get_tikzfigure_axis_dimensions()
-        fig = TikzFigure()
-
-        # Add each subplot as a subfigure axis
-        for (row, col), line_plot in self._subplot_dict.items():
-            if verbose:
-                print(f"Plotting subplot at row {row}, col {col}")
-
-            # Create subfigure axis with subplot metadata
-            ax = fig.subfigure_axis(
-                xlabel=line_plot._xlabel or "",
-                ylabel=line_plot._ylabel or "",
-                xlim=(
-                    (line_plot._xmin, line_plot._xmax)
-                    if line_plot._xmin is not None
-                    else None
-                ),
-                ylim=(
-                    (line_plot._ymin, line_plot._ymax)
-                    if line_plot._ymin is not None
-                    else None
-                ),
-                grid=line_plot._grid,
-                title=line_plot._title or f"Subplot {col + 1}",
-                width=0.45,
-                axis_width=axis_width,
-                height=axis_height,
-            )
-
-            # Add each plot line to the subfigure
-            for line_data in line_plot.line_data:
-                plot_type = line_data.get("plot_type")
-                if plot_type not in _TIKZ_SUPPORTED_PLOT_TYPES:
-                    raise NotImplementedError(
-                        f"{plot_type} is not supported by the tikzfigure backend"
-                    )
-                if plot_type == "plot":
-                    # Extract and transform x, y data
-                    x = line_plot._shift_x(line_data["x"])
-                    y = line_plot._shift_y(line_data["y"])
-                    kwargs = line_data.get("kwargs", {})
-                    if verbose:
-                        print(f"Line {kwargs = }")
-                    # Add plot to subfigure axis
-                    ax.add_plot(
-                        x=x,
-                        y=y,
-                        **_tikz_style_kwargs(kwargs),
-                    )
-                elif plot_type == "scatter":
-                    x = line_plot._shift_x(line_data["x"])
-                    y = line_plot._shift_y(line_data["y"])
-                    kwargs = _tikz_style_kwargs(line_data.get("kwargs", {}))
-                    kwargs.setdefault("mark", "*")
-                    kwargs["line_width"] = 0
-                    ax.add_plot(x=x, y=y, **kwargs)
-                elif plot_type in {"bar", "barh"}:
-                    source_kwargs = line_data.get("kwargs", {})
-                    kwargs = _tikz_style_kwargs(source_kwargs)
-                    kwargs["fill"] = source_kwargs.get("color", "blue")
-                    kwargs["fill_opacity"] = source_kwargs.get("alpha", 1.0)
-                    kwargs["line_width"] = source_kwargs.get("linewidth", 0)
-                    if plot_type == "bar":
-                        width = source_kwargs.get("width", 0.8)
-                        for x, height in zip(line_data["x"], line_data["height"]):
-                            ax.add_plot(
-                                x=[
-                                    x - width / 2,
-                                    x + width / 2,
-                                    x + width / 2,
-                                    x - width / 2,
-                                ],
-                                y=[0, 0, height, height],
-                                cycle=True,
-                                **kwargs,
-                            )
-                    else:
-                        height = source_kwargs.get("height", 0.8)
-                        for y, width in zip(line_data["y"], line_data["width"]):
-                            ax.add_plot(
-                                x=[0, width, width, 0],
-                                y=[
-                                    y - height / 2,
-                                    y - height / 2,
-                                    y + height / 2,
-                                    y + height / 2,
-                                ],
-                                cycle=True,
-                                **kwargs,
-                            )
-                elif plot_type == "fill_between":
-                    x = line_data["x"]
-                    y1 = np.asarray(line_data["y1"])
-                    y2 = np.broadcast_to(line_data["y2"], y1.shape)
-                    source_kwargs = line_data.get("kwargs", {})
-                    kwargs = _tikz_style_kwargs(source_kwargs)
-                    kwargs["fill"] = source_kwargs.get("color", "blue")
-                    kwargs["fill_opacity"] = source_kwargs.get("alpha", 0.25)
-                    ax.add_plot(
-                        x=list(x) + list(x[::-1]),
-                        y=list(y1) + list(y2[::-1]),
-                        cycle=True,
-                        **kwargs,
-                    )
-                elif plot_type == "errorbar":
-                    x = line_data["x"]
-                    y = line_data["y"]
-                    kwargs = _tikz_style_kwargs(line_data.get("kwargs", {}))
-                    ax.add_plot(x=x, y=y, **kwargs)
-                    y_bounds = _tikz_error_bounds(line_data["yerr"], y)
-                    if y_bounds is not None:
-                        lower, upper = y_bounds
-                        for xi, low, high in zip(x, y - lower, y + upper):
-                            ax.add_plot(x=[xi, xi], y=[low, high], **kwargs)
-                    x_bounds = _tikz_error_bounds(line_data["xerr"], x)
-                    if x_bounds is not None:
-                        lower, upper = x_bounds
-                        for yi, low, high in zip(y, x - lower, x + upper):
-                            ax.add_plot(x=[low, high], y=[yi, yi], **kwargs)
-                elif plot_type in {"step", "stairs"}:
-                    source_kwargs = line_data.get("kwargs", {})
-                    if plot_type == "step":
-                        x = line_data["x"]
-                        y = line_data["y"]
-                        where = source_kwargs.get("where", "pre")
-                    else:
-                        values = line_data["values"]
-                        edges = line_data["edges"]
-                        if edges is None:
-                            edges = np.arange(len(values) + 1)
-                        x = edges
-                        y = np.r_[values, values[-1]]
-                        where = "post"
-                    x, y = _tikz_step_coordinates(x, y, where=where)
-                    ax.add_plot(
-                        x=x,
-                        y=y,
-                        **_tikz_style_kwargs(source_kwargs),
-                    )
-                elif plot_type == "stem":
-                    x = line_data["x"]
-                    y = line_data["y"]
-                    source_kwargs = line_data.get("kwargs", {})
-                    style = _tikz_style_kwargs(source_kwargs)
-                    marker_style = dict(style)
-                    marker_style.update(
-                        mark=source_kwargs.get("marker", "*"), line_width=0
-                    )
-                    ax.add_plot(x=x, y=y, **marker_style)
-                    for xi, yi in zip(x, y):
-                        ax.add_plot(x=[xi, xi], y=[0, yi], **style)
-                elif plot_type in {"hlines", "vlines"}:
-                    style = _tikz_style_kwargs(line_data.get("kwargs", {}))
-                    if plot_type == "hlines":
-                        for yi, left, right in zip(
-                            np.atleast_1d(line_data["y"]),
-                            np.atleast_1d(line_data["xmin"]),
-                            np.atleast_1d(line_data["xmax"]),
-                        ):
-                            ax.add_plot(x=[left, right], y=[yi, yi], **style)
-                    else:
-                        for xi, bottom, top in zip(
-                            np.atleast_1d(line_data["x"]),
-                            np.atleast_1d(line_data["ymin"]),
-                            np.atleast_1d(line_data["ymax"]),
-                        ):
-                            ax.add_plot(x=[xi, xi], y=[bottom, top], **style)
-                elif plot_type in {"axvspan", "axhspan"}:
-                    source_kwargs = line_data.get("kwargs", {})
-                    style = _tikz_style_kwargs(source_kwargs)
-                    style["fill"] = source_kwargs.get("color", "blue")
-                    style["fill_opacity"] = source_kwargs.get("alpha", 0.2)
-                    if plot_type == "axvspan":
-                        xmin, xmax = line_data["xmin"], line_data["xmax"]
-                        ymin, ymax = line_plot._ymin or 0, line_plot._ymax or 1
-                        x = [xmin, xmax, xmax, xmin]
-                        y = [ymin, ymin, ymax, ymax]
-                    else:
-                        ymin, ymax = line_data["ymin"], line_data["ymax"]
-                        xmin, xmax = line_plot._xmin or 0, line_plot._xmax or 1
-                        x = [xmin, xmax, xmax, xmin]
-                        y = [ymin, ymin, ymax, ymax]
-                    ax.add_plot(x=x, y=y, cycle=True, **style)
-                elif plot_type == "fill":
-                    if len(line_data["args"]) < 2:
-                        raise ValueError("tikzfigure fill requires x and y coordinates")
-                    x, y = line_data["args"][:2]
-                    source_kwargs = line_data.get("kwargs", {})
-                    style = _tikz_style_kwargs(source_kwargs)
-                    style["fill"] = source_kwargs.get("color", "blue")
-                    style["fill_opacity"] = source_kwargs.get("alpha", 0.25)
-                    ax.add_plot(x=x, y=y, cycle=True, **style)
-                elif plot_type == "flame_chart":
-                    labels = line_data["labels"]
-                    parents = line_data["parents"]
-                    values = line_data["values"] * line_plot._xscale
-                    start_times = line_data["start_times"]
-                    depths = np.zeros(len(labels), dtype=int)
-                    if start_times is None:
-                        start_times = np.zeros(len(labels))
-                    else:
-                        start_times = (
-                            start_times + line_plot._xshift
-                        ) * line_plot._xscale
-                    for index, parent in enumerate(parents):
-                        if parent is not None:
-                            parent_index = (
-                                parent
-                                if isinstance(parent, int)
-                                else labels.index(parent)
-                            )
-                            depths[index] = depths[parent_index] + 1
-                    colors = ["red", "blue", "green", "orange", "purple", "cyan"]
-                    for index, (start, value) in enumerate(zip(start_times, values)):
-                        y = depths[index]
-                        ax.add_plot(
-                            x=[start, start + value, start + value, start],
-                            y=[y - 0.4, y - 0.4, y + 0.4, y + 0.4],
-                            cycle=True,
-                            fill=colors[y % len(colors)],
-                            line_width=0,
-                        )
-                elif plot_type == "gantt":
-                    tasks = line_data["tasks"]
-                    start_times = (
-                        line_data["start_times"] + line_plot._xshift
-                    ) * line_plot._xscale
-                    durations = line_data["durations"] * line_plot._xscale
-                    y_positions = np.arange(len(tasks))
-                    kwargs = line_data.get("kwargs", {})
-
-                    # Draw horizontal bars for each task as filled rectangles
-                    for i, (task, start, duration) in enumerate(
-                        zip(tasks, start_times, durations)
-                    ):
-                        x_start = float(start)
-                        x_end = float(start + duration)
-                        y_pos = float(y_positions[i])
-                        bar_height = 0.8
-
-                        # Create rectangle coordinates for the bar
-                        x_coords = [x_start, x_end, x_end, x_start, x_start]
-                        y_coords = [
-                            y_pos - bar_height / 2,
-                            y_pos - bar_height / 2,
-                            y_pos + bar_height / 2,
-                            y_pos + bar_height / 2,
-                            y_pos - bar_height / 2,
-                        ]
-
-                        # Add as a filled plot
-                        color = kwargs.get("color", "blue")
-                        ax.add_plot(
-                            x=x_coords,
-                            y=y_coords,
-                            color=color,
-                            fill=True,
-                            line_width=0,
-                        )
-
-                    # Set y-axis ticks to show task names
-                    if line_plot._yticks is None:
-                        ax.set_ticks("y", list(y_positions), tasks)
-
-            # Add legend if requested
-            if line_plot._legend and len(line_plot.line_data) > 0:
-                ax.set_legend(position="north east")
-
-        return fig
-
-    def _get_tikzfigure_axis_dimensions(self) -> tuple[str | None, str | None]:
-        if self._width is None:
-            return None, None
-
-        total_width_in, total_height_in = set_size(
-            width=self._width,
-            ratio=self._ratio,
-            dpi=self._dpi if self._dpi is not None else 300,
-        )
-        total_width_cm = total_width_in * 2.54
-        total_height_cm = total_height_in * 2.54
-        horizontal_sep_cm = getattr(TikzFigure, "GROUPPLOT_HORIZONTAL_SEP_CM", 1.5)
-        available_width_cm = total_width_cm - horizontal_sep_cm * (self.ncols - 1)
-        if available_width_cm <= 0:
-            raise ValueError(
-                f'Canvas width "{self._width}" is too small for {self.ncols} '
-                "tikzfigure subplot(s)."
-            )
-
-        axis_width_cm = available_width_cm / self.ncols
-        return f"{axis_width_cm:.6g}cm", f"{total_height_cm:.6g}cm"
+            if hasattr(self, name)
+        }
+        with plt.rc_context(), plt.ioff():
+            fig, _ = self.plot_matplotlib(savefig=False, layers=layers, verbose=verbose)
+            try:
+                tikz = figure_to_tikz(
+                    fig,
+                    raster_dpi=raster_dpi,
+                    max_markers=max_markers,
+                    max_items=max_items,
+                    max_points=max_points,
+                    precision=precision,
+                )
+            finally:
+                plt.close(fig)
+                for name in (
+                    "_plotted",
+                    "_matplotlib_fig",
+                    "_matplotlib_axes",
+                    "_matplotlib_twin_axes",
+                    "_matplotlib_twiny_axes",
+                ):
+                    if name in state:
+                        setattr(self, name, state[name])
+                    elif hasattr(self, name):
+                        delattr(self, name)
+        if verbose:
+            print(f"Converted {len(tikz.axes)} axes")
+        return tikz
 
     def plot_plotext(
         self,
