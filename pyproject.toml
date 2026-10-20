@@ -32,12 +32,10 @@ xarray = [
 ]
 docs = [
     "xarray",
-    "myst-parser",
-    "sphinx",
-    "sphinx-rtd-theme",
-    "nbsphinx",
+    "griffe",
     "ipykernel",
-    "nbconvert",
+    "nbclient>=0.11",
+    "nbformat>=5.11.1",
 ]
 dev = [
     "maxplotlibx[test,docs]",

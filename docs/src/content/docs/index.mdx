@@ -1,0 +1,50 @@
+---
+title: maxplotlib
+description: A reproducible plotting module with Matplotlib, Plotly, plotext and TikZ backends.
+template: splash
+hero:
+  tagline: One canvas, four backends. Render the same figure as a PNG with Matplotlib, an interactive Plotly chart, a plotext figure in the terminal, or TikZ code for LaTeX.
+  actions:
+    - text: Get started
+      link: /maxplotlib/getting-started/installation/
+      icon: right-arrow
+    - text: View on GitHub
+      link: https://github.com/max-models/maxplotlib
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+```python
+import numpy as np
+from maxplotlib import Canvas
+
+x = np.linspace(0, 2 * np.pi, 200)
+
+canvas, ax = Canvas.subplots()
+ax.plot(x, np.sin(x))
+
+canvas.show()                      # Matplotlib, the default
+canvas.show(backend="plotly")      # interactive
+canvas.show(backend="plotext")     # in the terminal
+canvas.savefig("sine.pdf", backend="tikzfigure")  # TikZ, compiled with LaTeX
+```
+
+<CardGrid>
+	<Card title="Quickstart" icon="rocket">
+		Build a canvas, add lines and subplots, and render it with each backend:
+		[Quickstart](/maxplotlib/getting-started/quickstart/).
+	</Card>
+	<Card title="Tutorials" icon="open-book">
+		From plot types, styling and layers to Gantt and flame charts and xarray data:
+		[Tutorials](/maxplotlib/tutorials/).
+	</Card>
+	<Card title="Matplotlib import" icon="seti:image">
+		Turn an existing Matplotlib figure into a canvas with `Canvas.from_matplotlib`:
+		[what is supported](/maxplotlib/guides/matplotlib-import/).
+	</Card>
+	<Card title="API reference" icon="document">
+		Every class and function, from the docstrings: [API](/maxplotlib/api/maxplotlib/).
+	</Card>
+</CardGrid>

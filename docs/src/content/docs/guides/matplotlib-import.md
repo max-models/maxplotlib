@@ -1,4 +1,7 @@
-# Matplotlib import support and roadmap
+---
+title: Matplotlib import support and roadmap
+description: What Canvas.from_matplotlib imports from a Matplotlib figure today, and what is planned.
+---
 
 `Canvas.from_matplotlib(source, strict=False, **canvas_kwargs)` accepts an
 in-memory Matplotlib figure, axes, or rectangular axes array. This checklist
