@@ -38,23 +38,21 @@ class MaxplotAccessor:
     def __init__(self, da):
         self._da = da
 
-    def __call__(self, **kwargs):
-        """Plot with a kind chosen from the dimensions, like ``da.plot()``.
-
-        After removing any ``col``/``row`` dimensions, 1-D data (or 2-D data
-        with ``hue=``) is drawn with :meth:`line` and 2-D data with
-        :meth:`pcolormesh`.
-        """
-        facet_dims = {kwargs.get("col"), kwargs.get("row")} - {None}
-        ndim = self._da.ndim - len(facet_dims & set(self._da.dims))
-        if ndim == 1 or (ndim == 2 and "hue" in kwargs):
-            return self.line(**kwargs)
-        if ndim == 2:
-            return self.pcolormesh(**kwargs)
-        raise ValueError(
-            f"da.maxplot() plots 1-D or 2-D data, got dims {self._da.dims}. "
-            "Select a slice first, e.g. da.sel(...), or facet with col=/row=."
-        )
+    def _draw(self, kind, kwargs):
+        canvas_kwargs = kwargs.pop("canvas_kwargs", None)
+        # xarray's x=/y= are xcoord=/ycoord= on Canvas methods, where x and y
+        # are the positional data arguments.
+        for axis in ("x", "y"):
+            if axis in kwargs:
+                kwargs[f"{axis}coord"] = kwargs.pop(axis)
+        if any(name in kwargs for name in _FACET_KWARGS):
+            canvas, _ = Canvas.facet(
+                self._da, kind=kind, canvas_kwargs=canvas_kwargs, **kwargs
+            )
+            return canvas
+        canvas = Canvas(**(canvas_kwargs or {}))
+        getattr(canvas, kind)(self._da, **kwargs)
+        return canvas
 
     def line(self, **kwargs):
         """Lines against the coordinate; ``hue=<dim>`` for one per value."""
@@ -80,21 +78,23 @@ class MaxplotAccessor:
         """Filled contours of 2-D data, with a labelled colorbar."""
         return self._draw("contourf", kwargs)
 
-    def _draw(self, kind, kwargs):
-        canvas_kwargs = kwargs.pop("canvas_kwargs", None)
-        # xarray's x=/y= are xcoord=/ycoord= on Canvas methods, where x and y
-        # are the positional data arguments.
-        for axis in ("x", "y"):
-            if axis in kwargs:
-                kwargs[f"{axis}coord"] = kwargs.pop(axis)
-        if any(name in kwargs for name in _FACET_KWARGS):
-            canvas, _ = Canvas.facet(
-                self._da, kind=kind, canvas_kwargs=canvas_kwargs, **kwargs
-            )
-            return canvas
-        canvas = Canvas(**(canvas_kwargs or {}))
-        getattr(canvas, kind)(self._da, **kwargs)
-        return canvas
+    def __call__(self, **kwargs):
+        """Plot with a kind chosen from the dimensions, like ``da.plot()``.
+
+        After removing any ``col``/``row`` dimensions, 1-D data (or 2-D data
+        with ``hue=``) is drawn with :meth:`line` and 2-D data with
+        :meth:`pcolormesh`.
+        """
+        facet_dims = {kwargs.get("col"), kwargs.get("row")} - {None}
+        ndim = self._da.ndim - len(facet_dims & set(self._da.dims))
+        if ndim == 1 or (ndim == 2 and "hue" in kwargs):
+            return self.line(**kwargs)
+        if ndim == 2:
+            return self.pcolormesh(**kwargs)
+        raise ValueError(
+            f"da.maxplot() plots 1-D or 2-D data, got dims {self._da.dims}. "
+            "Select a slice first, e.g. da.sel(...), or facet with col=/row=."
+        )
 
 
 @xr.register_dataset_accessor("maxplot")
@@ -103,27 +103,6 @@ class MaxplotDatasetAccessor:
 
     def __init__(self, ds):
         self._ds = ds
-
-    def line(self, x, y, hue=None, **kwargs):
-        """Lines of variable ``y`` against variable or coordinate ``x``.
-
-        ``hue`` names a dimension to draw one line per value of. Other
-        arguments are as for ``DataArray.maxplot.line``, including facets.
-        """
-        return self._as_dataarray(x, y).maxplot.line(x=x, hue=hue, **kwargs)
-
-    def scatter(self, x, y, hue=None, **kwargs):
-        """Points of variable ``y`` against variable or coordinate ``x``.
-
-        ``hue`` names a dimension, for one series per value, or a variable,
-        which colors the points by value with a labelled colorbar (turned off
-        by ``add_colorbar=False``; ``cmap``, ``robust`` and ``center`` apply).
-        """
-        if hue is None or hue in self._ds.dims:
-            return self._as_dataarray(x, y).maxplot.scatter(x=x, hue=hue, **kwargs)
-        if any(name in kwargs for name in _FACET_KWARGS):
-            raise ValueError("facets are not supported with a variable as hue=")
-        return self._scatter_colored(x, y, hue, kwargs)
 
     def _variable(self, name):
         if name not in self._ds.variables:
@@ -144,6 +123,14 @@ class MaxplotDatasetAccessor:
                 f"{y!r} {yvar.dims}"
             )
         return yvar.assign_coords({x: xvar})
+
+    def line(self, x, y, hue=None, **kwargs):
+        """Lines of variable ``y`` against variable or coordinate ``x``.
+
+        ``hue`` names a dimension to draw one line per value of. Other
+        arguments are as for ``DataArray.maxplot.line``, including facets.
+        """
+        return self._as_dataarray(x, y).maxplot.line(x=x, hue=hue, **kwargs)
 
     def _scatter_colored(self, x, y, hue, kwargs):
         canvas_kwargs = kwargs.pop("canvas_kwargs", None)
@@ -168,3 +155,16 @@ class MaxplotDatasetAccessor:
         if add_colorbar:
             canvas.colorbar(label=xarray_support.value_label(cvar))
         return canvas
+
+    def scatter(self, x, y, hue=None, **kwargs):
+        """Points of variable ``y`` against variable or coordinate ``x``.
+
+        ``hue`` names a dimension, for one series per value, or a variable,
+        which colors the points by value with a labelled colorbar (turned off
+        by ``add_colorbar=False``; ``cmap``, ``robust`` and ``center`` apply).
+        """
+        if hue is None or hue in self._ds.dims:
+            return self._as_dataarray(x, y).maxplot.scatter(x=x, hue=hue, **kwargs)
+        if any(name in kwargs for name in _FACET_KWARGS):
+            raise ValueError("facets are not supported with a variable as hue=")
+        return self._scatter_colored(x, y, hue, kwargs)

@@ -42,6 +42,7 @@ from matplotlib.patches import FancyArrowPatch, Patch
 from matplotlib.path import Path
 from matplotlib.text import Annotation, Text
 from matplotlib.transforms import Bbox
+
 from tikzfigure import TikzFigure
 from tikzfigure.core.axis import Axis2D
 from tikzfigure.core.plot import format_number
@@ -104,62 +105,17 @@ _AUTO_LOCATORS = (
 )
 
 
-def figure_to_tikz(
-    figure,
-    *,
-    raster_dpi: float = 300,
-    max_markers: int = 2000,
-    max_items: int = 500,
-    max_points: int = 20000,
-    precision: int = 6,
-) -> TikzFigure:
-    """Convert a Matplotlib figure into a :class:`~tikzfigure.TikzFigure`.
-
-    The figure is drawn first (without showing it), so that its layout,
-    autoscaled limits, ticks and legend positions are final, and is left
-    as it was afterwards.
-
-    Parameters
-    ----------
-    figure : matplotlib.figure.Figure
-        The figure to convert.
-    raster_dpi : float, optional
-        Resolution of the parts drawn as images (meshes, images, ...).
-        Default: 300.
-    max_markers : int, optional
-        Scatter plots with more points are drawn as an image. Default: 2000.
-    max_items : int, optional
-        Collections with more differently styled items (e.g. a line
-        collection colored by value) are drawn as an image. Default: 500.
-    max_points : int, optional
-        Lines with more points, after Matplotlib's path simplification, are
-        drawn as an image. Default: 20000.
-    precision : int, optional
-        Significant digits of the written coordinates. Default: 6.
-
-    Returns
-    -------
-    tikzfigure.TikzFigure
-        The figure: ``.generate_tikz()`` for the code, ``.savefig("f.pdf")``
-        to compile it, ``.savefig("f.tikz")`` to write the code and its
-        images.
-    """
-    converter = _FigureConverter(
-        figure,
-        raster_dpi=raster_dpi,
-        max_markers=max_markers,
-        max_items=max_items,
-        max_points=max_points,
-        precision=precision,
-    )
-    return converter.convert()
-
-
 class _Colors:
     """Colors used in the figure, defined once as ``\\definecolor``."""
 
     def __init__(self):
         self.names: dict[str, str] = {}
+
+    def definitions(self) -> str:
+        return "\n".join(
+            f"\\definecolor{{{name}}}{{HTML}}{{{code}}}"
+            for code, name in self.names.items()
+        )
 
     def __call__(self, color):
         """``(name, opacity)`` of a color; name ``None`` for a transparent one."""
@@ -170,12 +126,6 @@ class _Colors:
         name = self.names.setdefault(code, f"mpl{code}")
         return name, float(rgba[3])
 
-    def definitions(self) -> str:
-        return "\n".join(
-            f"\\definecolor{{{name}}}{{HTML}}{{{code}}}"
-            for code, name in self.names.items()
-        )
-
 
 def _font(size) -> str:
     size = float(size)
@@ -184,176 +134,6 @@ def _font(size) -> str:
 
 def _pt(value) -> str:
     return f"{float(value):.4g}pt"
-
-
-def _dash(pattern) -> str | None:
-    """A Matplotlib ``(offset, [on, off, ...])`` dash pattern in points as TikZ."""
-    if pattern is None:
-        return None
-    offset, sequence = pattern
-    if not sequence:
-        return None
-    parts = []
-    for index, length in enumerate(sequence):
-        parts.append(("on" if index % 2 == 0 else "off") + " " + _pt(length))
-    option = "dash pattern=" + " ".join(parts)
-    if offset:
-        option += f", dash phase={_pt(offset)}"
-    return option
-
-
-class _FigureConverter:
-    def __init__(self, figure, **options):
-        self.figure = figure
-        self.options = options
-        self.colors = _Colors()
-        self.tikz = TikzFigure()
-        self.width, self.height = figure.get_size_inches()
-
-    # -- the figure ----------------------------------------------------------
-    def convert(self) -> TikzFigure:
-        figure = self.figure
-        figure.draw_without_rendering()
-        # images are rendered from this figure; a layout engine would move the
-        # axes while other parts are hidden
-        engine = figure.get_layout_engine()
-        figure.set_layout_engine("none")
-        try:
-            for ax in figure.axes:
-                self._axes_tree(ax)
-            for text in figure.texts:
-                self._figure_text(text)
-            for legend in figure.legends:
-                if legend.get_visible():
-                    self._as_image(legend, "a figure legend")
-        finally:
-            figure._layout_engine = engine
-        self.tikz.add_package("lmodern")
-        self.tikz.add_package("amsmath")
-        definitions = self.colors.definitions()
-        if definitions:
-            self.tikz.add_raw(definitions)
-        return self.tikz
-
-    def _axes_tree(self, ax):
-        if not ax.get_visible():
-            return
-        if ax.name != "rectilinear" or not _supported_scales(ax):
-            what = (
-                f"{ax.name} axes"
-                if ax.name != "rectilinear"
-                else f"{ax.get_xscale()}/{ax.get_yscale()} scaled axes"
-            )
-            self._as_image(ax, what)
-            return
-        _AxesConverter(self, ax).convert()
-        for child in ax.child_axes:
-            self._axes_tree(child)
-
-    def _figure_text(self, text):
-        if not text.get_visible() or not text.get_text().strip():
-            return
-        if isinstance(text, Annotation):
-            text.update_positions(self.figure._get_renderer())
-        x, y = _text_display_position(text)
-        if not self.figure.bbox.contains(x, y):
-            return
-        x_in, y_in = x / self.figure.dpi, y / self.figure.dpi
-        node = _text_node(text, self.colors, f"({x_in:.4f}in,{y_in:.4f}in)")
-        self.tikz.add_raw(node)
-
-    # -- images of whole parts ---------------------------------------------
-    def _as_image(self, artist, what):
-        """Draw ``artist`` (axes or legend) with its decorations as one image."""
-        warnings.warn(
-            f"{what} cannot be drawn with pgfplots; it is included as an image",
-            TikzConversionWarning,
-            stacklevel=4,
-        )
-        renderer = self.figure._get_renderer()
-        bbox = artist.get_tightbbox(renderer)
-        if bbox is None or bbox.width <= 0 or bbox.height <= 0:
-            return
-        inches = bbox.transformed(self.figure.dpi_scale_trans.inverted())
-        data = self.render_only([artist], inches)
-        axis = Axis2D(
-            xlim=(0, 1),
-            ylim=(0, 1),
-            grid=False,
-            width=f"{inches.width:.4f}in",
-            height=f"{inches.height:.4f}in",
-            options=[
-                "hide axis",
-                "scale only axis",
-                "anchor=south west",
-                f"at={{({inches.x0:.4f}in,{inches.y0:.4f}in)}}",
-            ],
-        )
-        axis.add_graphics(0, 1, 0, 1, data=data, plot_options=["forget plot"])
-        self.tikz.axes.append(axis)
-
-    def render_only(self, artists, inches: Bbox, keep_axes=None) -> bytes:
-        """A PNG of the figure region ``inches`` showing only ``artists``.
-
-        ``keep_axes`` is the axes whose decorations stay hidden while its
-        artists in ``artists`` are drawn; every other axes is hidden.
-        """
-        figure = self.figure
-        keep = set(map(id, artists))
-        hidden = []
-
-        def hide(artist):
-            if id(artist) not in keep and artist.get_visible():
-                artist.set_visible(False)
-                hidden.append(artist)
-
-        # the axes containing a kept artist, and the axes containing those,
-        # stay visible (an artist of a hidden axes is not drawn), with their
-        # other children hidden
-        parents = {id(child): ax for ax in _all_axes(figure) for child in ax.child_axes}
-        owners = set()
-        for artist in artists:
-            owner = getattr(artist, "axes", None)
-            if owner is artist:
-                owner = parents.get(id(artist))
-            while owner is not None:
-                owners.add(id(owner))
-                owner = parents.get(id(owner))
-        for ax in _all_axes(figure):
-            if id(ax) in keep:
-                continue
-            if id(ax) in owners:
-                for child in ax.get_children():
-                    if id(child) not in owners:
-                        hide(child)
-            else:
-                hide(ax)
-        hide(figure.patch)
-        for text in figure.texts:
-            hide(text)
-        for legend in figure.legends:
-            hide(legend)
-        for artist in artists:  # the artists themselves are drawn
-            if not artist.get_visible():
-                artist.set_visible(True)
-                hidden.append(("shown", artist))
-        buffer = io.BytesIO()
-        try:
-            figure.savefig(
-                buffer,
-                format="png",
-                dpi=self.options["raster_dpi"],
-                transparent=True,
-                bbox_inches=inches,
-                pad_inches=0,
-            )
-        finally:
-            for artist in hidden:
-                if isinstance(artist, tuple):
-                    artist[1].set_visible(False)
-                else:
-                    artist.set_visible(True)
-        return buffer.getvalue()
 
 
 def _all_axes(figure):
@@ -425,6 +205,255 @@ def _text_node(text, colors, at: str) -> str:
     return f"\\node[{', '.join(options)}] at {at} {{{latex(text.get_text())}}};"
 
 
+class _FigureConverter:
+    def __init__(self, figure, **options):
+        self.figure = figure
+        self.options = options
+        self.colors = _Colors()
+        self.tikz = TikzFigure()
+        self.width, self.height = figure.get_size_inches()
+
+    # -- images of whole parts ---------------------------------------------
+    def _as_image(self, artist, what):
+        """Draw ``artist`` (axes or legend) with its decorations as one image."""
+        warnings.warn(
+            f"{what} cannot be drawn with pgfplots; it is included as an image",
+            TikzConversionWarning,
+            stacklevel=4,
+        )
+        renderer = self.figure._get_renderer()
+        bbox = artist.get_tightbbox(renderer)
+        if bbox is None or bbox.width <= 0 or bbox.height <= 0:
+            return
+        inches = bbox.transformed(self.figure.dpi_scale_trans.inverted())
+        data = self.render_only([artist], inches)
+        axis = Axis2D(
+            xlim=(0, 1),
+            ylim=(0, 1),
+            grid=False,
+            width=f"{inches.width:.4f}in",
+            height=f"{inches.height:.4f}in",
+            options=[
+                "hide axis",
+                "scale only axis",
+                "anchor=south west",
+                f"at={{({inches.x0:.4f}in,{inches.y0:.4f}in)}}",
+            ],
+        )
+        axis.add_graphics(0, 1, 0, 1, data=data, plot_options=["forget plot"])
+        self.tikz.axes.append(axis)
+
+    def _axes_tree(self, ax):
+        if not ax.get_visible():
+            return
+        if ax.name != "rectilinear" or not _supported_scales(ax):
+            what = (
+                f"{ax.name} axes"
+                if ax.name != "rectilinear"
+                else f"{ax.get_xscale()}/{ax.get_yscale()} scaled axes"
+            )
+            self._as_image(ax, what)
+            return
+        _AxesConverter(self, ax).convert()
+        for child in ax.child_axes:
+            self._axes_tree(child)
+
+    def _figure_text(self, text):
+        if not text.get_visible() or not text.get_text().strip():
+            return
+        if isinstance(text, Annotation):
+            text.update_positions(self.figure._get_renderer())
+        x, y = _text_display_position(text)
+        if not self.figure.bbox.contains(x, y):
+            return
+        x_in, y_in = x / self.figure.dpi, y / self.figure.dpi
+        node = _text_node(text, self.colors, f"({x_in:.4f}in,{y_in:.4f}in)")
+        self.tikz.add_raw(node)
+
+    # -- the figure ----------------------------------------------------------
+    def convert(self) -> TikzFigure:
+        figure = self.figure
+        figure.draw_without_rendering()
+        # images are rendered from this figure; a layout engine would move the
+        # axes while other parts are hidden
+        engine = figure.get_layout_engine()
+        figure.set_layout_engine("none")
+        try:
+            for ax in figure.axes:
+                self._axes_tree(ax)
+            for text in figure.texts:
+                self._figure_text(text)
+            for legend in figure.legends:
+                if legend.get_visible():
+                    self._as_image(legend, "a figure legend")
+        finally:
+            figure._layout_engine = engine
+        self.tikz.add_package("lmodern")
+        self.tikz.add_package("amsmath")
+        definitions = self.colors.definitions()
+        if definitions:
+            self.tikz.add_raw(definitions)
+        return self.tikz
+
+    def render_only(self, artists, inches: Bbox, keep_axes=None) -> bytes:
+        """A PNG of the figure region ``inches`` showing only ``artists``.
+
+        ``keep_axes`` is the axes whose decorations stay hidden while its
+        artists in ``artists`` are drawn; every other axes is hidden.
+        """
+        figure = self.figure
+        keep = set(map(id, artists))
+        hidden = []
+
+        def hide(artist):
+            if id(artist) not in keep and artist.get_visible():
+                artist.set_visible(False)
+                hidden.append(artist)
+
+        # the axes containing a kept artist, and the axes containing those,
+        # stay visible (an artist of a hidden axes is not drawn), with their
+        # other children hidden
+        parents = {id(child): ax for ax in _all_axes(figure) for child in ax.child_axes}
+        owners = set()
+        for artist in artists:
+            owner = getattr(artist, "axes", None)
+            if owner is artist:
+                owner = parents.get(id(artist))
+            while owner is not None:
+                owners.add(id(owner))
+                owner = parents.get(id(owner))
+        for ax in _all_axes(figure):
+            if id(ax) in keep:
+                continue
+            if id(ax) in owners:
+                for child in ax.get_children():
+                    if id(child) not in owners:
+                        hide(child)
+            else:
+                hide(ax)
+        hide(figure.patch)
+        for text in figure.texts:
+            hide(text)
+        for legend in figure.legends:
+            hide(legend)
+        for artist in artists:  # the artists themselves are drawn
+            if not artist.get_visible():
+                artist.set_visible(True)
+                hidden.append(("shown", artist))
+        buffer = io.BytesIO()
+        try:
+            figure.savefig(
+                buffer,
+                format="png",
+                dpi=self.options["raster_dpi"],
+                transparent=True,
+                bbox_inches=inches,
+                pad_inches=0,
+            )
+        finally:
+            for artist in hidden:
+                if isinstance(artist, tuple):
+                    artist[1].set_visible(False)
+                else:
+                    artist.set_visible(True)
+        return buffer.getvalue()
+
+
+def figure_to_tikz(
+    figure,
+    *,
+    raster_dpi: float = 300,
+    max_markers: int = 2000,
+    max_items: int = 500,
+    max_points: int = 20000,
+    precision: int = 6,
+) -> TikzFigure:
+    """Convert a Matplotlib figure into a :class:`~tikzfigure.TikzFigure`.
+
+    The figure is drawn first (without showing it), so that its layout,
+    autoscaled limits, ticks and legend positions are final, and is left
+    as it was afterwards.
+
+    Parameters
+    ----------
+    figure : matplotlib.figure.Figure
+        The figure to convert.
+    raster_dpi : float, optional
+        Resolution of the parts drawn as images (meshes, images, ...).
+        Default: 300.
+    max_markers : int, optional
+        Scatter plots with more points are drawn as an image. Default: 2000.
+    max_items : int, optional
+        Collections with more differently styled items (e.g. a line
+        collection colored by value) are drawn as an image. Default: 500.
+    max_points : int, optional
+        Lines with more points, after Matplotlib's path simplification, are
+        drawn as an image. Default: 20000.
+    precision : int, optional
+        Significant digits of the written coordinates. Default: 6.
+
+    Returns
+    -------
+    tikzfigure.TikzFigure
+        The figure: ``.generate_tikz()`` for the code, ``.savefig("f.pdf")``
+        to compile it, ``.savefig("f.tikz")`` to write the code and its
+        images.
+    """
+    converter = _FigureConverter(
+        figure,
+        raster_dpi=raster_dpi,
+        max_markers=max_markers,
+        max_items=max_items,
+        max_points=max_points,
+        precision=precision,
+    )
+    return converter.convert()
+
+
+def _dash(pattern) -> str | None:
+    """A Matplotlib ``(offset, [on, off, ...])`` dash pattern in points as TikZ."""
+    if pattern is None:
+        return None
+    offset, sequence = pattern
+    if not sequence:
+        return None
+    parts = []
+    for index, length in enumerate(sequence):
+        parts.append(("on" if index % 2 == 0 else "off") + " " + _pt(length))
+    option = "dash pattern=" + " ".join(parts)
+    if offset:
+        option += f", dash phase={_pt(offset)}"
+    return option
+
+
+# artists drawn as images without a warning: images, meshes, filled contours,
+# quivers and the like have no better form in pgfplots
+_ALWAYS_RASTER = (AxesImage, Collection)
+
+
+def _marker_name(path) -> str:
+    for marker in _MARKS:
+        style = MarkerStyle(marker)
+        candidate = style.get_path().transformed(style.get_transform())
+        if candidate.vertices.shape == path.vertices.shape and np.allclose(
+            candidate.vertices, path.vertices
+        ):
+            return marker
+    return "o"
+
+
+def _with_gaps(path):
+    """The vertices of a path as one array, its separate pieces joined by nan."""
+    out = []
+    for vertex, code in zip(path.vertices, path.codes):
+        if code == Path.STOP:
+            break
+        if code == Path.MOVETO and out:
+            out.append((np.nan, np.nan))
+        out.append(tuple(vertex))
+    return np.asarray(out, dtype=float).reshape(-1, 2)
+
+
 class _AxesConverter:
     """One Matplotlib axes as one pgfplots axis."""
 
@@ -437,60 +466,6 @@ class _AxesConverter:
         self.colorbar = getattr(ax, "_colorbar", None)
         self.legend_entries: list = []
         self.has_images = False
-
-    # -- the axis ----------------------------------------------------------
-    def convert(self):
-        ax = self.ax
-        position = ax.get_position()
-        width, height = self.parent.width, self.parent.height
-        x0, y0 = position.x0 * width, position.y0 * height
-        self.size = (position.width * width, position.height * height)
-        self.inches = Bbox.from_bounds(x0, y0, *self.size)
-        xlim, ylim = ax.get_xlim(), ax.get_ylim()
-
-        options = [
-            "scale only axis",
-            "anchor=south west",
-            f"at={{({x0:.4f}in,{y0:.4f}in)}}",
-            "clip mode=individual",
-            "unbounded coords=jump",
-            "every axis plot/.append style={line join=round}",
-        ]
-        if xlim[0] > xlim[1]:
-            options.append("x dir=reverse")
-        if ylim[0] > ylim[1]:
-            options.append("y dir=reverse")
-        if not ax.axison:
-            options.append("hide axis")
-        else:
-            options.extend(self._frame())
-            for name in ("x", "y"):
-                options.extend(self._ticks(name))
-            options.extend(self._labels())
-        options.extend(self._background())
-
-        self.axis = Axis2D(
-            xlabel=latex(ax.get_xlabel()) if ax.xaxis.get_visible() else "",
-            ylabel=latex(ax.get_ylabel()) if ax.yaxis.get_visible() else "",
-            title=latex(self._title()),
-            xlim=(float(min(xlim)), float(max(xlim))),
-            ylim=(float(min(ylim)), float(max(ylim))),
-            xlog=ax.get_xscale() == "log",
-            ylog=ax.get_yscale() == "log",
-            grid=None,
-            width=f"{self.size[0]:.4f}in",
-            height=f"{self.size[1]:.4f}in",
-            options=options,
-        )
-        self._legend_setup()
-        self._contents()
-        self._legend_entries()
-        if self.has_images:
-            self.axis.options.append("axis on top")
-        grid = self._grid()
-        if grid:
-            self.axis.options.extend(grid)
-        self.parent.tikz.axes.append(self.axis)
 
     def _title(self) -> str:
         for location in ("center", "left", "right"):
@@ -513,12 +488,20 @@ class _AxesConverter:
         x = (
             "box"
             if visible["bottom"] and visible["top"]
-            else "bottom" if visible["bottom"] else "top" if visible["top"] else None
+            else "bottom"
+            if visible["bottom"]
+            else "top"
+            if visible["top"]
+            else None
         )
         y = (
             "box"
             if visible["left"] and visible["right"]
-            else "left" if visible["left"] else "right" if visible["right"] else None
+            else "left"
+            if visible["left"]
+            else "right"
+            if visible["right"]
+            else None
         )
         options.append(f"axis x line*={x}" if x else "axis x line=none")
         options.append(f"axis y line*={y}" if y else "axis y line=none")
@@ -684,19 +667,97 @@ class _AxesConverter:
         """Plots never make legend entries themselves; see :meth:`_legend_entries`."""
         return ""
 
-    def _legend_entries(self):
-        """The legend as Matplotlib draws it: an image and a text per entry.
+    def _stroke(self, color, linewidth, dash, alpha=None) -> list[str] | None:
+        name, opacity = self.colors(color)
+        if name is None or linewidth <= 0:
+            return None
+        if alpha is not None:
+            opacity *= alpha
+        options = [f"draw={name}", f"line width={_pt(linewidth)}"]
+        if opacity < 1:
+            options.append(f"draw opacity={opacity:.3g}")
+        options.append(dash or "solid")
+        return options
 
-        The plots are left out of the legend (``forget plot``), so that the
-        entries keep the legend's order and style, also for artists drawn as
-        images.
-        """
-        for handle, label in self.legend_entries:
-            options = self._legend_image(handle)
-            self.axis.add_raw(
-                f"\\addlegendimage{{{', '.join(options)}}}\n"
-                f"\\addlegendentry{{{latex(label)}}}"
+    def _fill(self, color, alpha=None) -> list[str] | None:
+        name, opacity = self.colors(color)
+        if name is None:
+            return None
+        if alpha is not None:
+            opacity *= alpha
+        options = [f"fill={name}"]
+        if opacity < 1:
+            options.append(f"fill opacity={opacity:.3g}")
+        return options
+
+    def _mark(self, marker, size, face, edge, edge_width, alpha=None) -> list[str]:
+        """``mark=...`` options for a Matplotlib marker of ``size`` points."""
+        if isinstance(marker, str) and marker in _MARKS:
+            filled_mark, hollow_mark, rotation, factor = _MARKS[marker]
+        else:
+            filled_mark, hollow_mark, rotation, factor = _MARKS["o"]
+        fill = self._fill(face, alpha)
+        mark = filled_mark if fill else hollow_mark
+        mark_options = ["solid"]
+        if rotation:
+            mark_options.append(f"rotate={rotation}")
+        mark_options.extend(fill or ["fill=none"])
+        stroke = self._stroke(edge, edge_width, None, alpha)
+        if stroke:
+            mark_options.extend(option for option in stroke if option != "solid")
+        else:
+            mark_options.append("draw=none")
+        return [
+            f"mark={mark}",
+            f"mark size={_pt(max(size * factor, 0.1))}",
+            f"mark options={{{', '.join(mark_options)}}}",
+        ]
+
+    def _line_options(self, line) -> list[str] | None:
+        """The style of a Line2D as plot options; None if it draws nothing."""
+        marker = line.get_marker()
+        has_marker = marker not in _NO_MARKER and line.get_markersize() > 0
+        has_line = line.get_linestyle() not in _NO_LINE and line.get_linewidth() > 0
+        alpha = line.get_alpha()
+        options = []
+        if has_line:
+            dash = _dash(line._dash_pattern) if line.is_dashed() else None
+            stroke = self._stroke(line.get_color(), line.get_linewidth(), dash, alpha)
+            if stroke is None:
+                has_line = False
+            else:
+                options.extend(stroke)
+        if not has_line:
+            if not has_marker:
+                return None
+            options.append("only marks")
+        if has_marker:
+            face = line.get_markerfacecolor()
+            if line.get_fillstyle() == "none":
+                face = "none"
+            options.extend(
+                self._mark(
+                    marker,
+                    line.get_markersize(),
+                    face,
+                    line.get_markeredgecolor(),
+                    line.get_markeredgewidth(),
+                    alpha,
+                )
             )
+        else:
+            options.append("mark=none")
+        return options
+
+    def _area_options(self, face, edge, width, dash, alpha=None):
+        fill = self._fill(face, alpha)
+        stroke = self._stroke(edge, width, dash, alpha)
+        if fill is None and stroke is None:
+            return None
+        options = list(fill or ["fill=none"])
+        options.extend(stroke or ["draw=none"])
+        options.extend(["mark=none", "area legend"])
+        return options
 
     def _legend_image(self, handle) -> list[str]:
         if isinstance(handle, Line2D):
@@ -740,31 +801,19 @@ class _AxesConverter:
                 return stroke + ["mark=none"]
         return ["empty legend"]
 
-    # -- what is drawn -----------------------------------------------------
-    def _contents(self):
-        ax = self.ax
-        children = list(getattr(ax, "_children", []))
-        if not children:  # an older Matplotlib
-            children = (
-                ax.collections
-                + ax.patches
-                + ax.lines
-                + ax.texts
-                + ax.images
-                + ax.tables
+    def _legend_entries(self):
+        """The legend as Matplotlib draws it: an image and a text per entry.
+
+        The plots are left out of the legend (``forget plot``), so that the
+        entries keep the legend's order and style, also for artists drawn as
+        images.
+        """
+        for handle, label in self.legend_entries:
+            options = self._legend_image(handle)
+            self.axis.add_raw(
+                f"\\addlegendimage{{{', '.join(options)}}}\n"
+                f"\\addlegendentry{{{latex(label)}}}"
             )
-        children = [child for child in children if child.get_visible()]
-        children.sort(key=lambda artist: artist.get_zorder())  # stable: drawing order
-        pending_images = []
-        for artist in children:
-            emit = None if self.colorbar is not None else self._vector(artist)
-            if emit is None:
-                pending_images.append(artist)
-                continue
-            self._flush_images(pending_images)
-            pending_images = []
-            emit()
-        self._flush_images(pending_images)
 
     def _flush_images(self, artists):
         if not artists:
@@ -793,26 +842,6 @@ class _AxesConverter:
             plot_options=["forget plot"],
         )
         self.has_images = True
-
-    def _vector(self, artist):
-        """A function adding ``artist`` to the axis as vector graphics, or None."""
-        if isinstance(artist, Line2D):
-            return self._line(artist)
-        if isinstance(artist, ContourSet):
-            return self._contour_lines(artist)
-        if isinstance(artist, PathCollection):
-            return self._scatter(artist)
-        if isinstance(artist, LineCollection):
-            return self._line_collection(artist)
-        if type(artist) is PolyCollection or type(artist).__name__ in (
-            "FillBetweenPolyCollection",
-        ):
-            return self._polygons(artist)
-        if isinstance(artist, Patch):
-            return self._patch(artist)
-        if isinstance(artist, Text):
-            return self._text(artist)
-        return None
 
     # coordinates
     def _view(self):
@@ -880,20 +909,6 @@ class _AxesConverter:
                     data[np.abs(data[:, index]) < tiny, index] = 0.0
         return data
 
-    def _add(self, data, options, label="", cycle=False, clip=True):
-        data = np.asarray(data, dtype=float)
-        if not clip:
-            self.axis.add_raw(self._draw(data, options, cycle))
-            return
-        self.axis.add_plot(
-            x=data[:, 0].tolist(),
-            y=data[:, 1].tolist(),
-            label=label,
-            options=list(options) + ["forget plot"],
-            cycle=cycle,
-            precision=self.options["precision"],
-        )
-
     def _draw(self, data, options, cycle) -> str:
         """A ``\\draw`` path in axis coordinates, which pgfplots does not clip."""
         precision = self.options["precision"]
@@ -917,51 +932,19 @@ class _AxesConverter:
             parts.append("-- cycle")
         return f"\\draw[{', '.join(keep)}] {' '.join(parts)};"
 
-    def _stroke(self, color, linewidth, dash, alpha=None) -> list[str] | None:
-        name, opacity = self.colors(color)
-        if name is None or linewidth <= 0:
-            return None
-        if alpha is not None:
-            opacity *= alpha
-        options = [f"draw={name}", f"line width={_pt(linewidth)}"]
-        if opacity < 1:
-            options.append(f"draw opacity={opacity:.3g}")
-        options.append(dash or "solid")
-        return options
-
-    def _fill(self, color, alpha=None) -> list[str] | None:
-        name, opacity = self.colors(color)
-        if name is None:
-            return None
-        if alpha is not None:
-            opacity *= alpha
-        options = [f"fill={name}"]
-        if opacity < 1:
-            options.append(f"fill opacity={opacity:.3g}")
-        return options
-
-    def _mark(self, marker, size, face, edge, edge_width, alpha=None) -> list[str]:
-        """``mark=...`` options for a Matplotlib marker of ``size`` points."""
-        if isinstance(marker, str) and marker in _MARKS:
-            filled_mark, hollow_mark, rotation, factor = _MARKS[marker]
-        else:
-            filled_mark, hollow_mark, rotation, factor = _MARKS["o"]
-        fill = self._fill(face, alpha)
-        mark = filled_mark if fill else hollow_mark
-        mark_options = ["solid"]
-        if rotation:
-            mark_options.append(f"rotate={rotation}")
-        mark_options.extend(fill or ["fill=none"])
-        stroke = self._stroke(edge, edge_width, None, alpha)
-        if stroke:
-            mark_options.extend(option for option in stroke if option != "solid")
-        else:
-            mark_options.append("draw=none")
-        return [
-            f"mark={mark}",
-            f"mark size={_pt(max(size * factor, 0.1))}",
-            f"mark options={{{', '.join(mark_options)}}}",
-        ]
+    def _add(self, data, options, label="", cycle=False, clip=True):
+        data = np.asarray(data, dtype=float)
+        if not clip:
+            self.axis.add_raw(self._draw(data, options, cycle))
+            return
+        self.axis.add_plot(
+            x=data[:, 0].tolist(),
+            y=data[:, 1].tolist(),
+            label=label,
+            options=list(options) + ["forget plot"],
+            cycle=cycle,
+            precision=self.options["precision"],
+        )
 
     # artists
     def _line(self, line):
@@ -985,41 +968,80 @@ class _AxesConverter:
         clip = line.get_clip_on()
         return lambda: self._add(data, options, label, clip=clip)
 
-    def _line_options(self, line) -> list[str] | None:
-        """The style of a Line2D as plot options; None if it draws nothing."""
-        marker = line.get_marker()
-        has_marker = marker not in _NO_MARKER and line.get_markersize() > 0
-        has_line = line.get_linestyle() not in _NO_LINE and line.get_linewidth() > 0
-        alpha = line.get_alpha()
-        options = []
-        if has_line:
-            dash = _dash(line._dash_pattern) if line.is_dashed() else None
-            stroke = self._stroke(line.get_color(), line.get_linewidth(), dash, alpha)
-            if stroke is None:
-                has_line = False
-            else:
-                options.extend(stroke)
-        if not has_line:
-            if not has_marker:
+    def _patch(self, patch, clip=None):
+        if clip is None:
+            clip = patch.get_clip_on()
+        transform = patch.get_transform()
+        path = patch.get_path()
+        fillable = None
+        if isinstance(patch, FancyArrowPatch):
+            try:
+                paths, fillable = patch._get_path_in_displaycoord()
+            except Exception:  # pragma: no cover - private Matplotlib API
                 return None
-            options.append("only marks")
-        if has_marker:
-            face = line.get_markerfacecolor()
-            if line.get_fillstyle() == "none":
-                face = "none"
-            options.extend(
-                self._mark(
-                    marker,
-                    line.get_markersize(),
-                    face,
-                    line.get_markeredgecolor(),
-                    line.get_markeredgewidth(),
-                    alpha,
-                )
-            )
+            if not np.iterable(fillable):
+                paths, fillable = [paths], [fillable]
+            transform = None
         else:
-            options.append("mark=none")
-        return options
+            paths, fillable = [path], [True]
+        # the patch's colors include its alpha
+        face = patch.get_facecolor() if patch.get_fill() else "none"
+        dash = _dash(patch._dash_pattern)
+        pieces = []
+        for sub_path, can_fill in zip(paths, fillable):
+            if transform is not None:
+                sub_path = transform.transform_path(sub_path)
+            polygons = sub_path.to_polygons(closed_only=False)
+            options = self._area_options(
+                face if can_fill else "none",
+                patch.get_edgecolor(),
+                patch.get_linewidth(),
+                dash,
+            )
+            if options is None:
+                continue
+            for polygon in polygons:
+                closed = can_fill and len(polygon) > 2
+                polygon = (
+                    self._clip_polygon(polygon) if closed else self._clip_line(polygon)
+                )
+                if len(polygon):
+                    pieces.append((self._to_data(polygon), options, closed))
+        label = self._legend_label(patch)
+
+        def emit():
+            for index, (data, options, closed) in enumerate(pieces):
+                self._add(
+                    data, options, label if index == 0 else "", cycle=closed, clip=clip
+                )
+
+        return emit
+
+    def _text(self, text):
+        if not text.get_text().strip():
+            return lambda: None
+        if isinstance(text, Annotation):
+            text.update_positions(self.figure._get_renderer())
+        arrow = (
+            getattr(text, "arrow_patch", None) if isinstance(text, Annotation) else None
+        )
+        arrow_emit = None
+        if arrow is not None and arrow.get_visible():
+            arrow_emit = self._patch(arrow, clip=False)
+            if arrow_emit is None:
+                return None
+        display = _text_display_position(text)
+        if not self.figure.bbox.contains(*display):
+            return arrow_emit or (lambda: None)
+        fx, fy = self.ax.transAxes.inverted().transform(display)
+        node = _text_node(text, self.colors, f"(axis description cs:{fx:.5g},{fy:.5g})")
+
+        def emit():
+            if arrow_emit is not None:
+                arrow_emit()
+            self.axis.add_raw(node)
+
+        return emit
 
     def _contour_lines(self, contours):
         if contours.filled:
@@ -1217,115 +1239,102 @@ class _AxesConverter:
 
         return emit
 
-    def _area_options(self, face, edge, width, dash, alpha=None):
-        fill = self._fill(face, alpha)
-        stroke = self._stroke(edge, width, dash, alpha)
-        if fill is None and stroke is None:
-            return None
-        options = list(fill or ["fill=none"])
-        options.extend(stroke or ["draw=none"])
-        options.extend(["mark=none", "area legend"])
-        return options
-
-    def _patch(self, patch, clip=None):
-        if clip is None:
-            clip = patch.get_clip_on()
-        transform = patch.get_transform()
-        path = patch.get_path()
-        fillable = None
-        if isinstance(patch, FancyArrowPatch):
-            try:
-                paths, fillable = patch._get_path_in_displaycoord()
-            except Exception:  # pragma: no cover - private Matplotlib API
-                return None
-            if not np.iterable(fillable):
-                paths, fillable = [paths], [fillable]
-            transform = None
-        else:
-            paths, fillable = [path], [True]
-        # the patch's colors include its alpha
-        face = patch.get_facecolor() if patch.get_fill() else "none"
-        dash = _dash(patch._dash_pattern)
-        pieces = []
-        for sub_path, can_fill in zip(paths, fillable):
-            if transform is not None:
-                sub_path = transform.transform_path(sub_path)
-            polygons = sub_path.to_polygons(closed_only=False)
-            options = self._area_options(
-                face if can_fill else "none",
-                patch.get_edgecolor(),
-                patch.get_linewidth(),
-                dash,
-            )
-            if options is None:
-                continue
-            for polygon in polygons:
-                closed = can_fill and len(polygon) > 2
-                polygon = (
-                    self._clip_polygon(polygon) if closed else self._clip_line(polygon)
-                )
-                if len(polygon):
-                    pieces.append((self._to_data(polygon), options, closed))
-        label = self._legend_label(patch)
-
-        def emit():
-            for index, (data, options, closed) in enumerate(pieces):
-                self._add(
-                    data, options, label if index == 0 else "", cycle=closed, clip=clip
-                )
-
-        return emit
-
-    def _text(self, text):
-        if not text.get_text().strip():
-            return lambda: None
-        if isinstance(text, Annotation):
-            text.update_positions(self.figure._get_renderer())
-        arrow = (
-            getattr(text, "arrow_patch", None) if isinstance(text, Annotation) else None
-        )
-        arrow_emit = None
-        if arrow is not None and arrow.get_visible():
-            arrow_emit = self._patch(arrow, clip=False)
-            if arrow_emit is None:
-                return None
-        display = _text_display_position(text)
-        if not self.figure.bbox.contains(*display):
-            return arrow_emit or (lambda: None)
-        fx, fy = self.ax.transAxes.inverted().transform(display)
-        node = _text_node(text, self.colors, f"(axis description cs:{fx:.5g},{fy:.5g})")
-
-        def emit():
-            if arrow_emit is not None:
-                arrow_emit()
-            self.axis.add_raw(node)
-
-        return emit
-
-
-# artists drawn as images without a warning: images, meshes, filled contours,
-# quivers and the like have no better form in pgfplots
-_ALWAYS_RASTER = (AxesImage, Collection)
-
-
-def _marker_name(path) -> str:
-    for marker in _MARKS:
-        style = MarkerStyle(marker)
-        candidate = style.get_path().transformed(style.get_transform())
-        if candidate.vertices.shape == path.vertices.shape and np.allclose(
-            candidate.vertices, path.vertices
+    def _vector(self, artist):
+        """A function adding ``artist`` to the axis as vector graphics, or None."""
+        if isinstance(artist, Line2D):
+            return self._line(artist)
+        if isinstance(artist, ContourSet):
+            return self._contour_lines(artist)
+        if isinstance(artist, PathCollection):
+            return self._scatter(artist)
+        if isinstance(artist, LineCollection):
+            return self._line_collection(artist)
+        if type(artist) is PolyCollection or type(artist).__name__ in (
+            "FillBetweenPolyCollection",
         ):
-            return marker
-    return "o"
+            return self._polygons(artist)
+        if isinstance(artist, Patch):
+            return self._patch(artist)
+        if isinstance(artist, Text):
+            return self._text(artist)
+        return None
 
+    # -- what is drawn -----------------------------------------------------
+    def _contents(self):
+        ax = self.ax
+        children = list(getattr(ax, "_children", []))
+        if not children:  # an older Matplotlib
+            children = (
+                ax.collections
+                + ax.patches
+                + ax.lines
+                + ax.texts
+                + ax.images
+                + ax.tables
+            )
+        children = [child for child in children if child.get_visible()]
+        children.sort(key=lambda artist: artist.get_zorder())  # stable: drawing order
+        pending_images = []
+        for artist in children:
+            emit = None if self.colorbar is not None else self._vector(artist)
+            if emit is None:
+                pending_images.append(artist)
+                continue
+            self._flush_images(pending_images)
+            pending_images = []
+            emit()
+        self._flush_images(pending_images)
 
-def _with_gaps(path):
-    """The vertices of a path as one array, its separate pieces joined by nan."""
-    out = []
-    for vertex, code in zip(path.vertices, path.codes):
-        if code == Path.STOP:
-            break
-        if code == Path.MOVETO and out:
-            out.append((np.nan, np.nan))
-        out.append(tuple(vertex))
-    return np.asarray(out, dtype=float).reshape(-1, 2)
+    # -- the axis ----------------------------------------------------------
+    def convert(self):
+        ax = self.ax
+        position = ax.get_position()
+        width, height = self.parent.width, self.parent.height
+        x0, y0 = position.x0 * width, position.y0 * height
+        self.size = (position.width * width, position.height * height)
+        self.inches = Bbox.from_bounds(x0, y0, *self.size)
+        xlim, ylim = ax.get_xlim(), ax.get_ylim()
+
+        options = [
+            "scale only axis",
+            "anchor=south west",
+            f"at={{({x0:.4f}in,{y0:.4f}in)}}",
+            "clip mode=individual",
+            "unbounded coords=jump",
+            "every axis plot/.append style={line join=round}",
+        ]
+        if xlim[0] > xlim[1]:
+            options.append("x dir=reverse")
+        if ylim[0] > ylim[1]:
+            options.append("y dir=reverse")
+        if not ax.axison:
+            options.append("hide axis")
+        else:
+            options.extend(self._frame())
+            for name in ("x", "y"):
+                options.extend(self._ticks(name))
+            options.extend(self._labels())
+        options.extend(self._background())
+
+        self.axis = Axis2D(
+            xlabel=latex(ax.get_xlabel()) if ax.xaxis.get_visible() else "",
+            ylabel=latex(ax.get_ylabel()) if ax.yaxis.get_visible() else "",
+            title=latex(self._title()),
+            xlim=(float(min(xlim)), float(max(xlim))),
+            ylim=(float(min(ylim)), float(max(ylim))),
+            xlog=ax.get_xscale() == "log",
+            ylog=ax.get_yscale() == "log",
+            grid=None,
+            width=f"{self.size[0]:.4f}in",
+            height=f"{self.size[1]:.4f}in",
+            options=options,
+        )
+        self._legend_setup()
+        self._contents()
+        self._legend_entries()
+        if self.has_images:
+            self.axis.options.append("axis on top")
+        grid = self._grid()
+        if grid:
+            self.axis.options.extend(grid)
+        self.parent.tikz.axes.append(self.axis)

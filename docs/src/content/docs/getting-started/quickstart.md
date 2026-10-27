@@ -44,7 +44,7 @@ canvas.plot_many(
 The same canvas renders with every backend:
 
 ```python
-canvas.show(backend="plotly")   # an interactive Plotly figure
+canvas.show(backend="plotly")  # an interactive Plotly figure
 canvas.show(backend="plotext")  # a plot in the terminal
 canvas.savefig("sine.pdf", backend="tikzfigure")  # TikZ code, compiled with LaTeX
 ```
