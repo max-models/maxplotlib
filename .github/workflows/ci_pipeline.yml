@@ -44,7 +44,7 @@ jobs:
         run: |
           coverage run -m pytest .
           coverage report --sort=cover
-      
+
       - name: Test tutorials
         run: |
           jupyter nbconvert --to notebook --execute tutorials/*.ipynb \

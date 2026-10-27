@@ -77,18 +77,20 @@ any Matplotlib API without requiring a maxplotlib wrapper:
 
 ```{python}
 #| output: false
-canvas.plot(matplotlib_customizations={
-    "figure": {
-        "suptitle": "My figure",
-    },
-    "axes": {
-        "tick_params": {
-            "axis": "both",
-            "which": "major",
-            "length": 6,
+canvas.plot(
+    matplotlib_customizations={
+        "figure": {
+            "suptitle": "My figure",
         },
-    },
-})
+        "axes": {
+            "tick_params": {
+                "axis": "both",
+                "which": "major",
+                "length": 6,
+            },
+        },
+    }
+)
 ```
 
 For dynamic customization, the same option also accepts a function:
@@ -99,6 +101,7 @@ def customize(fig, axes):
     fig.suptitle("My figure")
     for ax in axes.flat:
         ax.tick_params(axis="both", which="major", length=6)
+
 
 canvas.plot(matplotlib_customizations=customize)
 ```
@@ -310,7 +313,9 @@ wave = xr.DataArray(
     attrs={"long_name": "Potential", "units": "V"},
 )
 
-wave.maxplot.pcolormesh(col="t", col_wrap=3, canvas_kwargs={"width": "16cm", "ratio": 0.6}).show()
+wave.maxplot.pcolormesh(
+    col="t", col_wrap=3, canvas_kwargs={"width": "16cm", "ratio": 0.6}
+).show()
 ```
 
 The same works through Canvas methods, e.g. `canvas.plot(da, hue="species")`,

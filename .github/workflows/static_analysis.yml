@@ -24,40 +24,6 @@ jobs:
           ./cloc --version
           ./cloc $(git ls-files)
 
-  black:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout the code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Code formatting with black
-        run: |
-          pip install "black[jupyter]"
-          black --check src/
-          black --check tutorials/
-
-  isort:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout the code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
-      - name: Code formatting with isort
-        run: |
-          pip install isort
-          isort --check src/
-          isort --check tutorials/
-
   mypy:
     runs-on: ubuntu-latest
     steps:
@@ -103,11 +69,18 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Lint with ruff
-        continue-on-error: true
+      - name: Linting with ruff (including import sorting)
         run: |
           pip install ruff
-          ruff check src/
+          ruff check .
+
+      - name: Code formatting with ruff
+        run: ruff format --check .
+
+      - name: Check statement order
+        run: |
+          pip install ssort
+          ssort --check --diff .
 
   pylint:
     runs-on: ubuntu-latest

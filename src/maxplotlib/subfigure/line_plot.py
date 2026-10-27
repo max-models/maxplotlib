@@ -323,19 +323,6 @@ class LinePlot:
         }
         self._add(ld, layer)
 
-    def plot(self, x, y=None, layer=0, **kwargs):
-        """Matplotlib-style alias for :meth:`add_line`.
-
-        ``plot(da)`` with a 1-D ``xarray.DataArray`` plots it against its
-        coordinate; see :meth:`_plot_dataarray`.
-        """
-        if y is None:
-            if not xarray_support.is_dataarray(x):
-                raise TypeError("plot(x, y) requires both x and y data")
-            self._plot_dataarray(self.add_line, x, layer, kwargs)
-            return
-        self.add_line(x, y, layer=layer, **kwargs)
-
     def _set_default_labels(self, xlabel, ylabel, da=None):
         """Set axis labels, and a title from ``da``, that the user has not set."""
         if not self._xlabel and xlabel:
@@ -381,6 +368,28 @@ class LinePlot:
         if hue is not None and add_legend:
             self._legend = True
 
+    def plot(self, x, y=None, layer=0, **kwargs):
+        """Matplotlib-style alias for :meth:`add_line`.
+
+        ``plot(da)`` with a 1-D ``xarray.DataArray`` plots it against its
+        coordinate; see :meth:`_plot_dataarray`.
+        """
+        if y is None:
+            if not xarray_support.is_dataarray(x):
+                raise TypeError("plot(x, y) requires both x and y data")
+            self._plot_dataarray(self.add_line, x, layer, kwargs)
+            return
+        self.add_line(x, y, layer=layer, **kwargs)
+
+    @staticmethod
+    def _mesh_of(da, kwargs, method):
+        return xarray_support.mesh_data(
+            da,
+            x=kwargs.pop("xcoord", None),
+            y=kwargs.pop("ycoord", None),
+            method=method,
+        )
+
     def _mesh_dataarray(self, method, da, layer, kwargs, add_colorbar=True, name=None):
         """Draw a 2-D DataArray with ``method(x, y, z, ...)``.
 
@@ -397,15 +406,6 @@ class LinePlot:
         method(mesh.x, mesh.y, mesh.z, layer=layer, **kwargs)
         if add_colorbar:
             self.add_colorbar(label=mesh.zlabel, layer=layer)
-
-    @staticmethod
-    def _mesh_of(da, kwargs, method):
-        return xarray_support.mesh_data(
-            da,
-            x=kwargs.pop("xcoord", None),
-            y=kwargs.pop("ycoord", None),
-            method=method,
-        )
 
     def scatter(self, x, y=None, layer=0, **kwargs):
         """
@@ -1439,6 +1439,9 @@ class LinePlot:
         }
         self._add(ld, layer)
 
+    def _imshow_xyz(self, x, y, z, layer=0, **kwargs):
+        self.add_imshow(z, layer=layer, **kwargs)
+
     def add_imshow(self, data, layer=0, **kwargs):
         """Add an image.
 
@@ -1466,9 +1469,6 @@ class LinePlot:
             "kwargs": kwargs,
         }
         self._add(ld, layer)
-
-    def _imshow_xyz(self, x, y, z, layer=0, **kwargs):
-        self.add_imshow(z, layer=layer, **kwargs)
 
     def imshow(self, data, layer=0, **kwargs):
         """Matplotlib-style alias for :meth:`add_imshow`."""
@@ -1502,6 +1502,35 @@ class LinePlot:
         for layer_name, layer_lines in self.layered_line_data.items():
             layers.append(layer_name)
         return layers
+
+    @staticmethod
+    def _tag_matplotlib_artists(ax, artists_before, meta):
+        """Set ``gid`` on every artist added since ``artists_before``."""
+        if artists_before is None:
+            return
+        for artist in ax.get_children():
+            if id(artist) in artists_before:
+                continue
+            try:
+                artist.set_gid(str(meta))
+            except AttributeError:
+                continue
+
+    def _shift_x(self, values):
+        """Apply ``xshift``/``xscale``; values pass through unchanged by default.
+
+        Skipping the no-op arithmetic keeps non-numeric data, such as
+        datetimes or category labels, plottable.
+        """
+        if self._xshift == 0 and self._xscale == 1:
+            return values
+        return (values + self._xshift) * self._xscale
+
+    def _shift_y(self, values):
+        """Apply ``yshift``/``yscale``; see :meth:`_shift_x`."""
+        if self._yshift == 0 and self._yscale == 1:
+            return values
+        return (values + self._yshift) * self._yscale
 
     def plot_matplotlib(
         self,
@@ -2031,18 +2060,133 @@ class LinePlot:
                     if index in indicators:
                         ax.indicate_inset_zoom(inset, **indicators[index])
 
-    @staticmethod
-    def _tag_matplotlib_artists(ax, artists_before, meta):
-        """Set ``gid`` on every artist added since ``artists_before``."""
-        if artists_before is None:
+    def _symlog_transform(self, values):
+        array = np.asarray(values, dtype=float)
+        return np.sign(array) * np.log10(1.0 + np.abs(array))
+
+    def _plotext_axis_scale(self, axis: str):
+        return self._xaxis_scale if axis == "x" else self._yaxis_scale
+
+    def _plotext_axis_transform(self, values, axis: str):
+        array = np.asarray(values)
+        if axis == "x":
+            transformed = self._shift_x(array)
+        else:
+            transformed = self._shift_y(array)
+        if self._plotext_axis_scale(axis) == "symlog":
+            return self._symlog_transform(transformed)
+        return transformed
+
+    def _transform_x(self, values):
+        return self._plotext_axis_transform(values, "x")
+
+    def _transform_y(self, values):
+        return self._plotext_axis_transform(values, "y")
+
+    def _transform_scalar_x(self, value):
+        return float(np.asarray(self._transform_x([value]))[0])
+
+    def _transform_scalar_y(self, value):
+        return float(np.asarray(self._transform_y([value]))[0])
+
+    def _plotly_shape_corners(self, shape):
+        """Return the polygon outline of a rectangular shape, if hoverable.
+
+        Shapes anchored to the paper (full-height spans from ``axvspan``, for
+        instance) have no data coordinates on that axis; they can only be
+        given a hover overlay when the subplot has explicit limits to
+        substitute.
+        """
+        if shape.get("type") != "rect":
+            return None
+        try:
+            if shape.get("xref") == "paper":
+                if self._xmin is None or self._xmax is None:
+                    return None
+                x0 = self._transform_scalar_x(self._xmin)
+                x1 = self._transform_scalar_x(self._xmax)
+            else:
+                x0 = float(shape["x0"])
+                x1 = float(shape["x1"])
+            if shape.get("yref") == "paper":
+                if self._ymin is None or self._ymax is None:
+                    return None
+                y0 = self._transform_scalar_y(self._ymin)
+                y1 = self._transform_scalar_y(self._ymax)
+            else:
+                y0 = float(shape["y0"])
+                y1 = float(shape["y1"])
+        except (KeyError, TypeError, ValueError):
+            return None
+        return [x0, x1, x1, x0], [y0, y0, y1, y1]
+
+    def _apply_plotly_neutral(
+        self,
+        line,
+        traces,
+        shapes,
+        trace_start,
+        shape_start,
+        skip_shapes=(),
+    ):
+        """Apply the backend-neutral ``hover=`` / ``meta=`` options.
+
+        Every trace and shape produced by ``line`` is tagged, so callers never
+        have to match traces by creation order after the figure is built.
+        ``hover`` may be a single string, one entry per point, or a 2-D array
+        for heatmap-like traces; shapes, which cannot show hover text of their
+        own, get an invisible overlay trace instead.
+        """
+        hover = line.get("hover")
+        meta = line.get("meta")
+        if hover is None and meta is None:
             return
-        for artist in ax.get_children():
-            if id(artist) in artists_before:
+
+        for trace in traces[trace_start:]:
+            if meta is not None:
+                try:
+                    trace.update(meta=meta)
+                except (ValueError, TypeError):
+                    pass
+            if hover is not None:
+                try:
+                    trace.update(hovertext=hover, hoverinfo="text")
+                except (ValueError, TypeError):
+                    pass
+
+        for index in range(shape_start, len(shapes)):
+            shape = shapes[index]
+            if meta is not None and "name" not in shape:
+                shape["name"] = str(meta)
+            if hover is None or index in skip_shapes:
                 continue
-            try:
-                artist.set_gid(str(meta))
-            except AttributeError:
+            corners = self._plotly_shape_corners(shape)
+            if corners is None:
                 continue
+            x_points, y_points = corners
+            traces.append(
+                go.Scatter(
+                    x=list(x_points) + [x_points[0]],
+                    y=list(y_points) + [y_points[0]],
+                    mode="lines",
+                    fill="toself",
+                    fillcolor="rgba(0,0,0,0)",
+                    line=dict(width=0),
+                    hoveron="fills",
+                    hoverinfo="text",
+                    hovertext=hover,
+                    meta=meta,
+                    showlegend=False,
+                )
+            )
+
+    def _iter_layer_lines(self, layers=None):
+        for layer_name in sorted(self.layered_line_data):
+            layer_lines = self.layered_line_data[layer_name]
+            if layers and layer_name not in layers:
+                continue
+            for line in layer_lines:
+                yield line
 
     def plot_plotly(self, layers=None, allow_unsupported=False):
         if hasattr(self, "_import_projection"):
@@ -3660,153 +3804,9 @@ class LinePlot:
 
         return traces, shapes, annotations
 
-    def _apply_plotly_neutral(
-        self,
-        line,
-        traces,
-        shapes,
-        trace_start,
-        shape_start,
-        skip_shapes=(),
-    ):
-        """Apply the backend-neutral ``hover=`` / ``meta=`` options.
-
-        Every trace and shape produced by ``line`` is tagged, so callers never
-        have to match traces by creation order after the figure is built.
-        ``hover`` may be a single string, one entry per point, or a 2-D array
-        for heatmap-like traces; shapes, which cannot show hover text of their
-        own, get an invisible overlay trace instead.
-        """
-        hover = line.get("hover")
-        meta = line.get("meta")
-        if hover is None and meta is None:
-            return
-
-        for trace in traces[trace_start:]:
-            if meta is not None:
-                try:
-                    trace.update(meta=meta)
-                except (ValueError, TypeError):
-                    pass
-            if hover is not None:
-                try:
-                    trace.update(hovertext=hover, hoverinfo="text")
-                except (ValueError, TypeError):
-                    pass
-
-        for index in range(shape_start, len(shapes)):
-            shape = shapes[index]
-            if meta is not None and "name" not in shape:
-                shape["name"] = str(meta)
-            if hover is None or index in skip_shapes:
-                continue
-            corners = self._plotly_shape_corners(shape)
-            if corners is None:
-                continue
-            x_points, y_points = corners
-            traces.append(
-                go.Scatter(
-                    x=list(x_points) + [x_points[0]],
-                    y=list(y_points) + [y_points[0]],
-                    mode="lines",
-                    fill="toself",
-                    fillcolor="rgba(0,0,0,0)",
-                    line=dict(width=0),
-                    hoveron="fills",
-                    hoverinfo="text",
-                    hovertext=hover,
-                    meta=meta,
-                    showlegend=False,
-                )
-            )
-
-    def _plotly_shape_corners(self, shape):
-        """Return the polygon outline of a rectangular shape, if hoverable.
-
-        Shapes anchored to the paper (full-height spans from ``axvspan``, for
-        instance) have no data coordinates on that axis; they can only be
-        given a hover overlay when the subplot has explicit limits to
-        substitute.
-        """
-        if shape.get("type") != "rect":
-            return None
-        try:
-            if shape.get("xref") == "paper":
-                if self._xmin is None or self._xmax is None:
-                    return None
-                x0 = self._transform_scalar_x(self._xmin)
-                x1 = self._transform_scalar_x(self._xmax)
-            else:
-                x0 = float(shape["x0"])
-                x1 = float(shape["x1"])
-            if shape.get("yref") == "paper":
-                if self._ymin is None or self._ymax is None:
-                    return None
-                y0 = self._transform_scalar_y(self._ymin)
-                y1 = self._transform_scalar_y(self._ymax)
-            else:
-                y0 = float(shape["y0"])
-                y1 = float(shape["y1"])
-        except (KeyError, TypeError, ValueError):
-            return None
-        return [x0, x1, x1, x0], [y0, y0, y1, y1]
-
-    def _iter_layer_lines(self, layers=None):
-        for layer_name in sorted(self.layered_line_data):
-            layer_lines = self.layered_line_data[layer_name]
-            if layers and layer_name not in layers:
-                continue
-            for line in layer_lines:
-                yield line
-
-    def _symlog_transform(self, values):
-        array = np.asarray(values, dtype=float)
-        return np.sign(array) * np.log10(1.0 + np.abs(array))
-
     def _symlog_inverse(self, values):
         array = np.asarray(values, dtype=float)
         return np.sign(array) * (10 ** np.abs(array) - 1.0)
-
-    def _plotext_axis_scale(self, axis: str):
-        return self._xaxis_scale if axis == "x" else self._yaxis_scale
-
-    def _shift_x(self, values):
-        """Apply ``xshift``/``xscale``; values pass through unchanged by default.
-
-        Skipping the no-op arithmetic keeps non-numeric data, such as
-        datetimes or category labels, plottable.
-        """
-        if self._xshift == 0 and self._xscale == 1:
-            return values
-        return (values + self._xshift) * self._xscale
-
-    def _shift_y(self, values):
-        """Apply ``yshift``/``yscale``; see :meth:`_shift_x`."""
-        if self._yshift == 0 and self._yscale == 1:
-            return values
-        return (values + self._yshift) * self._yscale
-
-    def _plotext_axis_transform(self, values, axis: str):
-        array = np.asarray(values)
-        if axis == "x":
-            transformed = self._shift_x(array)
-        else:
-            transformed = self._shift_y(array)
-        if self._plotext_axis_scale(axis) == "symlog":
-            return self._symlog_transform(transformed)
-        return transformed
-
-    def _transform_x(self, values):
-        return self._plotext_axis_transform(values, "x")
-
-    def _transform_y(self, values):
-        return self._plotext_axis_transform(values, "y")
-
-    def _transform_scalar_x(self, value):
-        return float(np.asarray(self._transform_x([value]))[0])
-
-    def _transform_scalar_y(self, value):
-        return float(np.asarray(self._transform_y([value]))[0])
 
     def _plotext_plot_kwargs(self, kwargs):
         return {
@@ -3930,6 +3930,23 @@ class LinePlot:
         except (TypeError, ValueError):
             return None
 
+    def _plotext_error_values(self, error, count):
+        if error is None:
+            return None
+        values = np.asarray(error, dtype=float)
+        if values.ndim == 0:
+            # Plotext's error() interprets each value as the full bar width,
+            # while Matplotlib interprets it as the distance from the point
+            # to one end of a symmetric error bar.
+            return [float(values) * 2] * count
+        if values.ndim == 2 and values.shape[0] == 2:
+            # Matplotlib's asymmetric form is [lower, upper]. Plotext only
+            # accepts symmetric widths, so preserve the total extent.
+            values = values[0] + values[1]
+        else:
+            values = values * 2
+        return values.tolist()
+
     def _plotext_bounds(self, layers=None):
         xs = []
         ys = []
@@ -4010,23 +4027,6 @@ class LinePlot:
                 extend_x(self._transform_x(patch_xs))
                 extend_y(self._transform_y(patch_ys))
         return xs, ys
-
-    def _plotext_error_values(self, error, count):
-        if error is None:
-            return None
-        values = np.asarray(error, dtype=float)
-        if values.ndim == 0:
-            # Plotext's error() interprets each value as the full bar width,
-            # while Matplotlib interprets it as the distance from the point
-            # to one end of a symmetric error bar.
-            return [float(values) * 2] * count
-        if values.ndim == 2 and values.shape[0] == 2:
-            # Matplotlib's asymmetric form is [lower, upper]. Plotext only
-            # accepts symmetric widths, so preserve the total extent.
-            values = values[0] + values[1]
-        else:
-            values = values * 2
-        return values.tolist()
 
     def _plotext_ranges(self, layers=None):
         xs, ys = self._plotext_bounds(layers=layers)

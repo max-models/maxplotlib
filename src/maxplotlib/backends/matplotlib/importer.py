@@ -34,275 +34,6 @@ from .import_state import (
 )
 
 
-def import_matplotlib(
-    canvas_cls,
-    source,
-    *,
-    strict=False,
-    trusted=False,
-    fallback="native",
-    **canvas_kwargs,
-):
-    if fallback not in ("native", "skip", "raster"):
-        raise ValueError("fallback must be 'native', 'skip', or 'raster'")
-    if isinstance(source, (str, bytes, os.PathLike)) or hasattr(source, "read"):
-        if not trusted:
-            raise ValueError(
-                "Serialized Matplotlib input requires trusted=True; "
-                "unpickling can execute arbitrary Python code"
-            )
-        if isinstance(source, bytes):
-            source = pickle.loads(source)
-        elif hasattr(source, "read"):
-            source = pickle.load(source)
-        else:
-            with open(source, "rb") as stream:
-                source = pickle.load(stream)
-    report = ImportReport()
-
-    def unsupported(message, artist=None):
-        artist = artist if artist is not None else unsupported.artist
-        report.add(
-            artist,
-            message,
-            severity="error" if strict else "warning",
-            fallback="skipped",
-        )
-        if strict:
-            error = NotImplementedError(message)
-            error.import_report = report
-            raise error
-        warnings.warn(message, UserWarning, stacklevel=3)
-
-    unsupported.artist = source
-    unsupported.report = report
-    unsupported.fallback = fallback
-
-    whole_figure = isinstance(source, Figure)
-    explicit_shape = None
-    if whole_figure:
-        axes = list(source.axes)
-    elif isinstance(source, Axes):
-        axes = [source]
-        explicit_shape = (1, 1)
-    else:
-        try:
-            array = np.asarray(source, dtype=object)
-        except (TypeError, ValueError) as exc:
-            raise TypeError(
-                "Expected a Figure, Axes, or rectangular array of Axes"
-            ) from exc
-        if array.ndim not in (1, 2):
-            raise TypeError("Expected a Figure, Axes, or 1D/2D array of Axes")
-        axes = list(array.flat)
-        if array.ndim == 2:
-            explicit_shape = array.shape
-    if not axes:
-        raise ValueError("At least one Matplotlib Axes is required")
-    if not all(isinstance(ax, Axes) for ax in axes):
-        raise TypeError("Every array element must be a Matplotlib Axes")
-    if len({id(ax) for ax in axes}) != len(axes):
-        raise ValueError("Duplicate Axes are not supported")
-    figure = root_figure(source if whole_figure else axes[0].get_figure())
-    if any(root_figure(ax.get_figure()) is not figure for ax in axes):
-        raise ValueError("All Axes must belong to the same Figure")
-
-    if fallback == "raster":
-        return _raster_import(
-            canvas_cls, figure, axes, whole_figure, report, **canvas_kwargs
-        )
-
-    # Colorbar axes are decorations, not independent data subplots.
-    selected = []
-    twins = []
-    colorbars = []
-    # The source figure's creation order identifies the primary axes even when
-    # the caller passes the twin first in an array.
-    for index, ax in sorted(
-        enumerate(axes), key=lambda item: figure.axes.index(item[1])
-    ):
-        if getattr(ax, "_colorbar", None) is not None:
-            colorbars.append(ax._colorbar)
-        else:
-            parent = next(
-                (
-                    previous
-                    for _, previous in selected
-                    if ax in previous._twinned_axes.get_siblings(previous)
-                ),
-                None,
-            )
-            if parent is None:
-                selected.append((index, ax))
-            else:
-                direction = "x" if ax.get_shared_x_axes().joined(ax, parent) else "y"
-                twins.append((parent, ax, direction))
-    selected.sort(key=lambda item: item[0])
-    if not selected:
-        raise ValueError("No supported Axes to import")
-
-    if explicit_shape is not None:
-        nrows, ncols = explicit_shape
-        positioned = [(i // ncols, i % ncols, ax) for i, ax in selected]
-    else:
-        specs = [ax.get_subplotspec() for _, ax in selected]
-        common_grid = specs[0].get_gridspec() if specs[0] is not None else None
-        simple_grid = common_grid is not None and all(
-            spec is not None
-            and spec.get_gridspec() is common_grid
-            and spec.rowspan.stop - spec.rowspan.start == 1
-            and spec.colspan.stop - spec.colspan.start == 1
-            for spec in specs
-        )
-        if simple_grid and len({spec.num1 for spec in specs}) == len(specs):
-            nrows, ncols = common_grid.get_geometry()
-            positioned = [
-                (spec.rowspan.start, spec.colspan.start, ax)
-                for spec, (_, ax) in zip(specs, selected)
-            ]
-        else:
-            # Irregular layouts use stable editable slots and retain their
-            # actual axes rectangles for the Matplotlib renderer.
-            nrows, ncols = 1, len(selected)
-            positioned = [(0, i, ax) for i, (_, ax) in enumerate(selected)]
-
-    if "nrows" in canvas_kwargs or "ncols" in canvas_kwargs:
-        raise TypeError("nrows and ncols are inferred from the imported axes")
-    canvas_kwargs.setdefault("figsize", tuple(figure.get_size_inches()))
-    canvas_kwargs.setdefault("dpi", figure.dpi)
-    canvas = canvas_cls(nrows=nrows, ncols=ncols, **canvas_kwargs)
-    canvas.import_report = report
-    canvas._import_layout = {}
-    canvas._import_in_layout = {}
-    canvas._import_shared_axes = []
-    canvas._import_extra_twins = []
-    canvas._import_colorbars = []
-    canvas._import_figure_artists = []
-    source_targets = {}
-    source_slots = {}
-    for row, col, ax in positioned:
-        target = canvas.add_subplot(row=row, col=col)
-        source_targets[ax] = target
-        source_slots[ax] = (row, col)
-        if explicit_shape is None:
-            canvas._import_layout[(row, col)] = figure_bounds(ax, figure)
-            canvas._import_in_layout[(row, col)] = ax.get_in_layout()
-        _import_axes(ax, target, unsupported)
-        for parent, twin, direction in twins:
-            if parent is ax:
-                factory = canvas.twinx if direction == "x" else canvas.twiny
-                registry = (
-                    canvas._twinx_subplots
-                    if direction == "x"
-                    else canvas._twiny_subplots
-                )
-                if (row, col) in registry:
-                    from maxplotlib.subfigure.line_plot import LinePlot
-
-                    twin_target = LinePlot()
-                    canvas._import_extra_twins.append(
-                        ((row, col), direction, twin_target)
-                    )
-                else:
-                    twin_target = factory(row=row, col=col)
-                source_targets[twin] = twin_target
-                _import_axes(twin, twin_target, unsupported)
-    if explicit_shape is None and all(ax.figure is figure for _, ax in selected):
-        specs = {source_slots[ax]: ax.get_subplotspec() for _, ax in selected}
-        canvas._import_layout_specs = ReboundSnapshot(specs, fig=figure)
-        canvas._import_layout_engine = copy.deepcopy(figure.get_layout_engine())
-        if canvas._import_layout_engine is None:
-            canvas.subplots_adjust(
-                **{
-                    name: getattr(figure.subplotpars, name)
-                    for name in ("left", "right", "bottom", "top", "wspace", "hspace")
-                }
-            )
-    for name in ("x", "y"):
-        for index, (_, ax) in enumerate(selected):
-            parent = next(
-                (
-                    previous
-                    for _, previous in selected[:index]
-                    if getattr(ax, "get_shared_" + name + "_axes")().joined(
-                        ax, previous
-                    )
-                ),
-                None,
-            )
-            if parent is not None:
-                canvas._import_shared_axes.append(
-                    (name, source_slots[parent], source_slots[ax])
-                )
-    for colorbar in colorbars:
-        owner = getattr(colorbar.mappable, "axes", None)
-        if owner is not None and owner not in source_targets:
-            unsupported("Colorbar mappable is outside the selected axes", colorbar.ax)
-            continue
-        canvas._import_colorbars.append(
-            _capture_colorbar(colorbar, source_targets.get(owner))
-        )
-        report.add(colorbar.ax, "Colorbar is linked to its imported mappable")
-    if whole_figure:
-        canvas._import_figure_patch = ReboundSnapshot(figure.patch, fig=figure)
-        canvas._import_figure_style = dict(
-            facecolor=figure.get_facecolor(),
-            edgecolor=figure.get_edgecolor(),
-            linewidth=figure.patch.get_linewidth(),
-            frameon=figure.get_frameon(),
-        )
-        for getter, setter in (
-            ("get_suptitle", "suptitle"),
-            ("get_supxlabel", "supxlabel"),
-            ("get_supylabel", "supylabel"),
-        ):
-            value = getattr(figure, getter, lambda: "")()
-            if value:
-                text = getattr(figure, "_" + setter)
-                getattr(canvas, setter)(
-                    value,
-                    x=text.get_position()[0],
-                    y=text.get_position()[1],
-                    **_text_style(text),
-                )
-        titles = {figure._suptitle, figure._supxlabel, figure._supylabel}
-        for artist in (
-            list(figure.legends)
-            + list(figure.artists)
-            + list(figure.lines)
-            + list(figure.patches)
-            + list(figure.images)
-            + [text for text in figure.texts if text not in titles]
-        ):
-            canvas._import_figure_artists.append(ReboundSnapshot(artist, fig=figure))
-            report.add(
-                artist, "Figure decoration retained for Matplotlib", fallback="native"
-            )
-
-        def subfigure_decorations(owner):
-            for subfigure in owner.subfigs:
-                background = ReboundSnapshot(subfigure.patch, fig=subfigure)
-                background.payload.set_zorder(
-                    min((ax.get_zorder() for ax in figure.axes), default=0) - 1
-                )
-                canvas._import_figure_artists.append(background)
-                for artist in (
-                    list(subfigure.texts)
-                    + list(subfigure.legends)
-                    + list(subfigure.artists)
-                    + list(subfigure.lines)
-                    + list(subfigure.patches)
-                    + list(subfigure.images)
-                ):
-                    canvas._import_figure_artists.append(
-                        ReboundSnapshot(artist, fig=subfigure)
-                    )
-                subfigure_decorations(subfigure)
-
-        subfigure_decorations(figure)
-    return canvas
-
-
 def _style(artist):
     return dict(
         label=artist.get_label(),
@@ -409,6 +140,22 @@ def _text_style(text):
     return kwargs
 
 
+def _needs_native_style(artist):
+    box = artist.get_clip_box()
+    custom_box = (
+        box is not None
+        and artist.axes is not None
+        and not np.array_equal(box.bounds, artist.axes.bbox.bounds)
+    )
+    return (
+        custom_box
+        or artist.get_path_effects()
+        or artist.get_agg_filter() is not None
+        or artist.get_sketch_params() is not None
+        or artist.get_clip_path() is not None
+    )
+
+
 def _import_errorbar(container, ax, target, unsupported):
     """Return whether the container was consumed as one semantic entry."""
     line, caps, ranges = container.lines
@@ -509,6 +256,24 @@ def _collection_style(collection, index):
     return kwargs
 
 
+def _native(artist, ax, target, unsupported):
+    if unsupported.fallback == "skip" or not type(artist).__module__.startswith(
+        ("matplotlib.", "mpl_toolkits.")
+    ):
+        unsupported(f"Unsupported {type(artist).__name__}; artist skipped", artist)
+        return
+    snapshot = ReboundSnapshot(artist, ax)
+    target._add(
+        dict(plot_type="matplotlib_artist", snapshot=snapshot, layer=0, kwargs={}), 0
+    )
+    unsupported.report.add(
+        artist,
+        "Editable artist geometry retained for Matplotlib; "
+        "other backends require a raster import",
+        fallback="native",
+    )
+
+
 def _import_collection(collection, ax, target, unsupported):
     """Import plain line/polygon collections; return False for scatter."""
     if not isinstance(collection, (LineCollection, PolyCollection)):
@@ -550,6 +315,64 @@ def _import_collection(collection, ax, target, unsupported):
                 **_collection_style(collection, i),
             )
     return True
+
+
+def _tracked(artists, ax, target, unsupported):
+    order = {id(artist): i for i, artist in enumerate(ax.get_children())}
+    for artist in artists:
+        unsupported.artist = artist
+        start = len(target.line_data)
+        yield artist
+        entries = target.line_data[start:]
+        children = getattr(artist, "get_children", lambda: [])()
+        index = order.get(
+            id(artist),
+            min(
+                (order.get(id(child), len(order)) for child in children),
+                default=len(order),
+            ),
+        )
+        for entry in entries:
+            entry["source_artist_id"] = id(artist)
+            entry["source_container_ids"] = [
+                identifier
+                for identifier, group in target.import_groups.items()
+                if identifier == id(artist) or id(artist) in group["artist_ids"]
+            ]
+            entry.setdefault("source_order", index)
+            if isinstance(artist, Artist):
+                entry["source_sticky_edges"] = (
+                    list(artist.sticky_edges.x),
+                    list(artist.sticky_edges.y),
+                )
+                entry["source_picker"] = artist.get_picker()
+        if entries:
+            unsupported.report.add(
+                artist,
+                "Imported " + str(len(entries)) + " plot entries",
+                fallback="geometry" if len(entries) > 1 else None,
+            )
+
+
+def _capture_inset_indicator(indicator):
+    """Style for ``indicate_inset_zoom``; connectors are recomputed on render.
+
+    ``InsetIndicator`` spans two Axes and recomputes its rectangle/connector
+    geometry from live axes limits on every draw, so it cannot be captured as
+    detached geometry the way single-axes artists are. Recreating it with
+    ``Axes.indicate_inset_zoom`` on the reconstructed parent/inset pair keeps
+    that live behavior instead of freezing a stale snapshot.
+    """
+    rectangle = indicator.rectangle
+    return dict(
+        facecolor=copy.deepcopy(rectangle.get_facecolor()),
+        edgecolor=copy.deepcopy(rectangle.get_edgecolor()),
+        linewidth=rectangle.get_linewidth(),
+        linestyle=rectangle.get_linestyle(),
+        alpha=indicator.get_alpha(),
+        zorder=indicator.get_zorder(),
+        visible=indicator.get_visible(),
+    )
 
 
 def _import_axes(ax, target, unsupported):
@@ -870,8 +693,7 @@ def _import_axes(ax, target, unsupported):
     target.set_ymargin(ax.margins()[1])
     unsupported.report.add(
         ax,
-        "Axis scales, tick and spine styles, and legend layout "
-        "retained for Matplotlib",
+        "Axis scales, tick and spine styles, and legend layout retained for Matplotlib",
         fallback="native",
     )
     target._import_grid = target._grid
@@ -885,77 +707,6 @@ def _import_axes(ax, target, unsupported):
     target.line_data.sort(key=lambda entry: entry.get("source_order", 0))
     for entries in target.layered_line_data.values():
         entries.sort(key=lambda entry: entry.get("source_order", 0))
-
-
-def _needs_native_style(artist):
-    box = artist.get_clip_box()
-    custom_box = (
-        box is not None
-        and artist.axes is not None
-        and not np.array_equal(box.bounds, artist.axes.bbox.bounds)
-    )
-    return (
-        custom_box
-        or artist.get_path_effects()
-        or artist.get_agg_filter() is not None
-        or artist.get_sketch_params() is not None
-        or artist.get_clip_path() is not None
-    )
-
-
-def _native(artist, ax, target, unsupported):
-    if unsupported.fallback == "skip" or not type(artist).__module__.startswith(
-        ("matplotlib.", "mpl_toolkits.")
-    ):
-        unsupported(f"Unsupported {type(artist).__name__}; artist skipped", artist)
-        return
-    snapshot = ReboundSnapshot(artist, ax)
-    target._add(
-        dict(plot_type="matplotlib_artist", snapshot=snapshot, layer=0, kwargs={}), 0
-    )
-    unsupported.report.add(
-        artist,
-        "Editable artist geometry retained for Matplotlib; "
-        "other backends require a raster import",
-        fallback="native",
-    )
-
-
-def _tracked(artists, ax, target, unsupported):
-    order = {id(artist): i for i, artist in enumerate(ax.get_children())}
-    for artist in artists:
-        unsupported.artist = artist
-        start = len(target.line_data)
-        yield artist
-        entries = target.line_data[start:]
-        children = getattr(artist, "get_children", lambda: [])()
-        index = order.get(
-            id(artist),
-            min(
-                (order.get(id(child), len(order)) for child in children),
-                default=len(order),
-            ),
-        )
-        for entry in entries:
-            entry["source_artist_id"] = id(artist)
-            entry["source_container_ids"] = [
-                identifier
-                for identifier, group in target.import_groups.items()
-                if identifier == id(artist) or id(artist) in group["artist_ids"]
-            ]
-            entry.setdefault("source_order", index)
-            if isinstance(artist, Artist):
-                entry["source_sticky_edges"] = (
-                    list(artist.sticky_edges.x),
-                    list(artist.sticky_edges.y),
-                )
-                entry["source_picker"] = artist.get_picker()
-        if entries:
-            unsupported.report.add(
-                artist,
-                "Imported " + str(len(entries)) + " plot entries",
-                fallback="geometry" if len(entries) > 1 else None,
-            )
 
 
 def _capture_colorbar(colorbar, target):
@@ -992,25 +743,303 @@ def _capture_colorbar(colorbar, target):
     )
 
 
-def _capture_inset_indicator(indicator):
-    """Style for ``indicate_inset_zoom``; connectors are recomputed on render.
+def _raster_import(canvas_cls, figure, axes, whole_figure, report, **kwargs):
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-    ``InsetIndicator`` spans two Axes and recomputes its rectangle/connector
-    geometry from live axes limits on every draw, so it cannot be captured as
-    detached geometry the way single-axes artists are. Recreating it with
-    ``Axes.indicate_inset_zoom`` on the reconstructed parent/inset pair keeps
-    that live behavior instead of freezing a stale snapshot.
-    """
-    rectangle = indicator.rectangle
-    return dict(
-        facecolor=copy.deepcopy(rectangle.get_facecolor()),
-        edgecolor=copy.deepcopy(rectangle.get_edgecolor()),
-        linewidth=rectangle.get_linewidth(),
-        linestyle=rectangle.get_linestyle(),
-        alpha=indicator.get_alpha(),
-        zorder=indicator.get_zorder(),
-        visible=indicator.get_visible(),
+    snapshot = copy.deepcopy(figure)
+    if not whole_figure:
+        indices = [figure.axes.index(ax) for ax in axes]
+        for i, ax in enumerate(list(snapshot.axes)):
+            if i not in indices:
+                ax.remove()
+    FigureCanvasAgg(snapshot).draw()
+    rgba = np.asarray(snapshot.canvas.buffer_rgba()).copy()
+    kwargs.setdefault("figsize", tuple(figure.get_size_inches()))
+    kwargs.setdefault("dpi", figure.dpi)
+    canvas = canvas_cls(**kwargs)
+    subplot = canvas.add_subplot(row=0, col=0)
+    subplot.add_imshow(rgba)
+    subplot.set_axis_off()
+    subplot.set_grid(False)
+    canvas.import_report = report
+    report.add(
+        figure,
+        "Raster snapshot: data, artist editing, vector paths and interactive "
+        "state are lost",
+        severity="warning",
+        fallback="raster",
+        backends=("matplotlib", "plotly"),
     )
+    return canvas
+
+
+def import_matplotlib(
+    canvas_cls,
+    source,
+    *,
+    strict=False,
+    trusted=False,
+    fallback="native",
+    **canvas_kwargs,
+):
+    if fallback not in ("native", "skip", "raster"):
+        raise ValueError("fallback must be 'native', 'skip', or 'raster'")
+    if isinstance(source, (str, bytes, os.PathLike)) or hasattr(source, "read"):
+        if not trusted:
+            raise ValueError(
+                "Serialized Matplotlib input requires trusted=True; "
+                "unpickling can execute arbitrary Python code"
+            )
+        if isinstance(source, bytes):
+            source = pickle.loads(source)
+        elif hasattr(source, "read"):
+            source = pickle.load(source)
+        else:
+            with open(source, "rb") as stream:
+                source = pickle.load(stream)
+    report = ImportReport()
+
+    def unsupported(message, artist=None):
+        artist = artist if artist is not None else unsupported.artist
+        report.add(
+            artist,
+            message,
+            severity="error" if strict else "warning",
+            fallback="skipped",
+        )
+        if strict:
+            error = NotImplementedError(message)
+            error.import_report = report
+            raise error
+        warnings.warn(message, UserWarning, stacklevel=3)
+
+    unsupported.artist = source
+    unsupported.report = report
+    unsupported.fallback = fallback
+
+    whole_figure = isinstance(source, Figure)
+    explicit_shape = None
+    if whole_figure:
+        axes = list(source.axes)
+    elif isinstance(source, Axes):
+        axes = [source]
+        explicit_shape = (1, 1)
+    else:
+        try:
+            array = np.asarray(source, dtype=object)
+        except (TypeError, ValueError) as exc:
+            raise TypeError(
+                "Expected a Figure, Axes, or rectangular array of Axes"
+            ) from exc
+        if array.ndim not in (1, 2):
+            raise TypeError("Expected a Figure, Axes, or 1D/2D array of Axes")
+        axes = list(array.flat)
+        if array.ndim == 2:
+            explicit_shape = array.shape
+    if not axes:
+        raise ValueError("At least one Matplotlib Axes is required")
+    if not all(isinstance(ax, Axes) for ax in axes):
+        raise TypeError("Every array element must be a Matplotlib Axes")
+    if len({id(ax) for ax in axes}) != len(axes):
+        raise ValueError("Duplicate Axes are not supported")
+    figure = root_figure(source if whole_figure else axes[0].get_figure())
+    if any(root_figure(ax.get_figure()) is not figure for ax in axes):
+        raise ValueError("All Axes must belong to the same Figure")
+
+    if fallback == "raster":
+        return _raster_import(
+            canvas_cls, figure, axes, whole_figure, report, **canvas_kwargs
+        )
+
+    # Colorbar axes are decorations, not independent data subplots.
+    selected = []
+    twins = []
+    colorbars = []
+    # The source figure's creation order identifies the primary axes even when
+    # the caller passes the twin first in an array.
+    for index, ax in sorted(
+        enumerate(axes), key=lambda item: figure.axes.index(item[1])
+    ):
+        if getattr(ax, "_colorbar", None) is not None:
+            colorbars.append(ax._colorbar)
+        else:
+            parent = next(
+                (
+                    previous
+                    for _, previous in selected
+                    if ax in previous._twinned_axes.get_siblings(previous)
+                ),
+                None,
+            )
+            if parent is None:
+                selected.append((index, ax))
+            else:
+                direction = "x" if ax.get_shared_x_axes().joined(ax, parent) else "y"
+                twins.append((parent, ax, direction))
+    selected.sort(key=lambda item: item[0])
+    if not selected:
+        raise ValueError("No supported Axes to import")
+
+    if explicit_shape is not None:
+        nrows, ncols = explicit_shape
+        positioned = [(i // ncols, i % ncols, ax) for i, ax in selected]
+    else:
+        specs = [ax.get_subplotspec() for _, ax in selected]
+        common_grid = specs[0].get_gridspec() if specs[0] is not None else None
+        simple_grid = common_grid is not None and all(
+            spec is not None
+            and spec.get_gridspec() is common_grid
+            and spec.rowspan.stop - spec.rowspan.start == 1
+            and spec.colspan.stop - spec.colspan.start == 1
+            for spec in specs
+        )
+        if simple_grid and len({spec.num1 for spec in specs}) == len(specs):
+            nrows, ncols = common_grid.get_geometry()
+            positioned = [
+                (spec.rowspan.start, spec.colspan.start, ax)
+                for spec, (_, ax) in zip(specs, selected)
+            ]
+        else:
+            # Irregular layouts use stable editable slots and retain their
+            # actual axes rectangles for the Matplotlib renderer.
+            nrows, ncols = 1, len(selected)
+            positioned = [(0, i, ax) for i, (_, ax) in enumerate(selected)]
+
+    if "nrows" in canvas_kwargs or "ncols" in canvas_kwargs:
+        raise TypeError("nrows and ncols are inferred from the imported axes")
+    canvas_kwargs.setdefault("figsize", tuple(figure.get_size_inches()))
+    canvas_kwargs.setdefault("dpi", figure.dpi)
+    canvas = canvas_cls(nrows=nrows, ncols=ncols, **canvas_kwargs)
+    canvas.import_report = report
+    canvas._import_layout = {}
+    canvas._import_in_layout = {}
+    canvas._import_shared_axes = []
+    canvas._import_extra_twins = []
+    canvas._import_colorbars = []
+    canvas._import_figure_artists = []
+    source_targets = {}
+    source_slots = {}
+    for row, col, ax in positioned:
+        target = canvas.add_subplot(row=row, col=col)
+        source_targets[ax] = target
+        source_slots[ax] = (row, col)
+        if explicit_shape is None:
+            canvas._import_layout[(row, col)] = figure_bounds(ax, figure)
+            canvas._import_in_layout[(row, col)] = ax.get_in_layout()
+        _import_axes(ax, target, unsupported)
+        for parent, twin, direction in twins:
+            if parent is ax:
+                factory = canvas.twinx if direction == "x" else canvas.twiny
+                registry = (
+                    canvas._twinx_subplots
+                    if direction == "x"
+                    else canvas._twiny_subplots
+                )
+                if (row, col) in registry:
+                    from maxplotlib.subfigure.line_plot import LinePlot
+
+                    twin_target = LinePlot()
+                    canvas._import_extra_twins.append(
+                        ((row, col), direction, twin_target)
+                    )
+                else:
+                    twin_target = factory(row=row, col=col)
+                source_targets[twin] = twin_target
+                _import_axes(twin, twin_target, unsupported)
+    if explicit_shape is None and all(ax.figure is figure for _, ax in selected):
+        specs = {source_slots[ax]: ax.get_subplotspec() for _, ax in selected}
+        canvas._import_layout_specs = ReboundSnapshot(specs, fig=figure)
+        canvas._import_layout_engine = copy.deepcopy(figure.get_layout_engine())
+        if canvas._import_layout_engine is None:
+            canvas.subplots_adjust(
+                **{
+                    name: getattr(figure.subplotpars, name)
+                    for name in ("left", "right", "bottom", "top", "wspace", "hspace")
+                }
+            )
+    for name in ("x", "y"):
+        for index, (_, ax) in enumerate(selected):
+            parent = next(
+                (
+                    previous
+                    for _, previous in selected[:index]
+                    if getattr(ax, "get_shared_" + name + "_axes")().joined(
+                        ax, previous
+                    )
+                ),
+                None,
+            )
+            if parent is not None:
+                canvas._import_shared_axes.append(
+                    (name, source_slots[parent], source_slots[ax])
+                )
+    for colorbar in colorbars:
+        owner = getattr(colorbar.mappable, "axes", None)
+        if owner is not None and owner not in source_targets:
+            unsupported("Colorbar mappable is outside the selected axes", colorbar.ax)
+            continue
+        canvas._import_colorbars.append(
+            _capture_colorbar(colorbar, source_targets.get(owner))
+        )
+        report.add(colorbar.ax, "Colorbar is linked to its imported mappable")
+    if whole_figure:
+        canvas._import_figure_patch = ReboundSnapshot(figure.patch, fig=figure)
+        canvas._import_figure_style = dict(
+            facecolor=figure.get_facecolor(),
+            edgecolor=figure.get_edgecolor(),
+            linewidth=figure.patch.get_linewidth(),
+            frameon=figure.get_frameon(),
+        )
+        for getter, setter in (
+            ("get_suptitle", "suptitle"),
+            ("get_supxlabel", "supxlabel"),
+            ("get_supylabel", "supylabel"),
+        ):
+            value = getattr(figure, getter, lambda: "")()
+            if value:
+                text = getattr(figure, "_" + setter)
+                getattr(canvas, setter)(
+                    value,
+                    x=text.get_position()[0],
+                    y=text.get_position()[1],
+                    **_text_style(text),
+                )
+        titles = {figure._suptitle, figure._supxlabel, figure._supylabel}
+        for artist in (
+            list(figure.legends)
+            + list(figure.artists)
+            + list(figure.lines)
+            + list(figure.patches)
+            + list(figure.images)
+            + [text for text in figure.texts if text not in titles]
+        ):
+            canvas._import_figure_artists.append(ReboundSnapshot(artist, fig=figure))
+            report.add(
+                artist, "Figure decoration retained for Matplotlib", fallback="native"
+            )
+
+        def subfigure_decorations(owner):
+            for subfigure in owner.subfigs:
+                background = ReboundSnapshot(subfigure.patch, fig=subfigure)
+                background.payload.set_zorder(
+                    min((ax.get_zorder() for ax in figure.axes), default=0) - 1
+                )
+                canvas._import_figure_artists.append(background)
+                for artist in (
+                    list(subfigure.texts)
+                    + list(subfigure.legends)
+                    + list(subfigure.artists)
+                    + list(subfigure.lines)
+                    + list(subfigure.patches)
+                    + list(subfigure.images)
+                ):
+                    canvas._import_figure_artists.append(
+                        ReboundSnapshot(artist, fig=subfigure)
+                    )
+                subfigure_decorations(subfigure)
+
+        subfigure_decorations(figure)
+    return canvas
 
 
 def _import_child(child, ax, target, unsupported):
@@ -1046,33 +1075,3 @@ def _import_child(child, ax, target, unsupported):
     unsupported.report.add(
         child, "Child axes retained for Matplotlib", fallback="native"
     )
-
-
-def _raster_import(canvas_cls, figure, axes, whole_figure, report, **kwargs):
-    from matplotlib.backends.backend_agg import FigureCanvasAgg
-
-    snapshot = copy.deepcopy(figure)
-    if not whole_figure:
-        indices = [figure.axes.index(ax) for ax in axes]
-        for i, ax in enumerate(list(snapshot.axes)):
-            if i not in indices:
-                ax.remove()
-    FigureCanvasAgg(snapshot).draw()
-    rgba = np.asarray(snapshot.canvas.buffer_rgba()).copy()
-    kwargs.setdefault("figsize", tuple(figure.get_size_inches()))
-    kwargs.setdefault("dpi", figure.dpi)
-    canvas = canvas_cls(**kwargs)
-    subplot = canvas.add_subplot(row=0, col=0)
-    subplot.add_imshow(rgba)
-    subplot.set_axis_off()
-    subplot.set_grid(False)
-    canvas.import_report = report
-    report.add(
-        figure,
-        "Raster snapshot: data, artist editing, vector paths and interactive "
-        "state are lost",
-        severity="warning",
-        fallback="raster",
-        backends=("matplotlib", "plotly"),
-    )
-    return canvas

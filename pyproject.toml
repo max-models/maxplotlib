@@ -40,8 +40,6 @@ docs = [
 dev = [
     "maxplotlibx[test,docs]",
     "ruff",
-    "black[jupyter]",
-    "isort",
     "jupyterlab",
     "nbstripout",
     "pre-commit",
@@ -53,11 +51,8 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.black]
-line-length = 88
-
 [tool.ruff]
 line-length = 88
-
-[tool.isort]
-profile = "black"
+# formatting: `ruff format`; import sorting: the isort rules of `ruff check`
+# an explicit rule set: ruff's default one grows between releases
+lint.select = ["E4", "E7", "E9", "F", "I"]
