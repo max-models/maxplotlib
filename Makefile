@@ -19,14 +19,14 @@ docs-notebooks:  ## execute the changed tutorials and convert all of them (FORCE
 
 docs-dev:  ## live preview at http://localhost:4321/maxplotlib/
 	$(NOTEBOOKS) convert
-	cd docs && $(DOCS_ENV) DOCS_VALIDATE_LINKS=false npx astro dev
+	cd docs && $(DOCS_ENV) DOCS_VALIDATE_LINKS=false npm run dev
 
 docs-build:  ## the static site in docs/dist, as in CI
 	$(NOTEBOOKS) convert
-	cd docs && npx starlight-check-mdx && $(DOCS_ENV) npx astro build
+	cd docs && npm run check:mdx && $(DOCS_ENV) npm run build
 
 docs-preview:  ## serve docs/dist
-	cd docs && npx astro preview
+	cd docs && npm run preview
 
 docs-clean:  ## remove generated pages, assets and build output
 	$(NOTEBOOKS) clean
