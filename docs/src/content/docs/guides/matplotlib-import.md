@@ -1,5 +1,5 @@
 ---
-title: Matplotlib import support and roadmap
+title: Matplotlib import
 description: What Canvas.from_matplotlib imports from a Matplotlib figure today, and what is planned.
 ---
 
