@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   docs:
-    uses: max-models/starlight-theme/.github/workflows/docs.yml@v0.6.0
+    uses: max-models/starlight-theme/.github/workflows/docs.yml@v0
     with:
       apt-packages: "texlive-latex-base texlive-latex-extra texlive-pictures texlive-fonts-recommended lmodern"
       # stable-branch: main  # deploy the latest release at /<repo>/ and devel at /<repo>/dev/
