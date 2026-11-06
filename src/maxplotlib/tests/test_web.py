@@ -127,6 +127,7 @@ def test_canvas_to_json_and_savefig(tmp_path):
     assert hints["aspect"] == 2.0
     assert hints["alt"] == "A straight line"
     assert "template" not in web["layout"]
+    assert web["layout"]["yaxis"]["automargin"] is True  # room for the tick labels
 
     canvas.savefig(tmp_path / "canvas.plotly.json", backend="plotly")
     saved = json.loads((tmp_path / "canvas.plotly.json").read_text())

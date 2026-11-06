@@ -11,7 +11,8 @@ and gives it the site's colours in light and dark mode:
   from ``layout.colorway``, which the page sets to the palette; traces with an explicit colour
   from a default cycle (Matplotlib's ``C0``..``C9``, Plotly's default colorway, the Okabe-Ito
   palette) carry the index of that colour as ``trace.meta["color_slot"]``, and the page gives
-  them the palette colour of that index. Other explicit colours and colormaps stay as they are.
+  them the palette colour of that index. Black traces take the text colour. Other explicit
+  colours and colormaps stay as they are.
 
 Hints for the page are in ``layout.meta["web"]``:
 
@@ -82,6 +83,7 @@ OKABE_ITO = (
 DEFAULT_CYCLES = (MATPLOTLIB_CYCLE, PLOTLY_COLORWAY, OKABE_ITO)
 
 _RGB = re.compile(r"rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)")
+_CARTESIAN_AXIS = re.compile(r"[xy]axis\d*")
 
 
 def _hex(color: Any) -> str | None:
@@ -229,6 +231,10 @@ def web_figure(
 
     layout.pop("template", None)
     layout["autosize"] = True
+    # the page sets the size, so make room for tick labels and axis titles at any size
+    for key, axis in layout.items():
+        if _CARTESIAN_AXIS.fullmatch(key) and isinstance(axis, dict):
+            axis.setdefault("automargin", True)
     layout["paper_bgcolor"] = "rgba(0,0,0,0)"
     layout["plot_bgcolor"] = "white" if white_plot else "rgba(0,0,0,0)"
     hints: dict[str, Any] = {"version": FORMAT_VERSION, "white_plot": bool(white_plot)}

@@ -53,15 +53,15 @@ starlight-theme.
 The file is Plotly figure JSON: `data`, `layout` and, for an animation, `frames`. Compared with
 the figure it was made from:
 
-- **no look of its own**: no template, no fixed `width` or `height` (`autosize` instead), and
-  transparent `paper_bgcolor` and `plot_bgcolor`. The page sets text, grid and background
-  colours from the theme.
+- **no look of its own**: no template, no fixed `width` or `height` (`autosize` instead, with
+  `automargin` on the axes so the tick labels fit at any size), and transparent `paper_bgcolor`
+  and `plot_bgcolor`. The page sets text, grid and background colours from the theme.
 - **the data palette**: a trace without a colour takes it from `layout.colorway`, which the page
   sets to the theme's data palette. A trace whose colour comes from a default colour cycle
   (Matplotlib's `C0` to `C9`, Plotly's default colorway, the Okabe–Ito palette) carries its
   position in that cycle as `trace.meta.color_slot`, and the page gives it the theme's colour
-  of that position. Other explicit colours, such as a black reference curve, and colormaps stay
-  as they are.
+  of that position. A black trace, such as a reference curve, takes the text colour, so it
+  stays visible in dark mode. Other explicit colours and colormaps stay as they are.
 - **hints for the page** in `layout.meta.web`:
 
 | Key | Meaning |
