@@ -27,6 +27,8 @@ jobs:
     with:
       apt-packages: "texlive-latex-base texlive-latex-extra texlive-pictures texlive-fonts-recommended lmodern"
       # stable-branch: main  # deploy the latest release at /<repo>/ and devel at /<repo>/dev/
+      # a notebook's outputs are numbered in order: in tutorial 07, 1.html is the Plotly
+      # preview and 2.png the first compiled TikZ figure
       smoke-paths: |
         getting-started/installation/index.html
         getting-started/quickstart/index.html
@@ -35,7 +37,7 @@ jobs:
         tutorials/tutorial-01/index.html
         tutorials/tutorial-07-tikz/index.html
         tutorials/tutorial-17-xarray/index.html
-        tutorials/tutorial-07-tikz/1.png
+        tutorials/tutorial-07-tikz/2.png
         tutorials/tutorial-01/tutorial_01.ipynb
         api/maxplotlib/index.html
         api/maxplotlib/canvas/index.html
