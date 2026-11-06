@@ -2139,6 +2139,10 @@ class Canvas:
                 "(e.g., `pip install -U kaleido`), or export to HTML instead."
             ) from exc
 
+    def _matplotlib_style(self):
+        """The canvas style of the last Matplotlib drawing, as an ``rc_context``."""
+        return plt.rc_context(getattr(self, "_matplotlib_rc", None) or {})
+
     def savefig(
         self,
         filename,
@@ -2171,7 +2175,8 @@ class Canvas:
                     )
                     _fn = f"{filename_no_extension}_{layers}.{extension}"
                     savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
-                    fig.savefig(_fn, **savefig_kwargs)
+                    with self._matplotlib_style():
+                        fig.savefig(_fn, **savefig_kwargs)
                     print(f"Saved {_fn}")
             else:
                 if layers is None:
@@ -2182,7 +2187,8 @@ class Canvas:
 
                 if self._plotted:
                     savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
-                    self._matplotlib_fig.savefig(full_filepath, **savefig_kwargs)
+                    with self._matplotlib_style():
+                        self._matplotlib_fig.savefig(full_filepath, **savefig_kwargs)
                 else:
                     fig, axs = self._render(
                         backend="matplotlib",
@@ -2190,7 +2196,8 @@ class Canvas:
                         layers=layers,
                     )
                     savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
-                    fig.savefig(full_filepath, **savefig_kwargs)
+                    with self._matplotlib_style():
+                        fig.savefig(full_filepath, **savefig_kwargs)
                 if verbose:
                     print(f"Saved {full_filepath}")
         elif backend == "plotext":
@@ -2422,12 +2429,13 @@ class Canvas:
             )
             if verbose:
                 print("Displaying Matplotlib figure...")
-            if _display_matplotlib_figure_in_notebook(fig):
-                # IPython has rendered the figure already. Closing it prevents
-                # a later implicit pyplot display and releases its resources.
-                plt.close(fig)
-            else:
-                plt.show(block=block)
+            with self._matplotlib_style():
+                if _display_matplotlib_figure_in_notebook(fig):
+                    # IPython has rendered the figure already. Closing it prevents
+                    # a later implicit pyplot display and releases its resources.
+                    plt.close(fig)
+                else:
+                    plt.show(block=block)
             return fig, axes
         elif backend == "plotly":
             resolved_usetex = self._usetex if usetex is None else usetex
@@ -2461,7 +2469,7 @@ class Canvas:
         else:
             raise ValueError("Invalid backend")
 
-    def plot_matplotlib(
+    def _plot_matplotlib(
         self,
         savefig: bool = False,
         layers: list | None = None,
@@ -2470,12 +2478,6 @@ class Canvas:
         matplotlib_postprocess=None,
         matplotlib_customizations=None,
     ):
-        """
-        Generate and optionally display the subplots.
-
-        Parameters:
-        filename (str, optional): Filename to save the figure.
-        """
         if verbose:
             print("Generating Matplotlib figure...")
 
@@ -2677,6 +2679,45 @@ class Canvas:
             matplotlib_postprocess(fig, axes)
         return fig, axes
 
+    def plot_matplotlib(
+        self,
+        savefig: bool = False,
+        layers: list | None = None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+        matplotlib_postprocess=None,
+        matplotlib_customizations=None,
+    ):
+        """
+        Generate and optionally display the subplots.
+
+        The canvas style (fonts, ticks, grid) applies while drawing only:
+        Matplotlib's global ``rcParams`` are the same afterwards, so figures
+        drawn later by other code keep their own style. ``savefig`` and
+        ``show`` apply the style again while saving and showing.
+
+        Parameters:
+        filename (str, optional): Filename to save the figure.
+        """
+        before = dict(plt.rcParams)
+        with plt.rc_context():
+            result = self._plot_matplotlib(
+                savefig=savefig,
+                layers=layers,
+                usetex=usetex,
+                verbose=verbose,
+                matplotlib_postprocess=matplotlib_postprocess,
+                matplotlib_customizations=matplotlib_customizations,
+            )
+            # what the style changed, for saving and showing the figure later:
+            # e.g. LaTeX text reads the font family when it is drawn
+            self._matplotlib_rc = {
+                key: value
+                for key, value in plt.rcParams.items()
+                if key in before and before[key] != value
+            }
+        return result
+
     def _validate_import_backend(self, backend, *, allow_unsupported=False):
         """Never silently drop native imported axes or figure decorations."""
         if not hasattr(self, "import_report") or allow_unsupported:
@@ -2866,10 +2907,11 @@ class Canvas:
                 "twiny is currently supported only by the matplotlib backend"
             )
 
-        setup_tex_fonts(
-            fontsize=self.fontsize,
-            usetex=resolved_usetex,
-        )  # adjust or redefine for Plotly if needed
+        with plt.rc_context():  # Matplotlib's global style stays as it is
+            setup_tex_fonts(
+                fontsize=self.fontsize,
+                usetex=resolved_usetex,
+            )  # adjust or redefine for Plotly if needed
 
         # Create subplot titles in row-major order (Plotly expects rows*cols entries)
         subplot_titles = [""] * (self.nrows * self.ncols)
