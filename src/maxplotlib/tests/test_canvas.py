@@ -1378,3 +1378,16 @@ def test_plotly_rendering_keeps_the_global_style():
     style = dict(plt.rcParams)
     canvas.plot_plotly()
     assert dict(plt.rcParams) == style
+
+
+def test_plotly_refuses_tikzfigure_subplots():
+    import pytest
+
+    pytest.importorskip("plotly")
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    diagram = canvas.add_tikzfigure()
+    diagram.add_node(0, 0, label="A")
+    with pytest.raises(NotImplementedError, match="plotly backend"):
+        canvas.render(backend="plotly")

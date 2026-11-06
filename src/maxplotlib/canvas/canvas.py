@@ -2891,6 +2891,13 @@ class Canvas:
         """
 
         self._validate_import_backend("plotly", allow_unsupported=allow_unsupported)
+        if any(
+            isinstance(subplot, TikzFigure) for _, _, subplot in self.iter_subplots()
+        ):
+            raise NotImplementedError(
+                "tikzfigure subplots cannot be rendered with the plotly backend; "
+                "use the matplotlib or tikzfigure backend"
+            )
         resolved_usetex = self._usetex if usetex is None else usetex
 
         for subplot in self._subplot_dict.values():
