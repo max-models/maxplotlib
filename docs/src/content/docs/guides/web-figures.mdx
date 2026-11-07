@@ -3,10 +3,87 @@ title: Web figures
 description: Save a canvas as theme-neutral Plotly JSON and embed it, interactive and in the site's colours, on a page of a max-models docs site.
 ---
 
+import PlotlyFigure from '@max-models/starlight-theme/components/PlotlyFigure.astro';
+
 A web figure is a Plotly figure saved as JSON, without plotly.js and without anything that
 fixes its look to one page. A page of a max-models docs site embeds it with the theme's
 `PlotlyFigure` component: the figure is interactive, plotly.js is loaded only when the figure
 scrolls into view, and the figure takes the site's colours in light and dark mode.
+
+## Examples
+
+The figures below are web figures, embedded on this page with `PlotlyFigure`. Switch the site
+between light and dark mode (top right) to see them follow it; hover, zoom and pan work as in
+any Plotly figure.
+
+### Lines in the site's palette
+
+The four waves have no colour of their own, so they take the site's data palette in order. The
+black reference line takes the text colour, so it stays visible in dark mode.
+
+<PlotlyFigure src="/figures/waves.plotly.json" alt="Four damped waves with a reference line at zero" />
+
+```python
+x = np.linspace(0, 4 * np.pi, 400)
+canvas = Canvas(width="12cm", ratio=0.5)  # the aspect ratio of the embedded figure: 2
+for k in range(4):
+    canvas.plot(x, np.exp(-0.1 * x) * np.sin(x - k * np.pi / 4), label=f"phase {k}/4 π")
+canvas.plot(x, 0 * x, color="black", linewidth=0.8)
+canvas.set_xlabel("t")
+canvas.set_ylabel("amplitude")
+canvas.set_legend(True)
+canvas.savefig("docs/public/figures/waves.plotly.json", backend="plotly")
+```
+
+### Any Plotly figure: a colormap and a contour
+
+`write_web_figure` takes any Plotly figure. A colormap stays as it is; the contour drawn in
+Matplotlib's `C1` (`#ff7f0e`) carries that position and takes the palette's second colour.
+
+<PlotlyFigure src="/figures/heatmap.plotly.json" />
+
+```python
+import plotly.graph_objects as go
+
+from maxplotlib.web import write_web_figure
+
+fig = go.Figure(
+    [
+        go.Heatmap(x=x, y=y, z=z, colorscale="Viridis", colorbar={"title": "φ"}),
+        go.Contour(
+            x=x, y=y, z=z,
+            contours={"coloring": "none", "start": 0.5, "end": 0.5},
+            line={"color": "#ff7f0e", "width": 2},
+            showscale=False,
+        ),
+    ],
+    layout={"xaxis_title": "x", "yaxis_title": "y", "width": 640, "height": 420},
+)
+write_web_figure(
+    fig, "docs/public/figures/heatmap.plotly.json", alt="A potential φ(x, y) with its 0.5 contour"
+)
+```
+
+### An animation
+
+Frames, a slider and a Play button come along: the file is the whole animation, and the page
+plays it with the plotly.js it loads.
+
+<PlotlyFigure src="/figures/packet.plotly.json" />
+
+```python
+frames = [go.Frame(name=f"{t:.1f}", data=[go.Scatter(y=packet(t))]) for t in times]
+fig = go.Figure(
+    data=[go.Scatter(x=x, y=packet(0), name="u(x, t)")],
+    frames=frames,
+    layout={"sliders": [...], "updatemenus": [...], "width": 700, "height": 380},
+)
+write_web_figure(fig, "docs/public/figures/packet.plotly.json", alt="A wave packet travelling to the right")
+```
+
+The full code of the three figures is
+[`scripts/web_figure_examples.py`](https://github.com/max-models/maxplotlib/blob/devel/scripts/web_figure_examples.py),
+which the docs build runs before building this site.
 
 ## Saving a canvas
 

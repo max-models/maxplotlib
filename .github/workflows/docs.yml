@@ -26,6 +26,8 @@ jobs:
     uses: max-models/starlight-theme/.github/workflows/docs.yml@v0
     with:
       apt-packages: "texlive-latex-base texlive-latex-extra texlive-pictures texlive-fonts-recommended lmodern"
+      # the example web figures of guides/web-figures, from scripts/web_figure_examples.py
+      pre-build: '"$DOCS_PYTHON" scripts/web_figure_examples.py'
       # stable-branch: main  # deploy the latest release at /<repo>/ and devel at /<repo>/dev/
       # a notebook's outputs are numbered in order: in tutorial 07, 1.html is the Plotly
       # preview and 2.png the first compiled TikZ figure
@@ -33,6 +35,10 @@ jobs:
         getting-started/installation/index.html
         getting-started/quickstart/index.html
         guides/matplotlib-import/index.html
+        guides/web-figures/index.html
+        figures/waves.plotly.json
+        figures/heatmap.plotly.json
+        figures/packet.plotly.json
         tutorials/index.html
         tutorials/tutorial-01/index.html
         tutorials/tutorial-07-tikz/index.html

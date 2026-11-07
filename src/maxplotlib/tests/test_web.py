@@ -138,3 +138,18 @@ def test_canvas_to_json_and_savefig(tmp_path):
 def test_canvas_aspect_from_figsize_and_the_golden_ratio():
     assert Canvas(figsize=(6, 3))._web_aspect() == 2.0
     assert Canvas(width="10cm")._web_aspect() == pytest.approx(1.618, abs=1e-3)
+
+
+def test_plotly_canvas_has_room_for_axis_titles_and_no_placeholder_title():
+    canvas = Canvas(width="10cm", ratio=0.5)
+    canvas.plot([0, 1], [0, 1])
+    layout = json.loads(canvas.to_json())["layout"]
+    texts = [a.get("text") for a in layout.get("annotations", [])]
+    assert "(0, 0)" not in texts  # an untitled subplot has no title
+    assert layout["margin"]["b"] == 10 and layout["margin"]["l"] == 10
+
+    canvas.set_xlabel("t")
+    canvas.set_ylabel("amplitude")
+    layout = json.loads(canvas.to_json())["layout"]
+    assert layout["margin"]["b"] == 60 and layout["margin"]["l"] == 70
+    assert layout["xaxis"]["title"]["standoff"] == 8

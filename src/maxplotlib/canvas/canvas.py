@@ -2941,7 +2941,7 @@ class Canvas:
         subplot_titles = [""] * (self.nrows * self.ncols)
         for (row, col), sp in self._subplot_dict.items():
             index = row * self.ncols + col
-            subplot_titles[index] = sp._title or f"({row}, {col})"
+            subplot_titles[index] = sp._title or ""
 
         specs = [
             [{"secondary_y": (r, c) in self._twinx_subplots} for c in range(self.ncols)]
@@ -3194,11 +3194,20 @@ class Canvas:
                     col=col + 1,
                 )
 
-        # Update layout settings
+        # Update layout settings: tight margins, with room for the axis titles. A title needs a
+        # standoff from its tick labels: with automargin (web figures) and no standoff, Plotly
+        # pins it to the edge of the figure, half outside.
+        subplots = self._subplot_dict.values()
+        has_xlabel = any(getattr(sp, "_xlabel", None) for sp in subplots)
+        has_ylabel = any(getattr(sp, "_ylabel", None) for sp in subplots)
         fig.update_layout(
             font=dict(size=self.fontsize),
-            margin=dict(l=10, r=10, t=40, b=10),
+            margin=dict(
+                l=70 if has_ylabel else 10, r=10, t=40, b=60 if has_xlabel else 10
+            ),
         )
+        fig.update_xaxes(title_standoff=8)
+        fig.update_yaxes(title_standoff=8)
         barmode = self._barmode
         if barmode is None:
             barmode = next(
