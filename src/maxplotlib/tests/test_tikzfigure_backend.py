@@ -107,6 +107,37 @@ def test_text_and_annotation_arrows_are_not_clipped():
     assert re.search(r"\\draw\[.*\] \(axis cs:", tikz), "the arrow is a \\draw"
 
 
+def test_straight_arrows_get_tikz_tips():
+    from matplotlib.patches import FancyArrowPatch
+
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.add_patch(
+        FancyArrowPatch(
+            (0.1, 0.2), (0.9, 0.2), arrowstyle="<->", mutation_scale=10, shrinkA=0
+        )
+    )
+    ax.add_patch(FancyArrowPatch((0.1, 0.5), (0.9, 0.5), arrowstyle="-|>"))
+    ax.add_patch(  # a curved arrow stays a path
+        FancyArrowPatch(
+            (0.1, 0.8), (0.9, 0.8), arrowstyle="->", connectionstyle="arc3,rad=0.3"
+        )
+    )
+    ax.text(0.5, 0.9, "⌀ 2 mm")
+    tikz = figure_to_tikz(fig).generate_tikz()
+    double = re.search(
+        r"\\draw\[\{Straight Barb\[length=4pt, width=4pt\]\}-\{Straight Barb\["
+        r"length=4pt, width=4pt\]\}, .*shorten >=2pt\] \(axis cs:0\.1,0\.2\) -- "
+        r"\(axis cs:0\.9,0\.2\);",
+        tikz,
+    )
+    assert double, tikz
+    assert re.search(r"\\draw\[-\{Triangle\[length=\d", tikz)
+    assert tikz.count("\\draw[") == 2 and tikz.count("\\addplot") >= 2  # the curve
+    assert "{$\\varnothing$ 2 mm}" in tikz
+
+
 def test_an_annotation_arrow_without_text_is_kept():
     fig, ax = plt.subplots()
     ax.set_xlim(0, 1)

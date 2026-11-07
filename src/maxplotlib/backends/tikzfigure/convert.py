@@ -290,6 +290,7 @@ class _FigureConverter:
             figure._layout_engine = engine
         self.tikz.add_package("lmodern")
         self.tikz.add_package("amsmath")
+        self.tikz.add_package("amssymb")
         definitions = self.colors.definitions()
         if definitions:
             self.tikz.add_raw(definitions)
@@ -408,6 +409,18 @@ def figure_to_tikz(
         precision=precision,
     )
     return converter.convert()
+
+
+#: The TikZ tips (arrows.meta, which tikzfigure loads) of Matplotlib's straight arrow styles.
+_ARROW_TIPS = {
+    "-": ("", ""),
+    "->": ("", "Straight Barb"),
+    "<-": ("Straight Barb", ""),
+    "<->": ("Straight Barb", "Straight Barb"),
+    "-|>": ("", "Triangle"),
+    "<|-": ("Triangle", ""),
+    "<|-|>": ("Triangle", "Triangle"),
+}
 
 
 def _dash(pattern) -> str | None:
@@ -968,9 +981,55 @@ class _AxesConverter:
         clip = line.get_clip_on()
         return lambda: self._add(data, options, label, clip=clip)
 
+    def _arrow(self, patch):
+        """A straight ``FancyArrowPatch`` as a ``\\draw`` with TikZ arrow tips, or ``None``.
+
+        The tips of ``->``, ``<-``, ``<->`` and their filled forms (``-|>``, ``<|-``,
+        ``<|-|>``) become ``Straight Barb`` and ``Triangle`` tips of the size Matplotlib
+        gives them (the arrow style's head sizes times ``mutation_scale``); ``shrinkA`` and
+        ``shrinkB`` shorten the line. Other arrow styles and curved connections are drawn as
+        the paths Matplotlib renders.
+        """
+        style = patch.get_arrowstyle()
+        arrow = getattr(style, "arrow", None)
+        ends = getattr(patch, "_posA_posB", None)
+        if arrow not in _ARROW_TIPS or ends is None or ends[0] is None:
+            return None
+        connection = type(patch.get_connectionstyle()).__name__
+        if connection != "Arc3" or getattr(patch.get_connectionstyle(), "rad", 0.0):
+            return None  # a curved connection
+        options = self._stroke(
+            patch.get_edgecolor(), patch.get_linewidth(), _dash(patch._dash_pattern)
+        )
+        if options is None:
+            return lambda: None
+        scale = float(patch.get_mutation_scale())
+        length = _pt(getattr(style, "head_length", 0.4) * scale)
+        width = _pt(2 * getattr(style, "head_width", 0.2) * scale)
+        begin, end = _ARROW_TIPS[arrow]
+        tips = "-".join(
+            f"{{{tip}[length={length}, width={width}]}}" if tip else ""
+            for tip in (begin, end)
+        )
+        options = [tips, *options]
+        for key, shrink in (("<", patch.shrinkA), (">", patch.shrinkB)):
+            if shrink:
+                options.append(f"shorten {key}={_pt(shrink)}")
+        display = patch.get_transform().transform(np.asarray(ends, dtype=float))
+        data = self._to_data(display)
+
+        def emit():
+            self.axis.add_raw(self._draw(data, options, False))
+
+        return emit
+
     def _patch(self, patch, clip=None):
         if clip is None:
             clip = patch.get_clip_on()
+        if isinstance(patch, FancyArrowPatch):
+            emit = self._arrow(patch)
+            if emit is not None:
+                return emit
         transform = patch.get_transform()
         path = patch.get_path()
         fillable = None
