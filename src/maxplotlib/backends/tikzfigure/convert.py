@@ -1018,8 +1018,6 @@ class _AxesConverter:
         return emit
 
     def _text(self, text):
-        if not text.get_text().strip():
-            return lambda: None
         if isinstance(text, Annotation):
             text.update_positions(self.figure._get_renderer())
         arrow = (
@@ -1030,6 +1028,8 @@ class _AxesConverter:
             arrow_emit = self._patch(arrow, clip=False)
             if arrow_emit is None:
                 return None
+        if not text.get_text().strip():  # an arrow without text, or nothing at all
+            return arrow_emit or (lambda: None)
         display = _text_display_position(text)
         if not self.figure.bbox.contains(*display):
             return arrow_emit or (lambda: None)
