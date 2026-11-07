@@ -43,10 +43,13 @@ import PlotlyFigure from '@max-models/starlight-theme/components/PlotlyFigure.as
 The path is relative to the site root; the component adds the site's base path.
 
 :::note
-The theme's `PlotlyFigure` already loads plotly.js on demand and recolours text, grid and
-backgrounds. The data palette and the hints below take effect with the next release of
-starlight-theme.
+The data palette and the hints below need starlight-theme 0.8 or later; sites on the `v0` tag
+of its docs workflow get it without a change.
 :::
+
+A figure shown in a notebook of the docs (`fig` as the last line of a cell) is embedded the same
+way, without saving it: the docs build writes the notebook's Plotly outputs as figures for
+`PlotlyFigure`. The [Plotly tutorial](/maxplotlib/tutorials/tutorial-08-plotly/) shows both.
 
 ## The format
 
