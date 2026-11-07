@@ -11,6 +11,7 @@ import re
 
 # Unicode characters pdflatex does not typeset by default, as math.
 _UNICODE_MATH = {
+    "⌀": r"\varnothing",
     "α": r"\alpha",
     "β": r"\beta",
     "γ": r"\gamma",
