@@ -1,0 +1,76 @@
+---
+title: Web figures
+description: Save a canvas as theme-neutral Plotly JSON and embed it, interactive and in the site's colours, on a page of a max-models docs site.
+---
+
+A web figure is a Plotly figure saved as JSON, without plotly.js and without anything that
+fixes its look to one page. A page of a max-models docs site embeds it with the theme's
+`PlotlyFigure` component: the figure is interactive, plotly.js is loaded only when the figure
+scrolls into view, and the figure takes the site's colours in light and dark mode.
+
+## Saving a canvas
+
+```python
+import numpy as np
+
+from maxplotlib import Canvas
+
+x = np.linspace(0, 2 * np.pi, 200)
+canvas = Canvas(width="10cm", ratio=0.5)
+canvas.plot(x, np.sin(x), label="sin")
+canvas.plot(x, np.cos(x), label="cos")
+canvas.set_title("Two waves")
+
+canvas.savefig("docs/public/figures/waves.plotly.json", backend="plotly")
+# or as a string, with a text alternative for screen readers
+text = canvas.to_json(alt="A sine and a cosine wave over one period")
+```
+
+Any Plotly figure, from maxplotlib or not, is written the same way with
+`maxplotlib.web.write_web_figure(fig, path, title=..., alt=..., aspect=..., white_plot=...)`;
+`maxplotlib.web.web_figure(fig)` returns the dict instead.
+
+## Embedding it
+
+In an MDX page, with the file under `docs/public/`:
+
+```mdx
+import PlotlyFigure from '@max-models/starlight-theme/components/PlotlyFigure.astro';
+
+<PlotlyFigure src="/figures/waves.plotly.json" />
+```
+
+The path is relative to the site root; the component adds the site's base path.
+
+:::note
+The theme's `PlotlyFigure` already loads plotly.js on demand and recolours text, grid and
+backgrounds. The data palette and the hints below take effect with the next release of
+starlight-theme.
+:::
+
+## The format
+
+The file is Plotly figure JSON: `data`, `layout` and, for an animation, `frames`. Compared with
+the figure it was made from:
+
+- **no look of its own**: no template, no fixed `width` or `height` (`autosize` instead, with
+  `automargin` on the axes so the tick labels fit at any size), and transparent `paper_bgcolor`
+  and `plot_bgcolor`. The page sets text, grid and background colours from the theme.
+- **the data palette**: a trace without a colour takes it from `layout.colorway`, which the page
+  sets to the theme's data palette. A trace whose colour comes from a default colour cycle
+  (Matplotlib's `C0` to `C9`, Plotly's default colorway, the Okabe–Ito palette) carries its
+  position in that cycle as `trace.meta.color_slot`, and the page gives it the theme's colour
+  of that position. A black trace, such as a reference curve, takes the text colour, so it
+  stays visible in dark mode. Other explicit colours and colormaps stay as they are.
+- **hints for the page** in `layout.meta.web`:
+
+| Key | Meaning |
+| --- | --- |
+| `version` | the format version, `1` |
+| `title` | the title, also the default caption |
+| `alt` | a text alternative for the figure |
+| `aspect` | width over height, so the page reserves the space before the figure loads |
+| `white_plot` | keep a white plot area in dark mode, for colours chosen for a white background |
+
+`white_plot` is set by default for a figure converted from Matplotlib
+(`layout.meta.converted_from == "matplotlib"`), whose overlays were drawn for a white axes.

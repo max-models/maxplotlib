@@ -2123,6 +2123,17 @@ class Canvas:
         else:
             raise ValueError(f"Invalid backend: {backend}")
 
+    def _web_aspect(self) -> float | None:
+        """Width over height of the canvas, when its size says so."""
+        if self._figsize is not None:
+            width, height = self._figsize
+            return float(width) / float(height)
+        if self._ratio == "golden":
+            return 2 / (5**0.5 - 1)
+        if isinstance(self._ratio, (int, float)) and self._ratio > 0:
+            return 1 / float(self._ratio)
+        return None
+
     def _save_plotly(
         self, fig, filename: str, include_plotlyjs: bool | str = True
     ) -> None:
@@ -2130,6 +2141,12 @@ class Canvas:
         extension = extension.lower()
         if extension in {".html", ".htm"}:
             fig.write_html(filename, include_plotlyjs=include_plotlyjs)
+            return
+        if extension == ".json":
+            # a web figure for the docs sites, see maxplotlib.web
+            from maxplotlib.web import write_web_figure
+
+            write_web_figure(fig, filename, aspect=self._web_aspect())
             return
         try:
             fig.write_image(filename)
@@ -3219,6 +3236,42 @@ class Canvas:
 
         self._plotly_fig = fig
         return fig
+
+    def to_json(
+        self,
+        layers: list | None = None,
+        title: str | None = None,
+        alt: str | None = None,
+        white_plot: bool | None = None,
+        verbose: bool = False,
+        allow_unsupported: bool = False,
+    ) -> str:
+        """Render the canvas with the Plotly backend and return it as a web figure.
+
+        A web figure is theme-neutral Plotly JSON without plotly.js, which the max-models
+        docs theme embeds on a page with the site's colours (see :mod:`maxplotlib.web`).
+        ``canvas.savefig("figure.plotly.json", backend="plotly")`` writes the same to a file.
+
+        Parameters:
+        layers (list, optional): The layers to draw.
+        title (str, optional): The title and default caption. Default: the canvas title.
+        alt (str, optional): A text alternative for the figure.
+        white_plot (bool, optional): Keep a white plot area in dark mode.
+        """
+        import json
+
+        from maxplotlib.web import web_figure
+
+        fig = self.plot_plotly(
+            show=False,
+            layers=layers,
+            verbose=verbose,
+            allow_unsupported=allow_unsupported,
+        )
+        web = web_figure(
+            fig, title=title, alt=alt, aspect=self._web_aspect(), white_plot=white_plot
+        )
+        return json.dumps(web, separators=(",", ":"))
 
     def to_html(
         self,
