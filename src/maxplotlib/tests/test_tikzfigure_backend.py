@@ -107,6 +107,17 @@ def test_text_and_annotation_arrows_are_not_clipped():
     assert re.search(r"\\draw\[.*\] \(axis cs:", tikz), "the arrow is a \\draw"
 
 
+def test_an_annotation_arrow_without_text_is_kept():
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.annotate("", xy=(0.9, 0.5), xytext=(0.1, 0.5), arrowprops={"arrowstyle": "<->"})
+    ax.text(0.5, 0.5, "   ")  # blank text draws nothing
+    tikz = figure_to_tikz(fig).generate_tikz()
+    assert re.search(r"\\draw\[.*\] \(axis cs:", tikz), "the arrow is a \\draw"
+    assert "\\node" not in tikz
+
+
 def test_far_away_geometry_is_clipped_and_text_outside_the_figure_left_out():
     fig, ax = plt.subplots()
     ax.plot([0, 1e6], [0, 1])
