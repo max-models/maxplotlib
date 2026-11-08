@@ -1003,6 +1003,34 @@ class _AxesConverter:
             parts.append("-- cycle")
         return f"\\draw[{', '.join(keep)}] {' '.join(parts)};"
 
+    def _draw_loops(self, loops, options) -> str:
+        """One ``\\draw`` path of several closed loops, filled by the even-odd rule.
+
+        A compound patch (a shape with holes, such as an annulus or a plate with an aperture)
+        is one path in Matplotlib; drawn as one path in TikZ its holes stay empty, where one
+        filled plot per loop would fill them.
+        """
+        precision = self.options["precision"]
+        keep = [
+            option
+            for option in options
+            if not option.startswith(
+                ("mark", "only marks", "forget plot", "area legend")
+            )
+        ]
+        keep.append("even odd rule")
+        parts = []
+        for loop in loops:
+            points = [
+                f"(axis cs:{format_number(float(x), precision)},"
+                f"{format_number(float(y), precision)})"
+                for x, y in loop
+                if np.isfinite(x) and np.isfinite(y)
+            ]
+            if len(points) > 2:
+                parts.append(" -- ".join(points) + " -- cycle")
+        return f"\\draw[{', '.join(keep)}] {' '.join(parts)};"
+
     def _add(self, data, options, label="", cycle=False, clip=True):
         data = np.asarray(data, dtype=float)
         if not clip:
@@ -1119,6 +1147,14 @@ class _AxesConverter:
             )
             if options is None:
                 continue
+            closed_polygons = [polygon for polygon in polygons if len(polygon) > 2]
+            if can_fill and len(polygons) > 1 and len(closed_polygons) == len(polygons):
+                # one filled path of several loops: holes stay holes (even-odd rule)
+                loops = [self._clip_polygon(polygon) for polygon in polygons]
+                loops = [self._to_data(loop) for loop in loops if len(loop)]
+                if loops:
+                    pieces.append((loops, options, "compound"))
+                continue
             for polygon in polygons:
                 closed = can_fill and len(polygon) > 2
                 polygon = (
@@ -1130,6 +1166,9 @@ class _AxesConverter:
 
         def emit():
             for index, (data, options, closed) in enumerate(pieces):
+                if closed == "compound":
+                    self.axis.add_raw(self._draw_loops(data, options))
+                    continue
                 self._add(
                     data, options, label if index == 0 else "", cycle=closed, clip=clip
                 )

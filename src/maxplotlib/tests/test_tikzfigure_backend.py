@@ -134,6 +134,24 @@ def test_hatches_become_tikz_patterns(hatch, pattern):
     assert "patterns" in figure._tikz_libraries
 
 
+def test_a_patch_with_a_hole_is_one_even_odd_path():
+    from matplotlib.patches import Annulus, Rectangle
+
+    fig, ax = plt.subplots()
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-2, 2)
+    ax.add_patch(Annulus((0, 0), 1.5, 0.5, facecolor="C0", hatch="//", label="ring"))
+    ax.add_patch(Rectangle((1.6, 1.6), 0.2, 0.2))  # one loop: a plot as before
+    ax.legend()
+    tikz = figure_to_tikz(fig).generate_tikz()
+    ring = [line for line in tikz.splitlines() if "even odd rule" in line]
+    assert len(ring) == 1
+    assert ring[0].count("-- cycle") == 2  # the outer circle and the hole, one path
+    assert "pattern=north east lines" in ring[0]
+    assert "\\addlegendentry{ring}" in tikz
+    assert tikz.count("\\addplot[") == 1  # the rectangle
+
+
 def test_a_hatched_legend_entry_keeps_its_pattern():
     from matplotlib.patches import Rectangle
 
