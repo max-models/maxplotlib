@@ -21,7 +21,13 @@ any Plotly figure.
 The four waves have no colour of their own, so they take the site's data palette in order. The
 black reference line takes the text colour, so it stays visible in dark mode.
 
-<PlotlyFigure src="/figures/waves.plotly.json" alt="Four damped waves with a reference line at zero" />
+<PlotlyFigure
+	src="/figures/waves.plotly.json"
+	alt="Four damped waves with a reference line at zero"
+	caption="Four damped waves, in the site's data palette."
+	poster="/figures/waves.png"
+	posterDark="/figures/waves.dark.png"
+/>
 
 ```python
 x = np.linspace(0, 4 * np.pi, 400)
@@ -40,7 +46,12 @@ canvas.savefig("docs/public/figures/waves.plotly.json", backend="plotly")
 `write_web_figure` takes any Plotly figure. A colormap stays as it is; the contour drawn in
 Matplotlib's `C1` (`#ff7f0e`) carries that position and takes the palette's second colour.
 
-<PlotlyFigure src="/figures/heatmap.plotly.json" />
+<PlotlyFigure
+	src="/figures/heatmap.plotly.json"
+	caption="A potential φ(x, y) and its 0.5 contour; the colormap stays, the contour takes the palette."
+	poster="/figures/heatmap.png"
+	posterDark="/figures/heatmap.dark.png"
+/>
 
 ```python
 import plotly.graph_objects as go
@@ -49,7 +60,8 @@ from maxplotlib.web import write_web_figure
 
 fig = go.Figure(
     [
-        go.Heatmap(x=x, y=y, z=z, colorscale="Viridis", colorbar={"title": "φ"}),
+        # zsmooth: a smooth field instead of visible cells (keep the cells for grid data)
+        go.Heatmap(x=x, y=y, z=z, colorscale="Viridis", colorbar={"title": "φ"}, zsmooth="best"),
         go.Contour(
             x=x, y=y, z=z,
             contours={"coloring": "none", "start": 0.5, "end": 0.5},
@@ -69,7 +81,12 @@ write_web_figure(
 Frames, a slider and a Play button come along: the file is the whole animation, and the page
 plays it with the plotly.js it loads.
 
-<PlotlyFigure src="/figures/packet.plotly.json" />
+<PlotlyFigure
+	src="/figures/packet.plotly.json"
+	caption="A wave packet travelling to the right: press Play or drag the slider."
+	poster="/figures/packet.png"
+	posterDark="/figures/packet.dark.png"
+/>
 
 ```python
 frames = [go.Frame(name=f"{t:.1f}", data=[go.Scatter(y=packet(t))]) for t in times]
@@ -84,6 +101,13 @@ write_web_figure(fig, "docs/public/figures/packet.plotly.json", alt="A wave pack
 The full code of the three figures is
 [`scripts/web_figure_examples.py`](https://github.com/max-models/maxplotlib/blob/devel/scripts/web_figure_examples.py),
 which the docs build runs before building this site.
+
+### Captions and posters
+
+`caption` adds a caption below a figure. `poster` and `posterDark` are pictures of the figure for
+light and dark mode, shown until plotly.js has drawn it and in its place without JavaScript, e.g.
+for search engines and link previews. `maxplotlib.web.write_posters(fig, "docs/public/figures/waves")`
+writes both (`waves.png`, `waves.dark.png`; needs kaleido).
 
 ## Saving a canvas
 

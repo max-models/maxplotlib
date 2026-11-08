@@ -30,6 +30,7 @@ xarray = [
     "xarray",
 ]
 docs = [
+    "kaleido",
     "xarray",
     "griffe",
     "ipykernel",
