@@ -169,7 +169,7 @@ def test_gantt_chart_many_tasks():
     n_tasks = 20
     canvas = Canvas(nrows=1, ncols=1)
     canvas.gantt(
-        tasks=[f"Task {i+1}" for i in range(n_tasks)],
+        tasks=[f"Task {i + 1}" for i in range(n_tasks)],
         start_times=list(range(0, n_tasks * 2, 2)),
         durations=[2] * n_tasks,
     )

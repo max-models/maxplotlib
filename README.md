@@ -78,18 +78,20 @@ providing access to any Matplotlib API without requiring a maxplotlib
 wrapper:
 
 ``` python
-canvas.plot(matplotlib_customizations={
-    "figure": {
-        "suptitle": "My figure",
-    },
-    "axes": {
-        "tick_params": {
-            "axis": "both",
-            "which": "major",
-            "length": 6,
+canvas.plot(
+    matplotlib_customizations={
+        "figure": {
+            "suptitle": "My figure",
         },
-    },
-})
+        "axes": {
+            "tick_params": {
+                "axis": "both",
+                "which": "major",
+                "length": 6,
+            },
+        },
+    }
+)
 ```
 
 For dynamic customization, the same option also accepts a function:
@@ -99,6 +101,7 @@ def customize(fig, axes):
     fig.suptitle("My figure")
     for ax in axes.flat:
         ax.tick_params(axis="both", which="major", length=6)
+
 
 canvas.plot(matplotlib_customizations=customize)
 ```
@@ -188,7 +191,7 @@ print(terminal_fig.build(keep_colors=False))
 ```
 
     Trigonometry
-                                           Runtime                                  
+                                           Runtime
          ┌┬─────────────────┬─────────────────┬─────────────────┬─────────────────┬┐
      1.00┼ ▞▞ sin(x) ──▗▄▞▀▀▀▀▀▙▄▖────────────┼─────────────────┼─────────────▄▄▀▀▀┤
          │ ▞▞ cos(x) ▄▀▘    │    ▝▀▄          │                 │          ▄▞▀    ││
@@ -208,8 +211,8 @@ print(terminal_fig.build(keep_colors=False))
          ││                 │          ▀▄▖    │    ▗▄▀   ▀▄▖    │    ▗▄▀▘         ││
     -1.00┼┼─────────────────┼────────────▝▀▚▄▄▄▄▄▞▀▘───────▝▀▜▄▄▄▄▄▞▀▘────────────┼┤
          └┼─────────────────┼─────────────────┼─────────────────┼─────────────────┼┘
-         0.0               1.6               3.1               4.7              6.3 
-    Duration                                Time                                    
+         0.0               1.6               3.1               4.7              6.3
+    Duration                                Time
 
 Or plot with the TikZ backend:
 
@@ -283,7 +286,7 @@ ax.set_legend(True)
 canvas.show(backend="plotext")
 ```
 
-                                        Terminal plot                               
+                                        Terminal plot
         ┌──────────────────────────────────────────────────────────────────────────┐
     3.16┤ ▞▞ sqrt(x)                                                             ▄▞│
         │                                                                   │▗▄▞▀  │
@@ -303,8 +306,8 @@ canvas.show(backend="plotext")
         │┼  ▗▄▄▞▀▀▀▀▀                                                              │
     0.93┤│▀▀▘                                                                      │
         └┬─────────────────┬──────────────────┬─────────────────┬─────────────────┬┘
-        1.0               1.8                3.2               5.6             10.0 
-    y                                         x                                     
+        1.0               1.8                3.2               5.6             10.0
+    y                                         x
 
     <maxplotlib.backends.plotext.figure.PlotextFigure at 0x1102a0690>
 
@@ -383,7 +386,9 @@ wave = xr.DataArray(
     attrs={"long_name": "Potential", "units": "V"},
 )
 
-wave.maxplot.pcolormesh(col="t", col_wrap=3, canvas_kwargs={"width": "16cm", "ratio": 0.6}).show()
+wave.maxplot.pcolormesh(
+    col="t", col_wrap=3, canvas_kwargs={"width": "16cm", "ratio": 0.6}
+).show()
 ```
 
 ![](README_files/figure-commonmark/cell-20-output-1.png)

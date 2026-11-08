@@ -68,8 +68,6 @@ instance/
 # Scrapy stuff:
 .scrapy
 
-# Sphinx documentation
-docs/_build/
 
 # PyBuilder
 .pybuilder/
@@ -172,6 +170,11 @@ figures/
 *.mp4
 *.pkl
 *.json
+# except the docs site and Renovate config
+!docs/package.json
+!docs/package-lock.json
+!docs/tsconfig.json
+!renovate.json
 
 # tex
 *.aux
@@ -197,3 +200,5 @@ docs/superpowers/
 docs/tutorials/
 tutorials/*.txt
 tutorials/*.png
+tutorials/*.tikz
+tutorials/*.html

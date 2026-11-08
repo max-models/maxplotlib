@@ -16,9 +16,6 @@ def strip_ansi(text: str) -> str:
 class _Plotext6Axes:
     """Small compatibility surface for maxplotlib's plotext renderer."""
 
-    def __init__(self, figure):
-        self._figure = figure
-
     def _draw(self, signal, label=None):
         if label is not None:
             signal.label(label)
@@ -29,6 +26,9 @@ class _Plotext6Axes:
         self._draw(signal, kwargs.get("label"))
 
     scatter = plot
+
+    def __init__(self, figure):
+        self._figure = figure
 
     def bar(self, *args, **kwargs):
         label = kwargs.pop("label", None)
@@ -116,6 +116,15 @@ def create_plotext_figure(nrows: int = 1, ncols: int = 1):
 
 
 class PlotextFigure:
+    def savefig(self, path, append: bool = False, keep_colors: bool = False) -> None:
+        destination = Path(path)
+        mode = "a" if append else "w"
+        with destination.open(mode, encoding="utf-8") as handle:
+            handle.write(self.build(keep_colors=keep_colors))
+            handle.write("\n")
+
+    save_fig = savefig
+
     def __init__(self, figure: Any, suptitle: str | None = None):
         self.figure = figure
         self.suptitle = suptitle
@@ -130,15 +139,6 @@ class PlotextFigure:
         output = self.build()
         print(output)
         return output
-
-    def savefig(self, path, append: bool = False, keep_colors: bool = False) -> None:
-        destination = Path(path)
-        mode = "a" if append else "w"
-        with destination.open(mode, encoding="utf-8") as handle:
-            handle.write(self.build(keep_colors=keep_colors))
-            handle.write("\n")
-
-    save_fig = savefig
 
     def __getattr__(self, name):
         return getattr(self.figure, name)

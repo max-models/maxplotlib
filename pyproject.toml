@@ -4,11 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "maxplotlibx"
-version = "0.2.0"
+version = "0.3.0"
 description = "A reproducible plotting module with various backends and export options."
 readme = "README.md"
-requires-python = ">=3.8"
-license = {file = "LICENSE.txt"}
+requires-python = ">=3.10"
 keywords = ["matplotlib"]
 authors = [{name = "Max"}]
 classifiers = [
@@ -31,19 +30,16 @@ xarray = [
     "xarray",
 ]
 docs = [
+    "kaleido",
     "xarray",
-    "myst-parser",
-    "sphinx",
-    "sphinx-rtd-theme",
-    "nbsphinx",
+    "griffe",
     "ipykernel",
-    "nbconvert",
+    "nbclient>=0.11",
+    "nbformat>=5.11.1",
 ]
 dev = [
     "maxplotlibx[test,docs]",
     "ruff",
-    "black[jupyter]",
-    "isort",
     "jupyterlab",
     "nbstripout",
     "pre-commit",
@@ -55,11 +51,8 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
-[tool.black]
-line-length = 88
-
 [tool.ruff]
 line-length = 88
-
-[tool.isort]
-profile = "black"
+# formatting: `ruff format`; import sorting: the isort rules of `ruff check`
+# an explicit rule set: ruff's default one grows between releases
+lint.select = ["E4", "E7", "E9", "F", "I"]

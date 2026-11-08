@@ -41,6 +41,17 @@ def _parse_bool_env_var(name: str, default: bool = False) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _running_in_jupyter() -> bool:
+    """Return whether the current process is running in a Jupyter kernel."""
+    try:
+        from IPython import get_ipython
+    except ImportError:
+        return False
+
+    shell = get_ipython()
+    return shell is not None and "IPKernelApp" in getattr(shell, "config", {})
+
+
 def _display_matplotlib_figure_in_notebook(fig) -> bool:
     """Display a Matplotlib figure through IPython when running in Jupyter."""
     try:
@@ -53,17 +64,6 @@ def _display_matplotlib_figure_in_notebook(fig) -> bool:
 
     display(fig)
     return True
-
-
-def _running_in_jupyter() -> bool:
-    """Return whether the current process is running in a Jupyter kernel."""
-    try:
-        from IPython import get_ipython
-    except ImportError:
-        return False
-
-    shell = get_ipython()
-    return shell is not None and "IPKernelApp" in getattr(shell, "config", {})
 
 
 _MATPLOTLIB_LOC_TO_PLOTLY_ANCHOR = {
@@ -260,7 +260,6 @@ def plot_matplotlib(tikzfigure: TikzFigure, ax, layers=None):
                 node.x,
                 node.y,
                 node.content,
-                fontsize=self._fontsize,
                 ha="center",
                 va="center",
                 wrap=True,
@@ -290,6 +289,15 @@ class Canvas:
     on Matplotlib artists, so the artists can be found by identity rather than
     by drawing order). See :class:`~maxplotlib.subfigure.line_plot.LinePlot`.
     """
+
+    _FACET_KINDS = {
+        "plot": "plot",
+        "scatter": "scatter",
+        "pcolormesh": "pcolormesh",
+        "imshow": "add_imshow",
+        "contour": "contour",
+        "contourf": "contourf",
+    }
 
     def __init__(
         self,
@@ -484,15 +492,6 @@ class Canvas:
             if ncols == 1:
                 return canvas, [row[0] for row in axes]
         return canvas, axes
-
-    _FACET_KINDS = {
-        "plot": "plot",
-        "scatter": "scatter",
-        "pcolormesh": "pcolormesh",
-        "imshow": "add_imshow",
-        "contour": "contour",
-        "contourf": "contourf",
-    }
 
     @classmethod
     def facet(
@@ -1400,9 +1399,6 @@ class Canvas:
     def legend(self, row=None, col=None, **kwargs):
         self._get_or_create_subplot(row, col).set_legend(**kwargs)
 
-    def legend(self, row=None, col=None, **kwargs):
-        self._get_or_create_subplot(row, col).set_legend(**kwargs)
-
     def tick_params(self, row: int | None = None, col: int | None = None, **kwargs):
         """Configure major/minor tick appearance for a subplot."""
         self._get_or_create_subplot(row, col).tick_params(**kwargs)
@@ -2064,6 +2060,106 @@ class Canvas:
             self._subplots[label] = line_plot
         return line_plot
 
+    def _render(
+        self,
+        backend: Backends = "matplotlib",
+        savefig: bool = False,
+        layers: list | None = None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+        matplotlib_postprocess=None,
+        matplotlib_customizations=None,
+        allow_unsupported: bool = False,
+    ):
+        """Render the canvas.
+
+        ``matplotlib_customizations`` accepts either a callable receiving
+        ``(figure, axes)`` or a mapping whose ``figure`` methods run once and
+        whose ``axes`` methods run on every axes. Values are keyword arguments,
+        or use ``{"args": [...], "kwargs": {...}}`` for positional and keyword
+        arguments. A scalar value is passed as one positional argument.
+
+        ``matplotlib_postprocess`` is an optional callable receiving
+        ``(figure, axes)`` after a Matplotlib figure has been created. It can
+        call any Matplotlib API, including APIs not wrapped by maxplotlib.
+        Both options are only valid with the Matplotlib backend.
+        """
+        resolved_usetex = self._usetex if usetex is None else usetex
+
+        if verbose:
+            print(f"Plotting figure using backend: {backend}")
+
+        if backend == "matplotlib":
+            return self.plot_matplotlib(
+                savefig=savefig,
+                layers=layers,
+                usetex=resolved_usetex,
+                verbose=verbose,
+                matplotlib_postprocess=matplotlib_postprocess,
+                matplotlib_customizations=matplotlib_customizations,
+            )
+        elif (
+            matplotlib_postprocess is not None or matplotlib_customizations is not None
+        ):
+            raise ValueError(
+                "Matplotlib customizations are only supported with the matplotlib backend"
+            )
+        elif backend == "plotly":
+            return self.plot_plotly(
+                savefig=savefig,
+                layers=layers,
+                usetex=resolved_usetex,
+                verbose=verbose,
+                allow_unsupported=allow_unsupported,
+            )
+        elif backend == "plotext":
+            return self.plot_plotext(
+                savefig=savefig,
+                layers=layers,
+                verbose=verbose,
+            )
+        elif backend == "tikzfigure":
+            return self.plot_tikzfigure(savefig=savefig, layers=layers, verbose=verbose)
+        else:
+            raise ValueError(f"Invalid backend: {backend}")
+
+    def _web_aspect(self) -> float | None:
+        """Width over height of the canvas, when its size says so."""
+        if self._figsize is not None:
+            width, height = self._figsize
+            return float(width) / float(height)
+        if self._ratio == "golden":
+            return 2 / (5**0.5 - 1)
+        if isinstance(self._ratio, (int, float)) and self._ratio > 0:
+            return 1 / float(self._ratio)
+        return None
+
+    def _save_plotly(
+        self, fig, filename: str, include_plotlyjs: bool | str = True
+    ) -> None:
+        _, extension = os.path.splitext(filename)
+        extension = extension.lower()
+        if extension in {".html", ".htm"}:
+            fig.write_html(filename, include_plotlyjs=include_plotlyjs)
+            return
+        if extension == ".json":
+            # a web figure for the docs sites, see maxplotlib.web
+            from maxplotlib.web import write_web_figure
+
+            write_web_figure(fig, filename, aspect=self._web_aspect())
+            return
+        try:
+            fig.write_image(filename)
+        except Exception as exc:
+            raise RuntimeError(
+                "Plotly image export failed. For PNG/PDF/SVG export, install kaleido "
+                "(e.g., `pip install -U kaleido`), or export to HTML instead."
+            ) from exc
+
+    def _matplotlib_style(self):
+        """The canvas style of the last Matplotlib drawing, as an ``rc_context``."""
+        return plt.rc_context(getattr(self, "_matplotlib_rc", None) or {})
+
     def savefig(
         self,
         filename,
@@ -2096,7 +2192,8 @@ class Canvas:
                     )
                     _fn = f"{filename_no_extension}_{layers}.{extension}"
                     savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
-                    fig.savefig(_fn, **savefig_kwargs)
+                    with self._matplotlib_style():
+                        fig.savefig(_fn, **savefig_kwargs)
                     print(f"Saved {_fn}")
             else:
                 if layers is None:
@@ -2107,7 +2204,8 @@ class Canvas:
 
                 if self._plotted:
                     savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
-                    self._matplotlib_fig.savefig(full_filepath, **savefig_kwargs)
+                    with self._matplotlib_style():
+                        self._matplotlib_fig.savefig(full_filepath, **savefig_kwargs)
                 else:
                     fig, axs = self._render(
                         backend="matplotlib",
@@ -2115,7 +2213,8 @@ class Canvas:
                         layers=layers,
                     )
                     savefig_kwargs = {"dpi": self.dpi} if self.dpi is not None else {}
-                    fig.savefig(full_filepath, **savefig_kwargs)
+                    with self._matplotlib_style():
+                        fig.savefig(full_filepath, **savefig_kwargs)
                 if verbose:
                     print(f"Saved {full_filepath}")
         elif backend == "plotext":
@@ -2184,69 +2283,6 @@ class Canvas:
             fig.savefig(filename)
             if verbose:
                 print(f"Saved {filename}")
-
-    def _render(
-        self,
-        backend: Backends = "matplotlib",
-        savefig: bool = False,
-        layers: list | None = None,
-        usetex: bool | None = None,
-        verbose: bool = False,
-        matplotlib_postprocess=None,
-        matplotlib_customizations=None,
-        allow_unsupported: bool = False,
-    ):
-        """Render the canvas.
-
-        ``matplotlib_customizations`` accepts either a callable receiving
-        ``(figure, axes)`` or a mapping whose ``figure`` methods run once and
-        whose ``axes`` methods run on every axes. Values are keyword arguments,
-        or use ``{"args": [...], "kwargs": {...}}`` for positional and keyword
-        arguments. A scalar value is passed as one positional argument.
-
-        ``matplotlib_postprocess`` is an optional callable receiving
-        ``(figure, axes)`` after a Matplotlib figure has been created. It can
-        call any Matplotlib API, including APIs not wrapped by maxplotlib.
-        Both options are only valid with the Matplotlib backend.
-        """
-        resolved_usetex = self._usetex if usetex is None else usetex
-
-        if verbose:
-            print(f"Plotting figure using backend: {backend}")
-
-        if backend == "matplotlib":
-            return self.plot_matplotlib(
-                savefig=savefig,
-                layers=layers,
-                usetex=resolved_usetex,
-                verbose=verbose,
-                matplotlib_postprocess=matplotlib_postprocess,
-                matplotlib_customizations=matplotlib_customizations,
-            )
-        elif (
-            matplotlib_postprocess is not None or matplotlib_customizations is not None
-        ):
-            raise ValueError(
-                "Matplotlib customizations are only supported with the matplotlib backend"
-            )
-        elif backend == "plotly":
-            return self.plot_plotly(
-                savefig=savefig,
-                layers=layers,
-                usetex=resolved_usetex,
-                verbose=verbose,
-                allow_unsupported=allow_unsupported,
-            )
-        elif backend == "plotext":
-            return self.plot_plotext(
-                savefig=savefig,
-                layers=layers,
-                verbose=verbose,
-            )
-        elif backend == "tikzfigure":
-            return self.plot_tikzfigure(savefig=savefig, layers=layers, verbose=verbose)
-        else:
-            raise ValueError(f"Invalid backend: {backend}")
 
     def plot(self, *args, backend=None, **kwargs):
         """Add a line, or render when called with backend options.
@@ -2410,12 +2446,13 @@ class Canvas:
             )
             if verbose:
                 print("Displaying Matplotlib figure...")
-            if _display_matplotlib_figure_in_notebook(fig):
-                # IPython has rendered the figure already. Closing it prevents
-                # a later implicit pyplot display and releases its resources.
-                plt.close(fig)
-            else:
-                plt.show(block=block)
+            with self._matplotlib_style():
+                if _display_matplotlib_figure_in_notebook(fig):
+                    # IPython has rendered the figure already. Closing it prevents
+                    # a later implicit pyplot display and releases its resources.
+                    plt.close(fig)
+                else:
+                    plt.show(block=block)
             return fig, axes
         elif backend == "plotly":
             resolved_usetex = self._usetex if usetex is None else usetex
@@ -2449,7 +2486,7 @@ class Canvas:
         else:
             raise ValueError("Invalid backend")
 
-    def plot_matplotlib(
+    def _plot_matplotlib(
         self,
         savefig: bool = False,
         layers: list | None = None,
@@ -2458,12 +2495,6 @@ class Canvas:
         matplotlib_postprocess=None,
         matplotlib_customizations=None,
     ):
-        """
-        Generate and optionally display the subplots.
-
-        Parameters:
-        filename (str, optional): Filename to save the figure.
-        """
         if verbose:
             print("Generating Matplotlib figure...")
 
@@ -2665,6 +2696,45 @@ class Canvas:
             matplotlib_postprocess(fig, axes)
         return fig, axes
 
+    def plot_matplotlib(
+        self,
+        savefig: bool = False,
+        layers: list | None = None,
+        usetex: bool | None = None,
+        verbose: bool = False,
+        matplotlib_postprocess=None,
+        matplotlib_customizations=None,
+    ):
+        """
+        Generate and optionally display the subplots.
+
+        The canvas style (fonts, ticks, grid) applies while drawing only:
+        Matplotlib's global ``rcParams`` are the same afterwards, so figures
+        drawn later by other code keep their own style. ``savefig`` and
+        ``show`` apply the style again while saving and showing.
+
+        Parameters:
+        filename (str, optional): Filename to save the figure.
+        """
+        before = dict(plt.rcParams)
+        with plt.rc_context():
+            result = self._plot_matplotlib(
+                savefig=savefig,
+                layers=layers,
+                usetex=usetex,
+                verbose=verbose,
+                matplotlib_postprocess=matplotlib_postprocess,
+                matplotlib_customizations=matplotlib_customizations,
+            )
+            # what the style changed, for saving and showing the figure later:
+            # e.g. LaTeX text reads the font family when it is drawn
+            self._matplotlib_rc = {
+                key: value
+                for key, value in plt.rcParams.items()
+                if key in before and before[key] != value
+            }
+        return result
+
     def _validate_import_backend(self, backend, *, allow_unsupported=False):
         """Never silently drop native imported axes or figure decorations."""
         if not hasattr(self, "import_report") or allow_unsupported:
@@ -2838,6 +2908,13 @@ class Canvas:
         """
 
         self._validate_import_backend("plotly", allow_unsupported=allow_unsupported)
+        if any(
+            isinstance(subplot, TikzFigure) for _, _, subplot in self.iter_subplots()
+        ):
+            raise NotImplementedError(
+                "tikzfigure subplots cannot be rendered with the plotly backend; "
+                "use the matplotlib or tikzfigure backend"
+            )
         resolved_usetex = self._usetex if usetex is None else usetex
 
         for subplot in self._subplot_dict.values():
@@ -2854,16 +2931,17 @@ class Canvas:
                 "twiny is currently supported only by the matplotlib backend"
             )
 
-        setup_tex_fonts(
-            fontsize=self.fontsize,
-            usetex=resolved_usetex,
-        )  # adjust or redefine for Plotly if needed
+        with plt.rc_context():  # Matplotlib's global style stays as it is
+            setup_tex_fonts(
+                fontsize=self.fontsize,
+                usetex=resolved_usetex,
+            )  # adjust or redefine for Plotly if needed
 
         # Create subplot titles in row-major order (Plotly expects rows*cols entries)
         subplot_titles = [""] * (self.nrows * self.ncols)
         for (row, col), sp in self._subplot_dict.items():
             index = row * self.ncols + col
-            subplot_titles[index] = sp._title or f"({row}, {col})"
+            subplot_titles[index] = sp._title or ""
 
         specs = [
             [{"secondary_y": (r, c) in self._twinx_subplots} for c in range(self.ncols)]
@@ -3116,11 +3194,20 @@ class Canvas:
                     col=col + 1,
                 )
 
-        # Update layout settings
+        # Update layout settings: tight margins, with room for the axis titles. A title needs a
+        # standoff from its tick labels: with automargin (web figures) and no standoff, Plotly
+        # pins it to the edge of the figure, half outside.
+        subplots = self._subplot_dict.values()
+        has_xlabel = any(getattr(sp, "_xlabel", None) for sp in subplots)
+        has_ylabel = any(getattr(sp, "_ylabel", None) for sp in subplots)
         fig.update_layout(
             font=dict(size=self.fontsize),
-            margin=dict(l=10, r=10, t=40, b=10),
+            margin=dict(
+                l=70 if has_ylabel else 10, r=10, t=40, b=60 if has_xlabel else 10
+            ),
         )
+        fig.update_xaxes(title_standoff=8)
+        fig.update_yaxes(title_standoff=8)
         barmode = self._barmode
         if barmode is None:
             barmode = next(
@@ -3159,21 +3246,41 @@ class Canvas:
         self._plotly_fig = fig
         return fig
 
-    def _save_plotly(
-        self, fig, filename: str, include_plotlyjs: bool | str = True
-    ) -> None:
-        _, extension = os.path.splitext(filename)
-        extension = extension.lower()
-        if extension in {".html", ".htm"}:
-            fig.write_html(filename, include_plotlyjs=include_plotlyjs)
-            return
-        try:
-            fig.write_image(filename)
-        except Exception as exc:
-            raise RuntimeError(
-                "Plotly image export failed. For PNG/PDF/SVG export, install kaleido "
-                "(e.g., `pip install -U kaleido`), or export to HTML instead."
-            ) from exc
+    def to_json(
+        self,
+        layers: list | None = None,
+        title: str | None = None,
+        alt: str | None = None,
+        white_plot: bool | None = None,
+        verbose: bool = False,
+        allow_unsupported: bool = False,
+    ) -> str:
+        """Render the canvas with the Plotly backend and return it as a web figure.
+
+        A web figure is theme-neutral Plotly JSON without plotly.js, which the max-models
+        docs theme embeds on a page with the site's colours (see :mod:`maxplotlib.web`).
+        ``canvas.savefig("figure.plotly.json", backend="plotly")`` writes the same to a file.
+
+        Parameters:
+        layers (list, optional): The layers to draw.
+        title (str, optional): The title and default caption. Default: the canvas title.
+        alt (str, optional): A text alternative for the figure.
+        white_plot (bool, optional): Keep a white plot area in dark mode.
+        """
+        import json
+
+        from maxplotlib.web import web_figure
+
+        fig = self.plot_plotly(
+            show=False,
+            layers=layers,
+            verbose=verbose,
+            allow_unsupported=allow_unsupported,
+        )
+        web = web_figure(
+            fig, title=title, alt=alt, aspect=self._web_aspect(), white_plot=white_plot
+        )
+        return json.dumps(web, separators=(",", ":"))
 
     def to_html(
         self,

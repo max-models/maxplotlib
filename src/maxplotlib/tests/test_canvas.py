@@ -1323,3 +1323,71 @@ def test_get_tikz_figure_returns_native_figure():
 
 if __name__ == "__main__":
     test()
+
+
+def test_matplotlib_rendering_keeps_the_global_style(tmp_path):
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.add_subplot().plot([0, 1], [0, 1])
+    style = dict(plt.rcParams)
+    fig, axes = canvas.plot_matplotlib()
+    # the canvas style applies to its own figure ...
+    assert axes[0, 0].xaxis.get_ticklabels()[0].get_family() == ["serif"]
+    assert axes[0, 0].xaxis.get_major_ticks()[0]._tickdir == "in"
+    # ... and not to Matplotlib's global style, nor to figures drawn later
+    assert dict(plt.rcParams) == style
+    other, ax = plt.subplots()
+    assert ax.xaxis.get_major_ticks()[0]._tickdir == style["xtick.direction"]
+    plt.close(other)
+    # saving applies the style again, then restores the global one
+    canvas.savefig(tmp_path / "canvas.png")
+    assert (tmp_path / "canvas.png").is_file()
+    assert dict(plt.rcParams) == style
+    plt.close(fig)
+
+
+def test_saving_draws_with_the_canvas_style(monkeypatch, tmp_path):
+    import matplotlib.pyplot as plt
+
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.add_subplot().plot([0, 1], [0, 1])
+    seen = {}
+
+    def fake_savefig(self, *args, **kwargs):
+        seen["family"] = list(plt.rcParams["font.family"])
+
+    monkeypatch.setattr(plt.Figure, "savefig", fake_savefig)
+    canvas.savefig(tmp_path / "canvas.png")
+    assert seen["family"] == ["serif"]
+
+
+def test_plotly_rendering_keeps_the_global_style():
+    import matplotlib.pyplot as plt
+    import pytest
+
+    pytest.importorskip("plotly")
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    canvas.add_subplot().plot([0, 1], [0, 1])
+    style = dict(plt.rcParams)
+    canvas.plot_plotly()
+    assert dict(plt.rcParams) == style
+
+
+def test_plotly_refuses_tikzfigure_subplots():
+    import pytest
+
+    pytest.importorskip("plotly")
+    from maxplotlib import Canvas
+
+    canvas = Canvas()
+    diagram = canvas.add_tikzfigure()
+    diagram.add_node(0, 0, label="A")
+    with pytest.raises(NotImplementedError, match="plotly backend"):
+        canvas.render(backend="plotly")

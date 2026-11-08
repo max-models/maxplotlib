@@ -220,6 +220,27 @@ class MeshData(NamedTuple):
         return np.ndim(self.x) == 2
 
 
+def _curvilinear_mesh(da, x, y):
+    def grid(name):
+        dims, coord = _resolve(da, name)
+        if coord is None:
+            coord = type(da)(np.arange(da.sizes[name]), dims=dims)
+        return magnitude(coord.broadcast_like(da).transpose(*da.dims)), coord
+
+    xvalues, xcoord = grid(x)
+    yvalues, ycoord = grid(y)
+    return MeshData(
+        xvalues,
+        yvalues,
+        magnitude(da),
+        _label(xcoord) if xcoord.name is not None else str(x),
+        _label(ycoord) if ycoord.name is not None else str(y),
+        value_label(da),
+        x,
+        y,
+    )
+
+
 def mesh_data(da, x=None, y=None, method="pcolormesh"):
     """Return the coordinates, values and labels for a 2-D DataArray.
 
@@ -257,27 +278,6 @@ def mesh_data(da, x=None, y=None, method="pcolormesh"):
     yvalues, ylabel = _axis(da, y)
     z = magnitude(da.transpose(ydim, xdim))
     return MeshData(xvalues, yvalues, z, xlabel, ylabel, value_label(da), x, y)
-
-
-def _curvilinear_mesh(da, x, y):
-    def grid(name):
-        dims, coord = _resolve(da, name)
-        if coord is None:
-            coord = type(da)(np.arange(da.sizes[name]), dims=dims)
-        return magnitude(coord.broadcast_like(da).transpose(*da.dims)), coord
-
-    xvalues, xcoord = grid(x)
-    yvalues, ycoord = grid(y)
-    return MeshData(
-        xvalues,
-        yvalues,
-        magnitude(da),
-        _label(xcoord) if xcoord.name is not None else str(x),
-        _label(ycoord) if ycoord.name is not None else str(y),
-        value_label(da),
-        x,
-        y,
-    )
 
 
 def _edges(values, name):

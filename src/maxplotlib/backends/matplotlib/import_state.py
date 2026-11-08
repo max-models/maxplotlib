@@ -175,6 +175,63 @@ class ReboundSnapshot:
         return artist
 
 
+def _text_properties(text):
+    return dict(
+        fontproperties=copy.deepcopy(text.get_fontproperties()),
+        color=text.get_color(),
+        rotation=text.get_rotation(),
+        rotation_mode=text.get_rotation_mode(),
+        horizontalalignment=text.get_ha(),
+        verticalalignment=text.get_va(),
+        visible=text.get_visible(),
+        usetex=text.get_usetex(),
+    )
+
+
+def _tick_params(axis, which):
+    tick = getattr(axis, "get_" + which + "_ticks")(1)[0]
+    defaults = dict(
+        length=tick._size,
+        width=tick._width,
+        pad=tick._base_pad,
+        direction=tick._tickdir,
+        color=tick.tick1line.get_color(),
+    )
+    defaults.update(copy.deepcopy(getattr(axis, "_" + which + "_tick_kw")))
+    return defaults
+
+
+def _tick_line_style(line):
+    return {
+        name: getattr(line, "get_" + name)()
+        for name in (
+            "color",
+            "marker",
+            "markersize",
+            "markeredgewidth",
+            "markeredgecolor",
+            "visible",
+            "zorder",
+        )
+    }
+
+
+def _tick_style(tick):
+    return dict(
+        tick1line=_tick_line_style(tick.tick1line),
+        tick2line=_tick_line_style(tick.tick2line),
+        label1=_text_properties(tick.label1),
+        label2=_text_properties(tick.label2),
+        gridline=dict(
+            visible=tick.gridline.get_visible(),
+            color=tick.gridline.get_color(),
+            linewidth=tick.gridline.get_linewidth(),
+            linestyle=tick.gridline.get_linestyle(),
+            alpha=tick.gridline.get_alpha(),
+        ),
+    )
+
+
 def capture_axis_state(ax):
     """Capture decorations which have no backend-neutral equivalent yet."""
     state = {"axes": {}, "spines": {}, "titles": {}}
@@ -234,63 +291,6 @@ def capture_axis_state(ax):
         if not axis._autolabelpos
     }
     return state
-
-
-def _text_properties(text):
-    return dict(
-        fontproperties=copy.deepcopy(text.get_fontproperties()),
-        color=text.get_color(),
-        rotation=text.get_rotation(),
-        rotation_mode=text.get_rotation_mode(),
-        horizontalalignment=text.get_ha(),
-        verticalalignment=text.get_va(),
-        visible=text.get_visible(),
-        usetex=text.get_usetex(),
-    )
-
-
-def _tick_params(axis, which):
-    tick = getattr(axis, "get_" + which + "_ticks")(1)[0]
-    defaults = dict(
-        length=tick._size,
-        width=tick._width,
-        pad=tick._base_pad,
-        direction=tick._tickdir,
-        color=tick.tick1line.get_color(),
-    )
-    defaults.update(copy.deepcopy(getattr(axis, "_" + which + "_tick_kw")))
-    return defaults
-
-
-def _tick_line_style(line):
-    return {
-        name: getattr(line, "get_" + name)()
-        for name in (
-            "color",
-            "marker",
-            "markersize",
-            "markeredgewidth",
-            "markeredgecolor",
-            "visible",
-            "zorder",
-        )
-    }
-
-
-def _tick_style(tick):
-    return dict(
-        tick1line=_tick_line_style(tick.tick1line),
-        tick2line=_tick_line_style(tick.tick2line),
-        label1=_text_properties(tick.label1),
-        label2=_text_properties(tick.label2),
-        gridline=dict(
-            visible=tick.gridline.get_visible(),
-            color=tick.gridline.get_color(),
-            linewidth=tick.gridline.get_linewidth(),
-            linestyle=tick.gridline.get_linestyle(),
-            alpha=tick.gridline.get_alpha(),
-        ),
-    )
 
 
 def apply_axis_state(ax, state, *, units=True):

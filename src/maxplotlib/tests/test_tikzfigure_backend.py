@@ -107,6 +107,103 @@ def test_text_and_annotation_arrows_are_not_clipped():
     assert re.search(r"\\draw\[.*\] \(axis cs:", tikz), "the arrow is a \\draw"
 
 
+@pytest.mark.parametrize(
+    "hatch, pattern",
+    [
+        ("///", "north east lines"),
+        ("\\\\", "north west lines"),
+        ("x", "crosshatch"),
+        ("/\\", "crosshatch"),
+        ("+", "grid"),
+        ("-", "horizontal lines"),
+        ("|", "vertical lines"),
+        ("..", "dots"),
+    ],
+)
+def test_hatches_become_tikz_patterns(hatch, pattern):
+    from matplotlib.patches import Rectangle
+
+    fig, ax = plt.subplots()
+    ax.add_patch(
+        Rectangle((0.1, 0.1), 0.5, 0.5, facecolor="0.9", edgecolor="k", hatch=hatch)
+    )
+    ax.add_patch(Rectangle((0.7, 0.7), 0.2, 0.2, facecolor="C0"))  # no hatch
+    figure = figure_to_tikz(fig)
+    tikz = figure.generate_tikz()
+    assert tikz.count(f"postaction={{pattern={pattern}, pattern color=mpl000000}}") == 1
+    assert "patterns" in figure._tikz_libraries
+
+
+def test_a_patch_with_a_hole_is_one_even_odd_path():
+    from matplotlib.patches import Annulus, Rectangle
+
+    fig, ax = plt.subplots()
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-2, 2)
+    ax.add_patch(Annulus((0, 0), 1.5, 0.5, facecolor="C0", hatch="//", label="ring"))
+    ax.add_patch(Rectangle((1.6, 1.6), 0.2, 0.2))  # one loop: a plot as before
+    ax.legend()
+    tikz = figure_to_tikz(fig).generate_tikz()
+    ring = [line for line in tikz.splitlines() if "even odd rule" in line]
+    assert len(ring) == 1
+    assert ring[0].count("-- cycle") == 2  # the outer circle and the hole, one path
+    assert "pattern=north east lines" in ring[0]
+    assert "\\addlegendentry{ring}" in tikz
+    assert tikz.count("\\addplot[") == 1  # the rectangle
+
+
+def test_a_hatched_legend_entry_keeps_its_pattern():
+    from matplotlib.patches import Rectangle
+
+    fig, ax = plt.subplots()
+    ax.add_patch(Rectangle((0.1, 0.1), 0.5, 0.5, fill=False, hatch="//", label="wall"))
+    ax.legend()
+    tikz = figure_to_tikz(fig).generate_tikz()
+    assert re.search(r"\\addlegendimage\{[^}]*pattern=north east lines", tikz), tikz
+
+
+def test_straight_arrows_get_tikz_tips():
+    from matplotlib.patches import FancyArrowPatch
+
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.add_patch(
+        FancyArrowPatch(
+            (0.1, 0.2), (0.9, 0.2), arrowstyle="<->", mutation_scale=10, shrinkA=0
+        )
+    )
+    ax.add_patch(FancyArrowPatch((0.1, 0.5), (0.9, 0.5), arrowstyle="-|>"))
+    ax.add_patch(  # a curved arrow stays a path
+        FancyArrowPatch(
+            (0.1, 0.8), (0.9, 0.8), arrowstyle="->", connectionstyle="arc3,rad=0.3"
+        )
+    )
+    ax.text(0.5, 0.9, "⌀ 2 mm")
+    tikz = figure_to_tikz(fig).generate_tikz()
+    double = re.search(
+        r"\\draw\[\{Straight Barb\[length=4pt, width=4pt\]\}-\{Straight Barb\["
+        r"length=4pt, width=4pt\]\}, .*shorten >=2pt\] \(axis cs:0\.1,0\.2\) -- "
+        r"\(axis cs:0\.9,0\.2\);",
+        tikz,
+    )
+    assert double, tikz
+    assert re.search(r"\\draw\[-\{Triangle\[length=\d", tikz)
+    assert tikz.count("\\draw[") == 2 and tikz.count("\\addplot") >= 2  # the curve
+    assert "{$\\varnothing$ 2 mm}" in tikz
+
+
+def test_an_annotation_arrow_without_text_is_kept():
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.annotate("", xy=(0.9, 0.5), xytext=(0.1, 0.5), arrowprops={"arrowstyle": "<->"})
+    ax.text(0.5, 0.5, "   ")  # blank text draws nothing
+    tikz = figure_to_tikz(fig).generate_tikz()
+    assert re.search(r"\\draw\[.*\] \(axis cs:", tikz), "the arrow is a \\draw"
+    assert "\\node" not in tikz
+
+
 def test_far_away_geometry_is_clipped_and_text_outside_the_figure_left_out():
     fig, ax = plt.subplots()
     ax.plot([0, 1e6], [0, 1])
