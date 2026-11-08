@@ -9,13 +9,14 @@ The code of each figure is also shown on the page, in docs/src/content/docs/guid
 keep the two the same.
 """
 
+import json
 from pathlib import Path
 
 import numpy as np
 import plotly.graph_objects as go
 
 from maxplotlib import Canvas
-from maxplotlib.web import write_web_figure
+from maxplotlib.web import write_posters, write_web_figure
 
 OUT = Path(__file__).resolve().parents[1] / "docs" / "public" / "figures"
 
@@ -45,7 +46,15 @@ def heatmap():
     )
     fig = go.Figure(
         [
-            go.Heatmap(x=x, y=y, z=z, colorscale="Viridis", colorbar={"title": "φ"}),
+            # zsmooth: a smooth field instead of visible cells (keep the cells for grid data)
+            go.Heatmap(
+                x=x,
+                y=y,
+                z=z,
+                colorscale="Viridis",
+                colorbar={"title": "φ"},
+                zsmooth="best",
+            ),
             go.Contour(
                 x=x,
                 y=y,
@@ -126,8 +135,21 @@ def animation():
     )
 
 
+def posters():
+    """Pictures of the figures for light and dark mode, shown until plotly.js has drawn them."""
+    for name in ("waves", "heatmap", "packet"):
+        web = json.loads((OUT / f"{name}.plotly.json").read_text())
+        try:
+            write_posters(web, OUT / name)
+        except Exception as error:  # no kaleido or no browser for it: no posters
+            print(f"skipped the posters of {name}: {error}")
+            return
+        print(f"wrote the posters of {name}")
+
+
 if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     for example in (waves, heatmap, animation):
         example()
         print(f"wrote the {example.__name__} example")
+    posters()

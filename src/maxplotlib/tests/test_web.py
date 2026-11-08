@@ -153,3 +153,36 @@ def test_plotly_canvas_has_room_for_axis_titles_and_no_placeholder_title():
     layout = json.loads(canvas.to_json())["layout"]
     assert layout["margin"]["b"] == 60 and layout["margin"]["l"] == 70
     assert layout["xaxis"]["title"]["standoff"] == 8
+
+
+def test_write_posters(tmp_path, monkeypatch):
+    from maxplotlib.web import write_posters
+
+    written = []
+    monkeypatch.setattr(
+        go.Figure,
+        "write_image",
+        lambda self, path, **kw: written.append(
+            (path, kw, self.layout.font.color, len(self.layout.sliders), self)
+        ),
+    )
+    fig = go.Figure(
+        [
+            go.Scatter(y=[1, 2], line={"color": "#ff7f0e"}),  # C1
+            go.Scatter(y=[2, 1], line={"color": "black"}),
+        ],
+        layout={"width": 800, "height": 400, "sliders": [{"steps": []}]},
+    )
+    paths = write_posters(fig, tmp_path / "sub" / "energy")
+    assert paths == [
+        str(tmp_path / "sub" / "energy.png"),
+        str(tmp_path / "sub" / "energy.dark.png"),
+    ]
+    assert written[0][1] == {"width": 800, "height": 400, "scale": 1}
+    assert (written[0][2], written[1][2]) == ("#10222d", "#eeeadd")
+    assert written[0][3] == 0  # no slider on a picture
+    light, dark = written[0][4], written[1][4]
+    assert light.data[0].line.color == "#c98a00"  # C1 in the light palette
+    assert dark.data[0].line.color == "#f0b030"  # and in the dark one
+    assert dark.data[1].line.color == "#eeeadd"  # black as the text colour
+    assert list(dark.layout.colorway)[0] == "#4fa8e0"

@@ -285,3 +285,102 @@ def write_web_figure(figure: Any, path: str | Path, **hints: Any) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(web_figure(figure, **hints), separators=(",", ":")))
     return path
+
+
+#: The colours of the posters for light (``""``) and dark (``".dark"``) pages, those of the
+#: max-models docs theme: text, grid lines and the data palette (``--mm-data-1`` ... ``-8``).
+POSTER_COLORS = {
+    "": {
+        "text": "#10222d",
+        "grid": "rgba(16, 34, 45, 0.12)",
+        "palette": ("#0072b2", "#c98a00", "#009e73", "#d55e00")
+        + ("#b55d92", "#3d9fd6", "#a69500", "#5f6b73"),
+    },
+    ".dark": {
+        "text": "#eeeadd",
+        "grid": "rgba(238, 234, 221, 0.14)",
+        "palette": ("#4fa8e0", "#f0b030", "#2fc79a", "#f07a3a")
+        + ("#e08fc0", "#8fd0f5", "#e8dc4a", "#a8b0b6"),
+    },
+}
+
+
+def _poster_trace(trace: dict, palette, text: str) -> dict:
+    """A trace in a poster's colours, as the theme draws it: its palette slot, black as text."""
+    slot = (
+        (trace.get("meta") or {}).get("color_slot")
+        if isinstance(trace.get("meta"), dict)
+        else None
+    )
+    out = dict(trace)
+    for key in ("line", "marker"):
+        part = trace.get(key)
+        if isinstance(part, dict) and isinstance(part.get("color"), str):
+            if slot is not None:
+                out[key] = {**part, "color": palette[slot % len(palette)]}
+            elif (
+                part["color"].strip().lower() == "black"
+                or _hex(part["color"]) == "#000000"
+            ):
+                out[key] = {**part, "color": text}
+    return out
+
+
+def write_posters(
+    figure: Any,
+    stem: str | Path,
+    *,
+    width: int = 800,
+    colors: dict | None = None,
+    **hints: Any,
+) -> list[str]:
+    """Write pictures of a web figure for light and dark pages: ``<stem>.png``, ``<stem>.dark.png``.
+
+    The docs theme's ``PlotlyFigure`` shows them (``poster``, ``posterDark``) until plotly.js has
+    drawn the figure, and in its place without JavaScript, e.g. for search engines and link
+    previews. Both have a transparent background, the theme's text colour and no buttons or
+    slider; an animation shows its first frame. Needs kaleido.
+
+    Parameters
+    ----------
+    figure : plotly.graph_objects.Figure or dict
+        The figure.
+    stem : str or pathlib.Path
+        The files' path without the extension; the folder is created when missing.
+    width : int, optional
+        Width in pixels; the height follows the figure's aspect ratio. Default: 800.
+    colors : dict, optional
+        ``{suffix: {"text": ..., "grid": ..., "palette": (...)}}``. Default: :data:`POSTER_COLORS`.
+    **hints
+        Passed to :func:`web_figure`, e.g. ``white_plot=False``.
+
+    Returns
+    -------
+    list of str
+        The paths written.
+
+    Examples
+    --------
+    >>> write_posters(fig, "docs/public/figures/energy")
+    """
+    import plotly.graph_objects as go
+
+    web = web_figure(figure, **hints)
+    aspect = web["layout"]["meta"]["web"].get("aspect") or 1.6
+    Path(stem).parent.mkdir(parents=True, exist_ok=True)
+    written = []
+    for suffix, scheme in (colors or POSTER_COLORS).items():
+        text, grid, palette = scheme["text"], scheme["grid"], list(scheme["palette"])
+        data = [_poster_trace(trace, palette, text) for trace in web["data"]]
+        poster = go.Figure({"data": data, "layout": web["layout"]})
+        poster.update_layout(
+            font_color=text, legend_bgcolor="rgba(0,0,0,0)", colorway=palette
+        )
+        poster.layout.updatemenus, poster.layout.sliders = (), ()  # nothing to press
+        axes = dict(gridcolor=grid, linecolor=grid, zerolinecolor=grid, mirror=False)
+        poster.update_xaxes(**axes)
+        poster.update_yaxes(**axes)
+        path = f"{stem}{suffix}.png"
+        poster.write_image(path, width=width, height=round(width / aspect), scale=1)
+        written.append(path)
+    return written
