@@ -423,6 +423,45 @@ _ARROW_TIPS = {
 }
 
 
+def _hatch_pattern(hatch) -> str | None:
+    """The TikZ pattern (patterns library) of a Matplotlib hatch string such as ``"///"``.
+
+    Both diagonals (``"/\\"``, ``"x"``) are a cross-hatch, both straight directions
+    (``"+"``, ``"-|"``) a grid, one direction its lines, and ``.``, ``o``, ``O``, ``*``
+    dots; ``None`` for no hatch. The density of the hatch (repeated characters) is not
+    kept.
+    """
+    if not hatch:
+        return None
+    has = set(hatch)
+    if {"/", "\\"} <= has or has & {"x", "X"}:
+        return "crosshatch"
+    if "+" in has or {"-", "|"} <= has:
+        return "grid"
+    for character, pattern in (
+        ("/", "north east lines"),
+        ("\\", "north west lines"),
+        ("-", "horizontal lines"),
+        ("|", "vertical lines"),
+    ):
+        if character in has:
+            return pattern
+    if has & {".", "o", "O", "*"}:
+        return "dots"
+    return None
+
+
+def _patch_hatch(patch):
+    """``(hatch string, color)`` of a patch, or ``None`` without a hatch."""
+    if not patch.get_hatch():
+        return None
+    if hasattr(patch, "get_hatchcolor"):  # Matplotlib >= 3.10
+        color = patch.get_hatchcolor()
+    else:  # pragma: no cover - older Matplotlib
+        color = getattr(patch, "_hatch_color", patch.get_edgecolor())
+    return patch.get_hatch(), color
+
+
 def _dash(pattern) -> str | None:
     """A Matplotlib ``(offset, [on, off, ...])`` dash pattern in points as TikZ."""
     if pattern is None:
@@ -762,13 +801,31 @@ class _AxesConverter:
             options.append("mark=none")
         return options
 
-    def _area_options(self, face, edge, width, dash, alpha=None):
+    def _hatch(self, hatch) -> list[str] | None:
+        """The pattern options of a hatch ``(hatch string, color)``, drawn over the fill.
+
+        The pattern is a ``postaction``, so it covers the fill instead of replacing it, and
+        loads TikZ's patterns library (a ``.tikz`` file needs ``\\usetikzlibrary{patterns}``).
+        """
+        if hatch is None:
+            return None
+        hatch, color = hatch
+        pattern = _hatch_pattern(hatch)
+        name, _ = self.colors(color)
+        if pattern is None or name is None:
+            return None
+        self.parent.tikz.usetikzlibrary("patterns")
+        return [f"postaction={{pattern={pattern}, pattern color={name}}}"]
+
+    def _area_options(self, face, edge, width, dash, alpha=None, hatch=None):
         fill = self._fill(face, alpha)
         stroke = self._stroke(edge, width, dash, alpha)
-        if fill is None and stroke is None:
+        pattern = self._hatch(hatch)
+        if fill is None and stroke is None and pattern is None:
             return None
         options = list(fill or ["fill=none"])
         options.extend(stroke or ["draw=none"])
+        options.extend(pattern or [])
         options.extend(["mark=none", "area legend"])
         return options
 
@@ -785,6 +842,7 @@ class _AxesConverter:
                 handle.get_edgecolor(),
                 handle.get_linewidth(),
                 _dash(handle._dash_pattern),
+                hatch=_patch_hatch(handle),
             )
             if options:
                 return options
@@ -1046,6 +1104,7 @@ class _AxesConverter:
         # the patch's colors include its alpha
         face = patch.get_facecolor() if patch.get_fill() else "none"
         dash = _dash(patch._dash_pattern)
+        hatch = _patch_hatch(patch)
         pieces = []
         for sub_path, can_fill in zip(paths, fillable):
             if transform is not None:
@@ -1056,6 +1115,7 @@ class _AxesConverter:
                 patch.get_edgecolor(),
                 patch.get_linewidth(),
                 dash,
+                hatch=hatch if can_fill else None,
             )
             if options is None:
                 continue
