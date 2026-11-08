@@ -107,6 +107,43 @@ def test_text_and_annotation_arrows_are_not_clipped():
     assert re.search(r"\\draw\[.*\] \(axis cs:", tikz), "the arrow is a \\draw"
 
 
+@pytest.mark.parametrize(
+    "hatch, pattern",
+    [
+        ("///", "north east lines"),
+        ("\\\\", "north west lines"),
+        ("x", "crosshatch"),
+        ("/\\", "crosshatch"),
+        ("+", "grid"),
+        ("-", "horizontal lines"),
+        ("|", "vertical lines"),
+        ("..", "dots"),
+    ],
+)
+def test_hatches_become_tikz_patterns(hatch, pattern):
+    from matplotlib.patches import Rectangle
+
+    fig, ax = plt.subplots()
+    ax.add_patch(
+        Rectangle((0.1, 0.1), 0.5, 0.5, facecolor="0.9", edgecolor="k", hatch=hatch)
+    )
+    ax.add_patch(Rectangle((0.7, 0.7), 0.2, 0.2, facecolor="C0"))  # no hatch
+    figure = figure_to_tikz(fig)
+    tikz = figure.generate_tikz()
+    assert tikz.count(f"postaction={{pattern={pattern}, pattern color=mpl000000}}") == 1
+    assert "patterns" in figure._tikz_libraries
+
+
+def test_a_hatched_legend_entry_keeps_its_pattern():
+    from matplotlib.patches import Rectangle
+
+    fig, ax = plt.subplots()
+    ax.add_patch(Rectangle((0.1, 0.1), 0.5, 0.5, fill=False, hatch="//", label="wall"))
+    ax.legend()
+    tikz = figure_to_tikz(fig).generate_tikz()
+    assert re.search(r"\\addlegendimage\{[^}]*pattern=north east lines", tikz), tikz
+
+
 def test_straight_arrows_get_tikz_tips():
     from matplotlib.patches import FancyArrowPatch
 
