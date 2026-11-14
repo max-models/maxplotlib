@@ -6,7 +6,10 @@ each render binds those tokens to its new figure/axes.  No source artists are
 reparented, and repeated renders do not share mutable Matplotlib state.
 """
 
+import ast
 import copy
+import copyreg
+import itertools
 from dataclasses import asdict, dataclass, field
 
 from matplotlib.artist import Artist
@@ -18,6 +21,21 @@ from matplotlib.patches import Patch
 from matplotlib.table import Table
 from matplotlib.text import Text
 from matplotlib.transforms import Bbox, BboxTransformTo
+
+
+def _reduce_count(counter):
+    """Rebuild an ``itertools.count`` from its repr, ``count(start)`` or ``count(start, step)``."""
+    args = ast.literal_eval(repr(counter)[len("count") :])
+    return itertools.count, args if isinstance(args, tuple) else (args,)
+
+
+# Python 3.14 no longer copies or pickles itertools objects, and Matplotlib's categorical units
+# (matplotlib.category.UnitData, also held by the category locator and formatter) keep a count:
+# without this, copying the state of a categorical axis fails.
+try:
+    copy.deepcopy(itertools.count())
+except TypeError:
+    copyreg.pickle(itertools.count, _reduce_count)
 
 
 @dataclass
@@ -136,6 +154,14 @@ class ReboundSnapshot:
             if callbacks is not None:
                 memo[id(callbacks)] = CallbackRegistry()
         self.payload = copy.deepcopy(payload, memo)
+        # Python 3.14 returns functions and builtin methods as they are before it reads the memo,
+        # so the copies would still hold the source's removal and stale callbacks (and through
+        # them its axes and figure): drop them, as the memo does on older versions.
+        for artist in artists:
+            copied = memo.get(id(artist))
+            for name in ("_remove_method", "stale_callback"):
+                if getattr(copied, name, None) is not None:
+                    setattr(copied, name, None)
 
     def clone(self, ax=None, fig=None):
         fig = fig if fig is not None else ax.figure
