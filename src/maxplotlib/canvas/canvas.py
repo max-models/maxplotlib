@@ -322,7 +322,9 @@ class Canvas:
         nrows (int): Number of subplot rows. Default is 1.
         ncols (int): Number of subplot columns. Default is 1.
         figsize (tuple): Figure size.
-        caption (str): Caption for the figure.
+        caption (str): Caption for the figure: the Matplotlib figure carries it as
+            ``fig.caption``, the Plotly figure as ``layout.meta["caption"]``, and a
+            web figure as its title (the caption the docs page shows).
         description (str): Description for the figure.
         label (str): Label for the figure.
         fontsize (int): Font size. Default is 10.
@@ -2637,7 +2639,9 @@ class Canvas:
         if verbose:
             print("Set suptitle.")
 
-        # Set caption, labels, etc., if needed
+        if self._caption:
+            # read by the docs and gallery tools that write the figure on a page
+            fig.caption = self._caption
         self._plotted = True
         self._matplotlib_fig = fig
         self._matplotlib_axes = axes
@@ -3233,6 +3237,9 @@ class Canvas:
             fig.update_layout(legend=legend_layout)
         if self._suptitle:
             fig.update_layout(title=dict(text=self._suptitle, x=0.5))
+        if self._caption:
+            meta = fig.layout.meta if isinstance(fig.layout.meta, dict) else {}
+            fig.update_layout(meta={**meta, "caption": self._caption})
 
         if savefig:
             try:
@@ -3263,7 +3270,8 @@ class Canvas:
 
         Parameters:
         layers (list, optional): The layers to draw.
-        title (str, optional): The title and default caption. Default: the canvas title.
+        title (str, optional): The title and default caption. Default: the canvas caption,
+            else the canvas title.
         alt (str, optional): A text alternative for the figure.
         white_plot (bool, optional): Keep a white plot area in dark mode.
         """
