@@ -186,3 +186,24 @@ def test_write_posters(tmp_path, monkeypatch):
     assert dark.data[0].line.color == "#f0b030"  # and in the dark one
     assert dark.data[1].line.color == "#eeeadd"  # black as the text colour
     assert list(dark.layout.colorway)[0] == "#4fa8e0"
+
+
+def test_a_canvas_caption_goes_with_its_figures():
+    canvas = Canvas(caption="A rising line.")
+    canvas.plot(np.arange(3), np.arange(3))
+    figure, _ = canvas.plot_matplotlib()
+    assert figure.caption == "A rising line."
+    plotly_figure = canvas.plot_plotly(show=False)
+    assert plotly_figure.layout.meta["caption"] == "A rising line."
+    web = json.loads(canvas.to_json())
+    assert web["layout"]["meta"]["web"]["title"] == "A rising line."
+    # an explicit title wins over the caption
+    web = json.loads(canvas.to_json(title="Line"))
+    assert web["layout"]["meta"]["web"]["title"] == "Line"
+
+
+def test_a_figure_without_caption_has_none():
+    canvas = Canvas()
+    canvas.plot(np.arange(3), np.arange(3))
+    figure, _ = canvas.plot_matplotlib()
+    assert getattr(figure, "caption", None) is None

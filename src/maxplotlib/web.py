@@ -19,7 +19,8 @@ Hints for the page are in ``layout.meta["web"]``:
 ``version``
     The format version, :data:`FORMAT_VERSION`.
 ``title``
-    The figure's title, also the default caption.
+    The figure's caption (``layout.meta["caption"]``, as a Canvas with a caption sets it), else
+    its title.
 ``alt``
     A text alternative for readers who cannot see the figure.
 ``aspect``
@@ -193,7 +194,8 @@ def web_figure(
     figure : plotly.graph_objects.Figure or dict
         The figure, or its JSON as a dict (e.g. read from a file).
     title : str, optional
-        The title and default caption. Default: the figure's own title.
+        The title and default caption. Default: the figure's caption
+        (``layout.meta["caption"]``), else its own title.
     alt : str, optional
         A text alternative for the figure. Default: none.
     aspect : float, optional
@@ -227,7 +229,8 @@ def web_figure(
         aspect = float(width) / float(height)
     if white_plot is None:
         white_plot = meta.get("converted_from") == "matplotlib"
-    title = title if title is not None else _title_text(layout)
+    if title is None:
+        title = meta.get("caption") or _title_text(layout)
 
     layout.pop("template", None)
     layout["autosize"] = True
