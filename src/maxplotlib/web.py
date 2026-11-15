@@ -39,6 +39,7 @@ Examples
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from pathlib import Path
@@ -169,6 +170,29 @@ def _title_text(layout: dict) -> str | None:
     return title if isinstance(title, str) and title else None
 
 
+def _single_precision(value: Any) -> Any:
+    """``value`` with its double-precision arrays in single precision.
+
+    Plotly writes NumPy arrays as typed arrays, ``{"dtype": "f8", "bdata": ...}``; a figure on a
+    page needs no more than the seven digits of single precision, and its file is half as large.
+    """
+    if isinstance(value, dict):
+        if value.get("dtype") == "f8" and isinstance(value.get("bdata"), str):
+            import numpy as np
+
+            data = np.frombuffer(base64.b64decode(value["bdata"]), dtype="<f8")
+            single = data.astype("<f4")
+            return {
+                **value,
+                "dtype": "f4",
+                "bdata": base64.b64encode(single.tobytes()).decode(),
+            }
+        return {key: _single_precision(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_single_precision(item) for item in value]
+    return value
+
+
 def _with_slot(trace: dict) -> dict:
     slot = _trace_slot(trace)
     if slot is None:
@@ -207,7 +231,9 @@ def web_figure(
     Returns
     -------
     dict
-        ``data``, ``layout`` and ``frames`` (when the figure has frames) of the web figure.
+        ``data``, ``layout`` and ``frames`` (when the figure has frames) of the web figure. The
+        arrays of the traces are in single precision: seven digits are plenty on a page, and
+        the file is half as large.
 
     Examples
     --------
@@ -251,13 +277,21 @@ def web_figure(
     layout["meta"] = meta
 
     web = {
-        "data": [_with_slot(trace) for trace in source.get("data") or []],
+        "data": [
+            _single_precision(_with_slot(trace)) for trace in source.get("data") or []
+        ],
         "layout": layout,
     }
     frames = source.get("frames")
     if frames:
         web["frames"] = [
-            {**frame, "data": [_with_slot(trace) for trace in frame.get("data") or []]}
+            {
+                **frame,
+                "data": [
+                    _single_precision(_with_slot(trace))
+                    for trace in frame.get("data") or []
+                ],
+            }
             for frame in frames
         ]
     return web

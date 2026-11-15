@@ -207,3 +207,25 @@ def test_a_figure_without_caption_has_none():
     canvas.plot(np.arange(3), np.arange(3))
     figure, _ = canvas.plot_matplotlib()
     assert getattr(figure, "caption", None) is None
+
+
+def test_the_arrays_of_a_web_figure_are_single_precision():
+    import base64
+
+    x = np.linspace(0.0, 1.0, 50)
+    fig = go.Figure(
+        go.Heatmap(z=np.outer(x, x)),
+        frames=[go.Frame(data=[go.Heatmap(z=np.outer(x, x) * 2)])],
+    )
+    web = web_figure(fig)
+    z = web["data"][0]["z"]
+    assert z["dtype"] == "f4"
+    values = np.frombuffer(base64.b64decode(z["bdata"]), dtype="<f4").reshape(50, 50)
+    np.testing.assert_allclose(values, np.outer(x, x), rtol=1e-7)
+    assert web["frames"][0]["data"][0]["z"]["dtype"] == "f4"
+    # plain lists and integer arrays are left as they are
+    web = web_figure(
+        go.Figure(go.Scatter(x=[0, 1], y=np.array([1, 2], dtype=np.int64)))
+    )
+    assert web["data"][0]["x"] == [0, 1]
+    assert web["data"][0]["y"]["dtype"] != "f4"
