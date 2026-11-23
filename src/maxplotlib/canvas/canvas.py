@@ -34,6 +34,19 @@ class SubplotSpacing:
         return {"wspace": self.wspace, "hspace": self.hspace}
 
 
+def _share_mode(value, name: str) -> str:
+    """Return ``"all"``, ``"row"``, ``"col"`` or ``"none"`` for a sharex/sharey value."""
+    if value is True:
+        return "all"
+    if value is False or value is None:
+        return "none"
+    if value in ("all", "row", "col", "none"):
+        return value
+    raise ValueError(
+        f"{name} must be a bool or one of 'all', 'row', 'col', 'none', got {value!r}"
+    )
+
+
 def _parse_bool_env_var(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -314,6 +327,8 @@ class Canvas:
         usetex: bool | None = None,
         subplot_spacing: SubplotSpacing | None = None,
         gridspec_kw: Mapping[str, float] | None = None,
+        sharex: bool | str = False,
+        sharey: bool | str = False,
     ):
         """
         Initialize the Canvas class for multiple subplots.
@@ -337,7 +352,15 @@ class Canvas:
             Default is SubplotSpacing(wspace=0.08, hspace=0.1).
         gridspec_kw (Mapping[str, float]): Optional matplotlib gridspec kwargs.
             Kept for compatibility with existing code.
+        sharex, sharey (bool | str): Share the x or y axis between subplots,
+            as in ``matplotlib.pyplot.subplots``: ``True`` or ``"all"`` (every
+            subplot), ``"col"`` (each column), ``"row"`` (each row), ``False``
+            or ``"none"``. Shared axes have the same limits, and only the
+            outer subplots carry tick labels. The Matplotlib, TikZ and Plotly
+            backends share; the terminal backend draws each subplot alone.
         """
+        self._sharex = _share_mode(sharex, "sharex")
+        self._sharey = _share_mode(sharey, "sharey")
 
         self._nrows = nrows
         self._ncols = ncols
@@ -456,7 +479,8 @@ class Canvas:
             list when the grid is 1×1 or when one dimension is 1.
         wspace, hspace (float): Convenience subplot spacing arguments.
             These map to matplotlib gridspec spacing values.
-        **canvas_kwargs: Forwarded to the Canvas constructor.
+        **canvas_kwargs: Forwarded to the Canvas constructor, among them
+            ``sharex`` and ``sharey``.
 
         Returns:
         (canvas, axes): A tuple of the Canvas and either a single LinePlot,
@@ -467,6 +491,7 @@ class Canvas:
         >>> canvas, ax = Canvas.subplots()
         >>> canvas, (ax1, ax2) = Canvas.subplots(ncols=2)
         >>> canvas, axes = Canvas.subplots(nrows=2, ncols=2)  # axes[row][col]
+        >>> canvas, (top, bottom) = Canvas.subplots(nrows=2, sharex=True)
         """
         spacing_given = wspace is not None or hspace is not None
         if spacing_given and (
@@ -689,6 +714,7 @@ class Canvas:
         self,
         x,
         y,
+        fmt=None,
         layer=0,
         subplot: LinePlot | None = None,
         row: int | None = None,
@@ -709,8 +735,9 @@ class Canvas:
             subplot = self.add_subplot(col=col, row=row)
 
         subplot.add_line(
-            x=x,
-            y=y,
+            x,
+            y,
+            fmt,
             layer=layer,
             **kwargs,
         )
@@ -1399,19 +1426,30 @@ class Canvas:
         self._get_or_create_subplot(row, col).set_legend(visible, **kwargs)
 
     def legend(self, row=None, col=None, **kwargs):
-        self._get_or_create_subplot(row, col).set_legend(**kwargs)
+        """Show the legend of a subplot, as Matplotlib's ``Axes.legend``."""
+        self._get_or_create_subplot(row, col).legend(**kwargs)
 
     def tick_params(self, row: int | None = None, col: int | None = None, **kwargs):
         """Configure major/minor tick appearance for a subplot."""
         self._get_or_create_subplot(row, col).tick_params(**kwargs)
 
-    def set_xscale(self, scale: str, row: int | None = None, col: int | None = None):
-        """Set x-axis scale ('linear', 'log', 'symlog') for a subplot."""
-        self._get_or_create_subplot(row, col).set_xscale(scale)
+    def set_xscale(
+        self, scale: str, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Set x-axis scale ('linear', 'log', 'symlog') for a subplot.
 
-    def set_yscale(self, scale: str, row: int | None = None, col: int | None = None):
-        """Set y-axis scale ('linear', 'log', 'symlog') for a subplot."""
-        self._get_or_create_subplot(row, col).set_yscale(scale)
+        ``kwargs`` are Matplotlib's options of the scale, e.g. ``linthresh``.
+        """
+        self._get_or_create_subplot(row, col).set_xscale(scale, **kwargs)
+
+    def set_yscale(
+        self, scale: str, row: int | None = None, col: int | None = None, **kwargs
+    ):
+        """Set y-axis scale ('linear', 'log', 'symlog') for a subplot.
+
+        ``kwargs`` are Matplotlib's options of the scale, e.g. ``linthresh``.
+        """
+        self._get_or_create_subplot(row, col).set_yscale(scale, **kwargs)
 
     def set_axis_off(self, row: int | None = None, col: int | None = None):
         """Hide the axis frame, ticks, and labels for a subplot."""
@@ -2289,7 +2327,9 @@ class Canvas:
     def plot(self, *args, backend=None, **kwargs):
         """Add a line, or render when called with backend options.
 
-        ``canvas.plot(x, y, **style)`` is the convenient direct plotting form.
+        ``canvas.plot(x, y, **style)`` is the convenient direct plotting form;
+        ``canvas.plot(x, y, "o--")`` takes a Matplotlib format string and
+        ``canvas.plot(y)`` plots against the index, as ``Axes.plot`` does.
         ``canvas.plot(da)`` plots a 1-D ``xarray.DataArray`` against its
         coordinate, labelling the axes from its attributes; ``hue=<dim>``
         draws a 2-D one as one line per value of ``dim``.
@@ -2297,21 +2337,13 @@ class Canvas:
         ``canvas.plot(backend=...)`` form remains supported.
         """
         explicit_render = backend is not None or (args and isinstance(args[0], str))
-        if len(args) == 1 and xarray_support.is_dataarray(args[0]):
-            layer = kwargs.pop("layer", 0)
-            row = kwargs.pop("row", None)
-            col = kwargs.pop("col", None)
-            self._get_or_create_subplot(row, col).plot(args[0], layer=layer, **kwargs)
-            return self
         if args and not isinstance(args[0], str):
-            if len(args) < 2:
-                raise TypeError("plot(x, y) requires both x and y data")
-            if len(args) > 2:
-                raise TypeError("plot() accepts only x and y positional data")
+            if len(args) > 3:
+                raise TypeError("plot() takes x, y and a format string")
             layer = kwargs.pop("layer", 0)
             row = kwargs.pop("row", None)
             col = kwargs.pop("col", None)
-            self.add_line(args[0], args[1], layer=layer, row=row, col=col, **kwargs)
+            self._get_or_create_subplot(row, col).plot(*args, layer=layer, **kwargs)
             return self
         if args:
             if len(args) > 1:
@@ -2517,6 +2549,8 @@ class Canvas:
         subplot_kwargs = {
             "squeeze": False,
             "gridspec_kw": self._gridspec_kw,
+            "sharex": self._sharex,
+            "sharey": self._sharey,
         }
         if self._figsize is not None:
             subplot_kwargs["figsize"] = self._figsize
@@ -2951,11 +2985,15 @@ class Canvas:
             [{"secondary_y": (r, c) in self._twinx_subplots} for c in range(self.ncols)]
             for r in range(self.nrows)
         ]
+        # Matplotlib's names of the sharing, in Plotly's
+        plotly_share = {"all": "all", "col": "columns", "row": "rows", "none": False}
         fig = make_subplots(
             rows=self.nrows,
             cols=self.ncols,
             subplot_titles=subplot_titles,
             specs=specs,
+            shared_xaxes=plotly_share[self._sharex],
+            shared_yaxes=plotly_share[self._sharey],
         )
         if self._hide_empty_subplots:
             for row in range(self.nrows):

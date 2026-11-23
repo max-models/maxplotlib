@@ -98,8 +98,6 @@ def test_plot_rejects_wrong_ndim():
     canvas = Canvas()
     with pytest.raises(ValueError, match="1-D DataArray.*sel"):
         canvas.plot(_mesh())
-    with pytest.raises(TypeError, match="both x and y"):
-        canvas.plot(np.arange(3))
 
 
 def test_plot_x_y_arrays_still_work_with_dataarrays():

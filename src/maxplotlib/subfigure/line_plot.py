@@ -5,6 +5,7 @@ import numpy as np
 import plotly.graph_objects as go
 
 from maxplotlib.utils import xarray_support
+from maxplotlib.utils.plot_format import apply_plot_format, draws_no_line
 
 # Keyword arguments that every drawing method accepts and that are handled by
 # maxplotlib itself rather than being forwarded to a backend drawing call.
@@ -112,6 +113,21 @@ def _colormap_to_plotly_colorscale(colormap, steps=17):
     return [[float(position), color] for position, color in zip(positions, colors)]
 
 
+def _named_transform(ax, name: str):
+    """The Matplotlib transform of a named coordinate system of ``ax``."""
+    transforms = {
+        "data": ax.transData,
+        "axes": ax.transAxes,
+        "figure": ax.figure.transFigure,
+    }
+    if name not in transforms:
+        raise ValueError(
+            f"transform must be one of {sorted(transforms)} or a Matplotlib "
+            f"transform, got {name!r}"
+        )
+    return transforms[name]
+
+
 class Node:
     def __init__(self, x, y, label="", content="", layer=0, **kwargs):
         self.x = x
@@ -216,6 +232,8 @@ class LinePlot:
         # Axis scale type ('linear', 'log', 'symlog')
         self._xaxis_scale: str | None = None
         self._yaxis_scale: str | None = None
+        self._xaxis_scale_kwargs: dict = {}
+        self._yaxis_scale_kwargs: dict = {}
         self._axis_off = False
         self._axisbelow = None
         self._facecolor = None
@@ -301,6 +319,7 @@ class LinePlot:
         self,
         x,
         y,
+        fmt=None,
         layer=0,
         **kwargs,
     ):
@@ -310,16 +329,27 @@ class LinePlot:
         Parameters:
         x (array-like): X-axis data.
         y (array-like): Y-axis data.
+        fmt (str): Matplotlib format string, e.g. ``"o"``, ``"x--"`` or
+            ``"k:"`` (see :func:`~maxplotlib.utils.plot_format.parse_plot_format`).
+            A marker without a line style draws the markers only. A keyword
+            argument wins over the same setting in ``fmt``.
         layer (int): Layer index (default 0).
         **kwargs: Additional keyword arguments forwarded to the backend
-            (e.g., color, linestyle, label, linewidth).
+            (e.g., color, linestyle, label, linewidth). Matplotlib's short
+            names (``ls``, ``lw``, ``ms``, ``c``, ``mec``, ``mew``, ``mfc``)
+            are accepted by every backend.
         """
+        if fmt is not None and not isinstance(fmt, str):
+            raise TypeError(
+                "the third positional argument of a line is a format string; "
+                "pass the layer as layer=..."
+            )
         ld = {
             "x": np.array(x),
             "y": np.array(y),
             "layer": layer,
             "plot_type": "plot",
-            "kwargs": kwargs,
+            "kwargs": apply_plot_format(fmt, kwargs),
         }
         self._add(ld, layer)
 
@@ -368,18 +398,28 @@ class LinePlot:
         if hue is not None and add_legend:
             self._legend = True
 
-    def plot(self, x, y=None, layer=0, **kwargs):
-        """Matplotlib-style alias for :meth:`add_line`.
+    def plot(self, x, y=None, fmt=None, layer=0, **kwargs):
+        """Draw a line, as Matplotlib's ``Axes.plot``.
+
+        ``plot(x, y)``, ``plot(x, y, "o--")`` and ``plot(y)`` or
+        ``plot(y, "o")`` (against the index) are accepted; the format string
+        and the keyword arguments are those of :meth:`add_line`.
 
         ``plot(da)`` with a 1-D ``xarray.DataArray`` plots it against its
         coordinate; see :meth:`_plot_dataarray`.
         """
+        if isinstance(y, str):  # plot(y, fmt)
+            if fmt is not None:
+                raise TypeError("plot() got two format strings")
+            y, fmt = None, y
         if y is None:
-            if not xarray_support.is_dataarray(x):
-                raise TypeError("plot(x, y) requires both x and y data")
-            self._plot_dataarray(self.add_line, x, layer, kwargs)
-            return
-        self.add_line(x, y, layer=layer, **kwargs)
+            if xarray_support.is_dataarray(x):
+                if fmt is not None:
+                    kwargs = apply_plot_format(fmt, kwargs)
+                self._plot_dataarray(self.add_line, x, layer, kwargs)
+                return
+            x, y = np.arange(len(x)), x
+        self.add_line(x, y, fmt, layer=layer, **kwargs)
 
     @staticmethod
     def _mesh_of(da, kwargs, method):
@@ -971,15 +1011,26 @@ class LinePlot:
         self._legend = visible
         self._legend_kwargs = dict(kwargs)
 
-    def set_xscale(self, scale: str):
-        """Set the x-axis scale type: 'linear', 'log', or 'symlog'."""
+    def set_xscale(self, scale: str, **kwargs):
+        """Set the x-axis scale type: 'linear', 'log', or 'symlog'.
+
+        ``kwargs`` are Matplotlib's options of the scale, e.g. ``linthresh``
+        and ``linscale`` of ``"symlog"`` or ``base`` of ``"log"``. They apply
+        to the Matplotlib and TikZ output; the other backends draw the scale
+        with their own defaults.
+        """
         self._xaxis_scale = scale
+        self._xaxis_scale_kwargs = dict(kwargs)
         if hasattr(self, "_import_scales"):
             self._import_xscale_edited = True
 
-    def set_yscale(self, scale: str):
-        """Set the y-axis scale type: 'linear', 'log', or 'symlog'."""
+    def set_yscale(self, scale: str, **kwargs):
+        """Set the y-axis scale type: 'linear', 'log', or 'symlog'.
+
+        ``kwargs`` are Matplotlib's options of the scale, see :meth:`set_xscale`.
+        """
         self._yaxis_scale = scale
+        self._yaxis_scale_kwargs = dict(kwargs)
         if hasattr(self, "_import_scales"):
             self._import_yscale_edited = True
 
@@ -1428,6 +1479,10 @@ class LinePlot:
         x, y (float): Position.
         s (str): Text string.
         **kwargs: Forwarded to ax.text (e.g., fontsize, color, ha, va).
+            ``transform`` names the coordinates of (x, y): ``"data"`` (the
+            default), ``"axes"`` (fractions of the subplot, (0, 0) its lower
+            left corner) or ``"figure"`` (fractions of the figure). A
+            Matplotlib transform is passed on to the Matplotlib backend.
         """
         ld = {
             "x": x,
@@ -1828,7 +1883,11 @@ class LinePlot:
                         ann_kwargs["xytext"] = line["xytext"]
                     ax.annotate(line["text"], xy=line["xy"], **ann_kwargs)
                 elif line["plot_type"] == "text":
-                    ax.text(line["x"], line["y"], line["s"], **line["kwargs"])
+                    text_kwargs = dict(line["kwargs"])
+                    transform = text_kwargs.get("transform")
+                    if isinstance(transform, str):
+                        text_kwargs["transform"] = _named_transform(ax, transform)
+                    ax.text(line["x"], line["y"], line["s"], **text_kwargs)
                 elif line["plot_type"] == "axvline":
                     ax.axvline(x=line["x"], **line["kwargs"])
                 elif line["plot_type"] == "axhline":
@@ -1908,13 +1967,13 @@ class LinePlot:
             or self._xaxis_scale != self._import_scales[0]
             or getattr(self, "_import_xscale_edited", False)
         ):
-            ax.set_xscale(self._xaxis_scale)
+            ax.set_xscale(self._xaxis_scale, **self._xaxis_scale_kwargs)
         if self._yaxis_scale is not None and (
             not hasattr(self, "_import_scales")
             or self._yaxis_scale != self._import_scales[1]
             or getattr(self, "_import_yscale_edited", False)
         ):
-            ax.set_yscale(self._yaxis_scale)
+            ax.set_yscale(self._yaxis_scale, **self._yaxis_scale_kwargs)
         if self._xticks is not None:
             ax.set_xticks(
                 self._xticks,
@@ -2335,6 +2394,8 @@ class LinePlot:
                 kwargs = line["kwargs"]
                 marker = kwargs.get("marker")
                 mode = "lines+markers" if marker is not None else "lines"
+                if draws_no_line(kwargs.get("linestyle", "solid")):
+                    mode = "markers" if marker is not None else "none"
                 trace = go.Scatter(
                     x=tx(line["x"]),
                     y=ty(line["y"]),
@@ -3424,8 +3485,23 @@ class LinePlot:
                     weight=kwargs.get("fontweight", None),
                 )
                 if plot_type == "text":
-                    x = txs(float(line["x"]))
-                    y = tys(float(line["y"]))
+                    transform = kwargs.get("transform", "data")
+                    if transform == "data":
+                        x = txs(float(line["x"]))
+                        y = tys(float(line["y"]))
+                        refs = {}
+                    elif transform in ("axes", "figure"):
+                        # fractions of the subplot or of the whole figure
+                        x, y = float(line["x"]), float(line["y"])
+                        ref = "domain" if transform == "axes" else "paper"
+                        refs = {"xref": f"x {ref}", "yref": f"y {ref}"}
+                        if transform == "figure":
+                            refs = {"xref": "paper", "yref": "paper"}
+                    else:
+                        raise NotImplementedError(
+                            "Plotly places text in 'data', 'axes' or 'figure' "
+                            f"coordinates, not {transform!r}"
+                        )
                     text = line["s"]
                     annotations.append(
                         dict(
@@ -3436,6 +3512,7 @@ class LinePlot:
                             xanchor=ha_to_xanchor.get(kwargs.get("ha"), "left"),
                             yanchor=va_to_yanchor.get(kwargs.get("va"), "bottom"),
                             font=font,
+                            **refs,
                         )
                     )
                 else:
@@ -4160,7 +4237,10 @@ class LinePlot:
                 x = self._transform_x(line["x"]).tolist()
                 y = self._transform_y(line["y"]).tolist()
                 plot_kwargs = self._plotext_plot_kwargs(kwargs)
-                ax.plot(x, y, **plot_kwargs)
+                if draws_no_line(kwargs.get("linestyle", "solid")):
+                    ax.scatter(x, y, **plot_kwargs)
+                else:
+                    ax.plot(x, y, **plot_kwargs)
                 legend_entries.append((kwargs.get("label"), kwargs.get("color")))
             elif plot_type == "scatter":
                 x = self._transform_x(line["x"]).tolist()
@@ -4485,14 +4565,14 @@ class LinePlot:
     def grid(self, value):
         self._grid = value
 
-    # Getter and Setter for legend
-    @property
-    def legend(self):
-        return self._legend
+    def legend(self, **kwargs):
+        """Show the legend, as Matplotlib's ``Axes.legend``.
 
-    @legend.setter
-    def legend(self, value):
-        self._legend = value
+        ``kwargs`` are Matplotlib's (``loc``, ``fontsize``, ``ncols``, ...).
+        The entries are the labelled artists of the subplot; ``set_legend``
+        hides the legend again.
+        """
+        self.set_legend(True, **kwargs)
 
 
 if __name__ == "__main__":
